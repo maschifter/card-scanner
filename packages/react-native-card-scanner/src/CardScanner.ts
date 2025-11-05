@@ -1,3 +1,5 @@
-export function multiply(modelSource: string): number {
-  return global.multiply(modelSource);
+import type { InferenceResult } from './index';
+
+export function runInference(modelPath: string): InferenceResult {
+  return global.runInference(modelPath);
 }

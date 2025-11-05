@@ -4,6 +4,9 @@
   "newArchEnabled": true,
   "version": "1.0.0",
   "orientation": "portrait",
+  "assetBundlePatterns": [
+    "assets/**/*"
+  ],
   "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.swmansion.cardscannerexample"

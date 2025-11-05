@@ -22,30 +22,22 @@ Pod::Spec.new do |s|
 
     "OTHER_LDFLAGS[sdk=iphoneos*]" => [
       '$(inherited)',
-      "-force_load \"#{et_binaries_path}/libbackend_mps_ios.a\"",
       "-force_load \"#{et_binaries_path}/libbackend_xnnpack_ios.a\"",
       "-force_load \"#{et_binaries_path}/libexecutorch_ios.a\"",
-      "-force_load \"#{et_binaries_path}/libkernels_custom_ios.a\"",
       "-force_load \"#{et_binaries_path}/libkernels_optimized_ios.a\"",
-      "-force_load \"#{et_binaries_path}/libkernels_quantized_ios.a\"",
       "-force_load \"#{et_binaries_path}/libthreadpool_ios.a\"",
       "\"#{pthreadpool_binaries_path}/physical-arm64-release/libpthreadpool.a\"",
       "\"#{cpuinfo_binaries_path}/libcpuinfo.a\"",
-      "\"#{et_binaries_path}/libkernels_portable_ios.a\"",
     ].join(' '),
 
     "OTHER_LDFLAGS[sdk=iphonesimulator*]" => [
       '$(inherited)',
-      "-force_load \"#{et_binaries_path}/libbackend_mps_simulator.a\"",
       "-force_load \"#{et_binaries_path}/libbackend_xnnpack_simulator.a\"",
       "-force_load \"#{et_binaries_path}/libexecutorch_simulator.a\"",
-      "-force_load \"#{et_binaries_path}/libkernels_custom_simulator.a\"",
       "-force_load \"#{et_binaries_path}/libkernels_optimized_simulator.a\"",
-      "-force_load \"#{et_binaries_path}/libkernels_quantized_simulator.a\"",
       "-force_load \"#{et_binaries_path}/libthreadpool_simulator.a\"",
       "\"#{pthreadpool_binaries_path}/simulator-arm64-debug/libpthreadpool.a\"",
       "\"#{cpuinfo_binaries_path}/libcpuinfo.a\"",
-      "\"#{et_binaries_path}/libkernels_portable_simulator.a\"",
     ].join(' '),
 
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'x86_64',
@@ -68,13 +60,6 @@ Pod::Spec.new do |s|
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++20",
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'x86_64',
   }
-  
-  s.frameworks = [
-    "Metal",
-    "Accelerate",
-    "MetalPerformanceShaders",
-    "MetalPerformanceShadersGraph"
-  ]
 
   install_modules_dependencies(s)
 end

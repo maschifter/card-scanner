@@ -1,11 +1,16 @@
 import { CardScannerInstallerNativeModule } from './RnCardScannerModules';
 
-// eslint-disable-next-line no-var
-declare global {
-  var multiply: (modelSource: string) => number;
+export interface InferenceResult {
+  outputShape: number[];
+  inferenceTimeMs: number;
 }
 
-if (global.multiply == null) {
+// eslint-disable-next-line no-var
+declare global {
+  var runInference: (modelPath: string) => InferenceResult;
+}
+
+if (global.runInference == null) {
   if (!CardScannerInstallerNativeModule) {
     throw new Error(
       `Failed to install react-native-card-scanner: The native module could not be found.`
@@ -13,11 +18,11 @@ if (global.multiply == null) {
   }
   CardScannerInstallerNativeModule.install();
 
-  if (global.multiply == null) {
+  if (global.runInference == null) {
     throw new Error(
-      `Failed to install react-native-card-scanner: The global 'multiply' function was not found after installation.`
+      `Failed to install react-native-card-scanner: The global 'runInference' function was not found after installation.`
     );
   }
 }
 
-export { multiply } from './CardScanner';
+export { runInference } from './CardScanner';
