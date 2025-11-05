@@ -1,0 +1,14 @@
+{
+  "name": "CardScannerExample",
+  "displayName": "CardScannerExample",
+  "newArchEnabled": true,
+  "version": "1.0.0",
+  "orientation": "portrait",
+  "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.swmansion.cardscannerexample"
+  },
+  "android": {
+      "package": "com.swmansion.cardscannerexample"
+  }
+}
