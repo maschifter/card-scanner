@@ -45,7 +45,7 @@ Pod::Spec.new do |s|
 
 
   s.source_files = [
-    "ios/**/*.{m,mm,h}",
+    "ios/CardScanner/**/*.{m,mm,h}",
     "cpp/**/*.{cpp,c,h,hpp}",
     "common/**/*.{cpp,c,h,hpp}"
   ]

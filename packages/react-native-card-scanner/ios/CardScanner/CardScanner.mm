@@ -1,10 +1,10 @@
 #import "CardScanner.h"
 
+#import "../common/rncardscanner/RnCardScannerInstaller.h"
 #import <React/RCTBridge+Private.h>
 #import <React/RCTCallInvoker.h>
 #import <ReactCommon/RCTTurboModule.h>
 #include <stdexcept>
-#import "../common/rncardscanner/RnCardScannerInstaller.h"
 
 using namespace facebook::react;
 
@@ -25,17 +25,16 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install) {
 
   assert(jsiRuntime != nullptr);
 
-  rncardscanner::CardScannerInstaller::injectJSIBindings(
-      jsiRuntime, jsCallInvoker);
+  rncardscanner::CardScannerInstaller::injectJSIBindings(jsiRuntime,
+                                                         jsCallInvoker);
 
   NSLog(@"Successfully installed JSI bindings for react-native-card-scanner!");
   return @true;
 }
 
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
-    (const facebook::react::ObjCTurboModule::InitParams &)params
-{
-    return std::make_shared<facebook::react::NativeCardScannerSpecJSI>(params);
+    (const facebook::react::ObjCTurboModule::InitParams &)params {
+  return std::make_shared<facebook::react::NativeCardScannerSpecJSI>(params);
 }
 
 @end
