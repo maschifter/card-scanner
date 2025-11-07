@@ -13,6 +13,8 @@ Pod::Spec.new do |s|
   s.platforms    = { :ios => min_ios_version_supported }
   s.source       = { :git => package["repository"]["url"], :tag => "#{s.version}" }
 
+  s.dependency "ObjectBox"
+
   et_binaries_path = File.expand_path('$(PODS_TARGET_SRCROOT)/third-party/ios/libs/executorch', __dir__)
   pthreadpool_binaries_path = File.expand_path('$(PODS_TARGET_SRCROOT)/third-party/ios/libs/pthreadpool', __dir__)
   cpuinfo_binaries_path = File.expand_path('$(PODS_TARGET_SRCROOT)/third-party/ios/libs/cpuinfo', __dir__)
@@ -56,10 +58,12 @@ Pod::Spec.new do |s|
       '"$(PODS_TARGET_SRCROOT)/ios" '+
       '"$(PODS_TARGET_SRCROOT)/common" '+
       '"$(PODS_TARGET_SRCROOT)/cpp" '+
-      '"$(PODS_TARGET_SRCROOT)/third-party/include"',
+      '"$(PODS_TARGET_SRCROOT)/third-party/include" '+
+      '"$(PODS_ROOT)/ObjectBox/ObjectBox.xcframework/ios-arm64/ObjectBox.framework/Headers"',
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++20",
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'x86_64',
   }
+
 
   install_modules_dependencies(s)
 end
