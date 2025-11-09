@@ -45,11 +45,31 @@ Pod::Spec.new do |s|
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'x86_64',
   }
 
+  s.script_phase = {
+    :name => 'Run CMake to Fetch C++ Headers',
+    :script => <<-SCRIPT,
+      echo "⚙️ Running CMake to configure and generate ObjectBox schema..."
+      cd "${PODS_TARGET_SRCROOT}"
+      # 1. Configure
+      mkdir -p build && cd build
+      cmake ..
+      
+      # 2. Build (this runs add_obx_schema)
+      cmake --build .  
+
+      # 3. Create the stamp file to signal completion
+      touch "${PODS_TARGET_SRCROOT}/build/cmake_build_complete.stamp"
+    SCRIPT
+    :execution_position => :before_compile,
+    
+    # This tells Xcode to wait for the *entire script* to finish.
+    :output_files => ["${PODS_TARGET_SRCROOT}/build/cmake_build_complete.stamp"]
+  }
 
   s.source_files = [
     "ios/CardScanner/**/*.{m,mm,h}",
     "cpp/**/*.{cpp,c,h,hpp}",
-    "common/**/*.{cpp,c,h,hpp}"
+    "common/**/*.{cpp,c,h,hpp}",
   ]
 
   s.pod_target_xcconfig = {
@@ -59,7 +79,10 @@ Pod::Spec.new do |s|
       '"$(PODS_TARGET_SRCROOT)/common" '+
       '"$(PODS_TARGET_SRCROOT)/cpp" '+
       '"$(PODS_TARGET_SRCROOT)/third-party/include" '+
-      '"$(PODS_ROOT)/ObjectBox/ObjectBox.xcframework/ios-arm64/ObjectBox.framework/Headers"',
+      '"$(PODS_TARGET_SRCROOT)/build/_deps/objectbox-c-src/include" '+
+      '"$(PODS_TARGET_SRCROOT)/build/_deps/objectbox-c-src/external/" '+
+      # Path to the ObjectBox.framework headers (from the pod)
+      '"$(PODS_ROOT)/ObjectBox/ObjectBox.xcframework/ios-arm64/ObjectBox.framework/Headers" ',
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++20",
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'x86_64',
   }

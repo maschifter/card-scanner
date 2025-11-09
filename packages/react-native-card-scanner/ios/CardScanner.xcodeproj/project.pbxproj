@@ -63,6 +63,7 @@
 			buildConfigurationList = 183103BD2EBE1F5B001E8363 /* Build configuration list for PBXNativeTarget "CardScanner" */;
 			buildPhases = (
 				183103B22EBE1F5B001E8363 /* Headers */,
+				184EBB2A2EBE5D900037A4C5 /* ShellScript */,
 				183103B32EBE1F5B001E8363 /* Sources */,
 				183103B42EBE1F5B001E8363 /* Frameworks */,
 				183103B52EBE1F5B001E8363 /* Resources */,
@@ -123,6 +124,27 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		184EBB2A2EBE5D900037A4C5 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "
+";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		183103B32EBE1F5B001E8363 /* Sources */ = {

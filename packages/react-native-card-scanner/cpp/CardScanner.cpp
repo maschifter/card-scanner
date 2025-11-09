@@ -1,10 +1,10 @@
 #include "CardScanner.h"
+#include <chrono>
 #include <executorch/extension/module/module.h>
 #include <executorch/extension/tensor/tensor.h>
+#include <iostream>
 #include <stdexcept>
 #include <vector>
-#include <chrono>
-
 namespace cardscanner {
 
 using namespace executorch::extension;
@@ -12,6 +12,8 @@ using ::executorch::extension::module::Module;
 using ::executorch::runtime::Error;
 
 InferenceResult CardScanner::runInference(const std::string &modelPath) {
+
+  std::cout << "Object box version is " << obx_version_string() << std::endl;
   // Strip "file://" prefix if present
   std::string cleanPath = modelPath;
   const std::string filePrefix = "file://";
@@ -67,13 +69,16 @@ InferenceResult CardScanner::runInference(const std::string &modelPath) {
   }
 
   // Calculate inference time in milliseconds
-  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+      endTime - startTime);
   double inferenceTimeMs = duration.count() / 1000.0;
 
   // Get output tensor shape
   auto outputTensor = result->at(0).toTensor();
   auto outputSizes = outputTensor.sizes();
   std::vector<int> outputShape(outputSizes.begin(), outputSizes.end());
+
+  objectboxtest::ObjectBoxTest::runTest();
 
   return {outputShape, inferenceTimeMs};
 }
