@@ -3,6 +3,7 @@ import org.apache.tools.ant.taskdefs.condition.Os
 buildscript {
   ext {
     agp_version = '8.4.2'
+    objectboxVersion = '5.0.1'
   }
 
   // Buildscript is evaluated before everything else so we can't use getExtOrDefault
@@ -17,6 +18,7 @@ buildscript {
     classpath "com.android.tools.build:gradle:$agp_version"
     // noinspection DifferentKotlinGradleVersion
     classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    classpath "io.objectbox:objectbox-gradle-plugin:$objectboxVersion"
   }
 }
 
@@ -35,6 +37,7 @@ def reactNativeArchitectures() {
 apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
 apply plugin: "com.facebook.react"
+apply plugin: "io.objectbox"
 
 
 def getExtOrDefault(name) {
@@ -85,6 +88,7 @@ def resolveReactNativeDirectory() {
 }
 
 def reactNativeRootDir = resolveReactNativeDirectory()
+
 
 android {
   if (supportsNamespace()) {
@@ -138,6 +142,12 @@ android {
     sourceCompatibility JavaVersion.VERSION_1_8
     targetCompatibility JavaVersion.VERSION_1_8
   }
+
+  sourceSets {
+      main {
+          jniLibs.srcDirs = ["src/main/jniLibs"]
+      }
+  }
 }
 
 repositories {
@@ -154,5 +164,35 @@ dependencies {
   implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
   // Add fbjni, which is required for the JNI bridge
   implementation 'com.facebook.fbjni:fbjni:0.6.0'
+  implementation 'com.facebook.fbjni:fbjni:0.6.0'
+  implementation "io.objectbox:objectbox-android:$objectboxVersion"
   implementation files('libs/classes.jar')
 }
+
+task extractSo(type: Copy) {
+    println 'Extracting *.so file(s)....'
+
+    def objectboxAarFile = fileTree(dir: gradle.gradleUserHomeDir).include("caches/modules-2/files-2.1/io.objectbox/objectbox-android/${objectboxVersion}/**/*.aar").singleFile
+
+    if (objectboxAarFile == null || !objectboxAarFile.exists()) {
+        throw new GradleException("Could not find objectbox-android AAR file in Gradle caches. Searched in: ${gradle.gradleUserHomeDir}/caches/modules-2/files-2.1/io.objectbox/objectbox-android/${objectboxVersion}/")
+    }
+
+    from zipTree(objectboxAarFile)
+    into "${project.projectDir}/src/main/jniLibs/"
+    include "jni/**/*.so"
+
+    eachFile {
+        def segments = it.getRelativePath().getSegments() as List
+        println segments
+        it.setPath(segments.tail().join("/"))
+        return it
+    }
+    includeEmptyDirs = false
+
+    doLast {
+        println "Extracted .so files to: ${project.projectDir}/src/main/jniLibs/"
+    }
+}
+
+preBuild.dependsOn extractSo
