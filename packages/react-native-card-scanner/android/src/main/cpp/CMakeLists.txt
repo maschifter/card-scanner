@@ -31,17 +31,12 @@ set(RN_VERSION_LINK_LIBRARIES
   ReactAndroid::reactnative
 )
 
-# ------- ObjeceaBox -------
+# ------- ObjectBox -------
 add_library(objectbox-jni SHARED IMPORTED)
 set_target_properties(objectbox-jni PROPERTIES
 IMPORTED_LOCATION "${JNI_LIBS_DIR}/${ANDROID_ABI}/libobjectbox-jni.so")
 
 # ------- Executorch -------
-find_library(
-    log-lib    # Nazwa zmiennej dla tej biblioteki
-    log        # Nazwa biblioteki systemowej (liblog.so)
-)
-
 add_library(executorch SHARED IMPORTED)
 
 set_target_properties(executorch PROPERTIES

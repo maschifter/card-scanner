@@ -78,8 +78,6 @@ InferenceResult CardScanner::runInference(const std::string &modelPath) {
   auto outputSizes = outputTensor.sizes();
   std::vector<int> outputShape(outputSizes.begin(), outputSizes.end());
 
-  objectboxtest::ObjectBoxTest::runTest();
-
   return {outputShape, inferenceTimeMs};
 }
 

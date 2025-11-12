@@ -26,7 +26,6 @@ set(CMAKE_SYSTEM_NAME ${ORIGINAL_CMAKE_SYSTEM_NAME})
 
 
 # --- Find ObjectBox Generator ---
-# This should now work because objectbox-c was configured for the host.
 find_package(ObjectBoxGenerator 4.0.0 REQUIRED)
 
 # --- Source Directories ---
@@ -50,7 +49,8 @@ add_obx_schema(
 )
 
 # Manually add the include directory from the fetched objectbox-c source.
-# We cannot link against the 'objectbox' target because it's a HOST library.
+# We cannot link against the 'objectbox' target because it's a binary compiled for the HOST architecture.
+# Binaries for target architectures are provided idependently by iOS and Android build systems. 
 target_include_directories(
     cardscanner_cpp
     PUBLIC
