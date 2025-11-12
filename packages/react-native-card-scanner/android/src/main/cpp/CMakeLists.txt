@@ -1,10 +1,9 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.14)
 
 file(GLOB_RECURSE ANDROID_CPP_SOURCES CONFIGURE_DEPENDS "${ANDROID_CPP_DIR}/*.cpp")
 file(GLOB_RECURSE COMMON_CPP_SOURCES CONFIGURE_DEPENDS "${COMMON_CPP_DIR}/*.cpp" "${COMMON_CPP_DIR}/*.c")
-file(GLOB_RECURSE CPP_SOURCES CONFIGURE_DEPENDS "${CPP_DIR}/*.cpp")
 
-add_library(react-native-card-scanner SHARED ${ANDROID_CPP_SOURCES} ${COMMON_CPP_SOURCES} ${CPP_SOURCES})
+add_library(react-native-card-scanner SHARED ${ANDROID_CPP_SOURCES} ${COMMON_CPP_SOURCES})
 
 find_package(ReactAndroid REQUIRED CONFIG)
 find_package(fbjni REQUIRED CONFIG)
@@ -32,7 +31,16 @@ set(RN_VERSION_LINK_LIBRARIES
   ReactAndroid::reactnative
 )
 
+# ------- ObjeceaBox -------
+add_library(objectbox-jni SHARED IMPORTED)
+set_target_properties(objectbox-jni PROPERTIES
+IMPORTED_LOCATION "${JNI_LIBS_DIR}/${ANDROID_ABI}/libobjectbox-jni.so")
+
 # ------- Executorch -------
+find_library(
+    log-lib    # Nazwa zmiennej dla tej biblioteki
+    log        # Nazwa biblioteki systemowej (liblog.so)
+)
 
 add_library(executorch SHARED IMPORTED)
 
@@ -62,8 +70,11 @@ endif()
 
 target_link_libraries(
   react-native-card-scanner
+  cardscanner_cpp
   ${LINK_LIBRARIES}
   ${RN_VERSION_LINK_LIBRARIES}
+  ${log-lib}       
+  objectbox-jni
   executorch
   ${EXECUTORCH_LIBS}
 )
