@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD 17)
 include(FetchContent)
 
 # The following is a workaround to force FetchContent to configure objectbox-c for the HOST system,
-# even when cross-compiling. This is needed to get the host-side objectbox-generator and so on.
+# even when cross-compiling. This is needed to get the host-side objectbox-generator.
 # WARNING: This is fragile and relies on temporarily modifying internal CMake variables.
 set(ORIGINAL_CMAKE_SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
     set(CMAKE_SYSTEM_NAME ${CMAKE_HOST_SYSTEM_NAME})

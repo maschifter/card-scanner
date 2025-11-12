@@ -26,6 +26,7 @@ public:
   static void registerNatives();
 
   void injectJSIBindings();
+  void setDbPath(jstring path);
 
 private:
   friend HybridBase;
