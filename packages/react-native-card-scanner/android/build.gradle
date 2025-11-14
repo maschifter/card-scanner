@@ -170,15 +170,18 @@ dependencies {
 }
 
 task extractSo(type: Copy) {
-    println 'Extracting *.so file(s)....'
+    doFirst {
+        println 'Extracting *.so file(s)....'
 
-    def objectboxAarFile = fileTree(dir: gradle.gradleUserHomeDir).include("caches/modules-2/files-2.1/io.objectbox/objectbox-android/${objectboxVersion}/**/*.aar").singleFile
+        def objectboxAarFile = fileTree(dir: gradle.gradleUserHomeDir).include("caches/modules-2/files-2.1/io.objectbox/objectbox-android/${objectboxVersion}/**/*.aar").singleFile
 
-    if (objectboxAarFile == null || !objectboxAarFile.exists()) {
-        throw new GradleException("Could not find objectbox-android AAR file in Gradle caches. Searched in: ${gradle.gradleUserHomeDir}/caches/modules-2/files-2.1/io.objectbox/objectbox-android/${objectboxVersion}/")
+        if (objectboxAarFile == null || !objectboxAarFile.exists()) {
+            throw new GradleException("Could not find objectbox-android AAR file in Gradle caches. Searched in: ${gradle.gradleUserHomeDir}/caches/modules-2/files-2.1/io.objectbox/objectbox-android/${objectboxVersion}/")
+        }
+
+        from zipTree(objectboxAarFile)
     }
 
-    from zipTree(objectboxAarFile)
     into "${project.projectDir}/src/main/jniLibs/"
     include "jni/**/*.so"
 
