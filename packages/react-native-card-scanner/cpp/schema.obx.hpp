@@ -17,6 +17,7 @@ struct Card {
     std::string text;
     uint64_t date_created;
     std::vector<float> embedding;
+    std::string card_id;
 
     struct _OBX_MetaInfo {
         static constexpr obx_schema_id entityId() { return 1; }
@@ -42,5 +43,6 @@ struct Card_ {
     static const obx::Property<Card, OBXPropertyType_String> text;
     static const obx::Property<Card, OBXPropertyType_Long> date_created;
     static const obx::Property<Card, OBXPropertyType_FloatVector> embedding;
+    static const obx::Property<Card, OBXPropertyType_String> card_id;
 };
 

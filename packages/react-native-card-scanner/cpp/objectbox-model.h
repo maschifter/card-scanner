@@ -31,11 +31,13 @@ static inline OBX_model* create_obx_model() {
     obx_model_property_flags(model, OBXPropertyFlags_UNSIGNED);
     obx_model_property(model, "embedding", OBXPropertyType_FloatVector, 5, 6597812468947702453);
     obx_model_property_flags(model, OBXPropertyFlags_INDEXED);
-    obx_model_property_index_hnsw_dimensions(model, 1024);
+    obx_model_property_index_hnsw_dimensions(model, 256);
+    obx_model_property_index_hnsw_distance_type(model, OBXVectorDistanceType_DotProduct);
     obx_model_property_index_hnsw_neighbors_per_node(model, 16);
     obx_model_property_index_hnsw_indexing_search_count(model, 100);
     obx_model_property_index_id(model, 2, 5350240849271719983);
-    obx_model_entity_last_property_id(model, 5, 6597812468947702453);
+    obx_model_property(model, "card_id", OBXPropertyType_String, 6, 4115431560651478346);
+    obx_model_entity_last_property_id(model, 6, 4115431560651478346);
     
     obx_model_last_entity_id(model, 1, 4543021307474494599);
     obx_model_last_index_id(model, 2, 5350240849271719983);

@@ -14,6 +14,7 @@ Pod::Spec.new do |s|
   s.source       = { :git => package["repository"]["url"], :tag => "#{s.version}" }
 
   s.dependency "ObjectBox"
+  s.dependency "opencv-rne", "~> 4.11.0"
 
   et_binaries_path = File.expand_path('$(PODS_TARGET_SRCROOT)/third-party/ios/libs/executorch', __dir__)
   pthreadpool_binaries_path = File.expand_path('$(PODS_TARGET_SRCROOT)/third-party/ios/libs/pthreadpool', __dir__)

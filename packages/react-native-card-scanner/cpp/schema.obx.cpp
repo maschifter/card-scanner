@@ -6,16 +6,19 @@ const obx::Property<Card, OBXPropertyType_Long> Card_::id(1);
 const obx::Property<Card, OBXPropertyType_String> Card_::text(2);
 const obx::Property<Card, OBXPropertyType_Long> Card_::date_created(3);
 const obx::Property<Card, OBXPropertyType_FloatVector> Card_::embedding(5);
+const obx::Property<Card, OBXPropertyType_String> Card_::card_id(6);
 
 void Card::_OBX_MetaInfo::toFlatBuffer(flatbuffers::FlatBufferBuilder& fbb, const Card& object) {
     fbb.Clear();
     auto offsettext = fbb.CreateString(object.text);
     auto offsetembedding = fbb.CreateVector(object.embedding);
+    auto offsetcard_id = fbb.CreateString(object.card_id);
     flatbuffers::uoffset_t fbStart = fbb.StartTable();
     fbb.AddElement(4, object.id);
     fbb.AddOffset(6, offsettext);
     fbb.AddElement(8, object.date_created);
     fbb.AddOffset(12, offsetembedding);
+    fbb.AddOffset(14, offsetcard_id);
     flatbuffers::Offset<flatbuffers::Table> offset;
     offset.o = fbb.EndTable(fbStart);
     fbb.Finish(offset);
@@ -52,6 +55,14 @@ void Card::_OBX_MetaInfo::fromFlatBuffer(const void* data, size_t, Card& outObje
             outObject.embedding.assign(ptr->begin(), ptr->end());
         } else {
             outObject.embedding.clear();
+        }
+    }
+    {
+        auto* ptr = table->GetPointer<const flatbuffers::String*>(14);
+        if (ptr) {
+            outObject.card_id.assign(ptr->c_str(), ptr->size());
+        } else {
+            outObject.card_id.clear();
         }
     }
 }

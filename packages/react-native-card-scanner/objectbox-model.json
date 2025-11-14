@@ -5,7 +5,7 @@
   "entities": [
     {
       "id": "1:4543021307474494599",
-      "lastPropertyId": "5:6597812468947702453",
+      "lastPropertyId": "6:4115431560651478346",
       "name": "Card",
       "properties": [
         {
@@ -32,10 +32,16 @@
           "type": 28,
           "flags": 8,
           "hnswParams": {
-            "dimensions": 1024,
+            "dimensions": 256,
+            "distance-type": "DotProduct",
             "neighbors-per-node": 16,
             "indexing-search-count": 100
           }
+        },
+        {
+          "id": "6:4115431560651478346",
+          "name": "card_id",
+          "type": 9
         }
       ]
     }

@@ -39,6 +39,8 @@ add_library(
     "${CPP_DIR}/ObjectBoxDB.cpp"
     "${CPP_DIR}/ObjectBoxTest.cpp"
     "${CPP_DIR}/PathProvider.cpp"
+    "${CPP_DIR}/YoloSegmentation.cpp"
+    "${CPP_DIR}/CardRecognitionPipeline.cpp"
 )
 
 add_obx_schema(

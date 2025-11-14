@@ -55,6 +55,27 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
   # ------- cpuinfo -------
   add_library(cpuinfo SHARED IMPORTED)
 
+  # ------- OpenCV -------
+
+  set(OPENCV_LIBS
+    "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_core.a"
+    "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_features2d.a"
+    "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_highgui.a"
+    "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_imgproc.a"
+    "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_photo.a"
+    "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_video.a"
+  )
+
+  if(ANDROID_ABI STREQUAL "arm64-v8a")
+    set(OPENCV_THIRD_PARTY_LIBS
+      "${LIBS_DIR}/opencv-third-party/${ANDROID_ABI}/libkleidicv_hal.a"
+      "${LIBS_DIR}/opencv-third-party/${ANDROID_ABI}/libkleidicv_thread.a"
+      "${LIBS_DIR}/opencv-third-party/${ANDROID_ABI}/libkleidicv.a"
+    )
+  elseif(ANDROID_ABI STREQUAL "x86_64")
+    set(OPENCV_THIRD_PARTY_LIBS "")
+  endif()
+
   set_target_properties(cpuinfo PROPERTIES
                         IMPORTED_LOCATION "${LIBS_DIR}/cpuinfo/${ANDROID_ABI}/libcpuinfo.so")
   set(EXECUTORCH_LIBS
@@ -72,4 +93,6 @@ target_link_libraries(
   objectbox-jni
   executorch
   ${EXECUTORCH_LIBS}
+  ${OPENCV_LIBS}
+  ${OPENCV_THIRD_PARTY_LIBS}
 )
