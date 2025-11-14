@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.14)
 project(rncardscanner)
 
 set (CMAKE_VERBOSE_MAKEFILE ON)
@@ -16,10 +16,12 @@ add_compile_options(${folly_FLAGS})
 string(APPEND CMAKE_CXX_FLAGS " -DRCT_NEW_ARCH_ENABLED")
 
 set(ANDROID_CPP_DIR "${CMAKE_SOURCE_DIR}/src/main/cpp")
+set(JNI_LIBS_DIR "${CMAKE_SOURCE_DIR}/src/main/jniLibs")
 set(COMMON_CPP_DIR "${CMAKE_SOURCE_DIR}/../common")
 set(CPP_DIR "${CMAKE_SOURCE_DIR}/../cpp")
 set(LIBS_DIR "${CMAKE_SOURCE_DIR}/../third-party/android/libs")
 set(INCLUDE_DIR "${CMAKE_SOURCE_DIR}/../third-party/include")
 
+add_subdirectory(../ ../build/android)
 
 add_subdirectory("${ANDROID_CPP_DIR}")

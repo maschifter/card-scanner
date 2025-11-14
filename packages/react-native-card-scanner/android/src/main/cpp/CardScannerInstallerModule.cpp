@@ -1,5 +1,6 @@
 #include "CardScannerInstallerModule.h"
 #include "rncardscanner/RnCardScannerInstaller.h"
+#include "PathProvider.h" // Include PathProvider.h
 
 #include <jni.h>
 #include <jsi/jsi.h>
@@ -25,11 +26,20 @@ CardScannerInstallerModule::initHybrid(
   return makeCxxInstance(jThis, rnRuntime, jsCallInvoker);
 }
 
+void CardScannerInstallerModule::setDbPath(jstring path) {
+  JNIEnv* env = jni::Environment::current();
+  const char *pathChars = env->GetStringUTFChars(path, nullptr);
+  std::string dbPath = pathChars;
+  env->ReleaseStringUTFChars(path, pathChars);
+  pathprovider::set_db_path(dbPath);
+}
+
 void CardScannerInstallerModule::registerNatives() {
   registerHybrid({
       makeNativeMethod("initHybrid", CardScannerInstallerModule::initHybrid),
       makeNativeMethod("injectJSIBindings",
                        CardScannerInstallerModule::injectJSIBindings),
+      makeNativeMethod("setDbPath", CardScannerInstallerModule::setDbPath), // Register setDbPath
   });
 }
 

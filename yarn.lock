@@ -5461,7 +5461,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"expo-asset@npm:~12.0.9":
+"expo-asset@npm:~12.0.8, expo-asset@npm:~12.0.9":
   version: 12.0.9
   resolution: "expo-asset@npm:12.0.9"
   dependencies:
@@ -9710,6 +9710,7 @@ __metadata:
     "@react-native/typescript-config": "npm:0.81.4"
     "@types/react": "npm:^19.1.0"
     expo: "npm:~54.0.10"
+    expo-asset: "npm:~12.0.8"
     expo-document-picker: "npm:~14.0.7"
     expo-file-system: "npm:~19.0.17"
     react: "npm:19.1.0"

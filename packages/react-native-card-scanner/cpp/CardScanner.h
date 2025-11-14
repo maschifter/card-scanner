@@ -1,8 +1,9 @@
 #pragma once
 
+#include "ObjectBoxTest.h"
+#include "objectbox.h"
 #include <string>
 #include <vector>
-
 namespace cardscanner {
 
 struct InferenceResult {
