@@ -4,9 +4,14 @@ import { runInference, InferenceResult } from 'react-native-card-scanner';
 import { cacheDirectory, copyAsync } from 'expo-file-system/legacy';
 import { Asset } from 'expo-asset';
 
+declare global {
+  function runTests(): string;
+}
+
 export default function MainScreen() {
   const [result, setResult] = useState<InferenceResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<string | null>(null);
 
   const handleRunModel = async () => {
     setError(null);
@@ -50,12 +55,27 @@ export default function MainScreen() {
     }
   };
 
+  const handleRunTests = () => {
+    try {
+      console.log('Running C++ tests...');
+      const result = runTests();
+      setTestResult(result);
+      console.log('C++ test result:', result);
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      setTestResult(`Error: ${errorMsg}`);
+      console.error('Error running tests:', errorMsg);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Card Scanner Example</Text>
       <Text style={styles.subtitle}>Run MobileNetV4 model inference</Text>
 
       <Button title="Run Model" onPress={handleRunModel} />
+      <View style={styles.separator} />
+      <Button title="Run C++ Tests" onPress={handleRunTests} />
 
       {result !== null && (
         <>
@@ -66,6 +86,10 @@ export default function MainScreen() {
             Inference time: {result.inferenceTimeMs.toFixed(2)} ms
           </Text>
         </>
+      )}
+
+      {testResult && (
+        <Text style={styles.result}>Test Result: {testResult}</Text>
       )}
 
       {error && (
@@ -93,6 +117,9 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 30,
   },
+  separator: {
+    marginVertical: 10,
+  },
   result: {
     fontSize: 20,
     marginTop: 20,
@@ -112,3 +139,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+

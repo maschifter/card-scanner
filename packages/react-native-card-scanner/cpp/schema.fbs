@@ -1,0 +1,8 @@
+table Card {
+    id: ulong (id: 0);
+    text: string (id: 1);
+    date_created: ulong (id: 2);
+    
+    /// objectbox: index=hnsw, hnsw-dimensions=1024, hnsw-neighbors-per-node=16, hnsw-indexing-search-count=100
+    embedding: [float] (id: 3);
+}

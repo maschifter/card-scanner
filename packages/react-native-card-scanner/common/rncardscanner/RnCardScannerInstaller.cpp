@@ -1,5 +1,6 @@
 #include "RnCardScannerInstaller.h"
 #include "CardScanner.h"
+#include "ObjectBoxTest.h"
 
 #include <iostream>
 #include <string>
@@ -49,6 +50,24 @@ void CardScannerInstaller::injectJSIBindings(
   // Install the function on the global object
   jsiRuntime->global().setProperty(*jsiRuntime, "runInference",
                                    std::move(runInferenceFunc));
+
+  // Create the 'runTests' host function
+  auto runTestsFunc = jsi::Function::createFromHostFunction(
+      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "runTests"), 0,
+      [](jsi::Runtime &runtime, const jsi::Value &thisValue,
+         const jsi::Value *args, size_t count) -> jsi::Value {
+        try {
+          std::string result = objectboxtest::ObjectBoxTest::runTest();
+          return jsi::String::createFromUtf8(runtime, result);
+        } catch (const std::exception &e) {
+          throw jsi::JSError(runtime,
+                             std::string("Tests failed: ") + e.what());
+        }
+      });
+
+  // Install the function on the global object
+  jsiRuntime->global().setProperty(*jsiRuntime, "runTests",
+                                   std::move(runTestsFunc));
 }
 
 } // namespace rncardscanner

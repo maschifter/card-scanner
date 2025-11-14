@@ -21,6 +21,8 @@ class CardScannerInstaller(reactContext: ReactApplicationContext) :
 
   private external fun injectJSIBindings()
 
+  external fun setDbPath(path: String)
+
   init {
     try {
       System.loadLibrary("executorch")
@@ -34,6 +36,8 @@ class CardScannerInstaller(reactContext: ReactApplicationContext) :
 
   @ReactMethod(isBlockingSynchronousMethod = true)
   override fun install(): Boolean {
+    val filesDir = reactApplicationContext.filesDir
+    setDbPath(filesDir.absolutePath)
     injectJSIBindings()
     return true
   }
