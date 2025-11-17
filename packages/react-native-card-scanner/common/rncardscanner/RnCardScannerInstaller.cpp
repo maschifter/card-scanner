@@ -223,46 +223,42 @@ void CardScannerInstaller::injectJSIBindings(
 
   // Create the 'runYoloSegmentation' host function
   auto yoloSegmentFunc = jsi::Function::createFromHostFunction(
-      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "runYoloSegmentation"), 4,
+      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "runYoloSegmentation"), 5,
       [](jsi::Runtime &runtime, const jsi::Value &thisValue,
          const jsi::Value *args, size_t count) -> jsi::Value {
-        if (count < 4 || !args[0].isString() || !args[1].isString() ||
-            !args[2].isNumber() || !args[3].isNumber()) {
+        if (count < 5 || !args[0].isString() || !args[1].isString() ||
+            !args[2].isNumber() || !args[3].isNumber() || !args[4].isString()) {
           throw jsi::JSError(
               runtime,
-              "runYoloSegmentation expects (modelPath: string, imagePath: string, conf: number, iou: number)");
+              "runYoloSegmentation expects (modelPath: string, imagePath: string, conf: number, iou: number, outputDir: string)");
         }
 
         std::string modelPath = args[0].asString(runtime).utf8(runtime);
         std::string imagePath = args[1].asString(runtime).utf8(runtime);
         float conf = static_cast<float>(args[2].asNumber());
         float iou = static_cast<float>(args[3].asNumber());
+        std::string outputDir = args[4].asString(runtime).utf8(runtime);
 
         try {
           // Create YOLO model (imgsz=384 to match the model)
           cardscanner::YoloSegmentation yolo(modelPath, conf, iou, 384);
           auto segResult = yolo.segment(imagePath);
 
-          // Get temp directory - use NSTemporaryDirectory on iOS, /data/local/tmp on Android
-          std::string tempDir;
-          #ifdef __APPLE__
-            // On iOS, use NSTemporaryDirectory
-            #include <TargetConditionals.h>
-            #if TARGET_OS_IPHONE
-              tempDir = std::string(getenv("TMPDIR") ?: "/tmp/");
-            #else
-              tempDir = "/tmp/";
-            #endif
-          #else
-            tempDir = "/data/local/tmp/";
-          #endif
+          // Ensure output directory ends with /
+          std::string tempDir = outputDir;
+          if (!tempDir.empty() && tempDir.back() != '/') {
+            tempDir += '/';
+          }
 
-          std::cout << "Using temp directory: " << tempDir << std::endl;
+          std::cout << "Using output directory: " << tempDir << std::endl;
 
           // Save visualized image to temp location
           std::string outputPath = tempDir + "yolo_result.jpg";
           bool vizSaved = cv::imwrite(outputPath, segResult.visualizedImage);
           std::cout << "Saved visualized image to: " << outputPath << " = " << (vizSaved ? "OK" : "FAILED") << std::endl;
+
+          // Add file:// prefix for React Native Image component
+          std::string outputUri = "file://" + outputPath;
 
           // Save dewarped cards
           jsi::Array dewarpedPaths(runtime, segResult.detections.size());
@@ -273,7 +269,10 @@ void CardScannerInstaller::injectJSIBindings(
               std::cout << "Card " << i << " dewarped: " << segResult.detections[i].dewarpedCard.cols
                         << "x" << segResult.detections[i].dewarpedCard.rows
                         << ", saved to " << dewarpPath << " = " << (saved ? "OK" : "FAILED") << std::endl;
-              dewarpedPaths.setValueAtIndex(runtime, i, jsi::String::createFromUtf8(runtime, dewarpPath));
+
+              // Add file:// prefix for React Native
+              std::string dewarpUri = "file://" + dewarpPath;
+              dewarpedPaths.setValueAtIndex(runtime, i, jsi::String::createFromUtf8(runtime, dewarpUri));
             } else {
               std::cout << "Card " << i << " has no dewarped card (quad extraction failed)" << std::endl;
               dewarpedPaths.setValueAtIndex(runtime, i, jsi::Value::null());
@@ -283,7 +282,7 @@ void CardScannerInstaller::injectJSIBindings(
           // Create result object
           jsi::Object result(runtime);
           result.setProperty(runtime, "inferenceTimeMs", jsi::Value(segResult.inferenceTimeMs));
-          result.setProperty(runtime, "visualizedImagePath", jsi::String::createFromUtf8(runtime, outputPath));
+          result.setProperty(runtime, "visualizedImagePath", jsi::String::createFromUtf8(runtime, outputUri));
           result.setProperty(runtime, "dewarpedCardPaths", dewarpedPaths);
 
           // Add detections array
@@ -405,6 +404,40 @@ void CardScannerInstaller::injectJSIBindings(
   // Install the function on the global object
   jsiRuntime->global().setProperty(*jsiRuntime, "recognizeCards",
                                    std::move(recognizeCardsFunc));
+
+  // Create the 'getCardCount' host function
+  auto getCardCountFunc = jsi::Function::createFromHostFunction(
+      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "getCardCount"), 1,
+      [](jsi::Runtime &runtime, const jsi::Value &thisValue,
+         const jsi::Value *args, size_t count) -> jsi::Value {
+        if (count < 1 || !args[0].isString()) {
+          throw jsi::JSError(
+              runtime,
+              "getCardCount expects one string argument (dbPath)");
+        }
+
+        std::string dbPath = args[0].asString(runtime).utf8(runtime);
+
+        // Strip "file://" prefix if present
+        const std::string filePrefix = "file://";
+        if (dbPath.find(filePrefix) == 0) {
+          dbPath = dbPath.substr(filePrefix.length());
+        }
+
+        try {
+          // Create ObjectBoxDB instance and get count
+          ObjectBoxDB db(dbPath);
+          uint64_t count = db.get_card_count();
+
+          return jsi::Value(static_cast<double>(count));
+        } catch (const std::exception &e) {
+          throw jsi::JSError(runtime, std::string("Failed to get card count: ") + e.what());
+        }
+      });
+
+  // Install the function on the global object
+  jsiRuntime->global().setProperty(*jsiRuntime, "getCardCount",
+                                   std::move(getCardCountFunc));
 }
 
 } // namespace rncardscanner

@@ -3,6 +3,17 @@
 #include <opencv2/opencv.hpp>
 #include <string>
 #include <vector>
+#include <memory>
+#include <map>
+#include <mutex>
+
+namespace executorch {
+namespace extension {
+namespace module {
+class Module;
+}
+}
+}
 
 namespace cardscanner {
 
@@ -45,6 +56,13 @@ private:
   float conf_;
   float iou_;
   int imgsz_;
+
+  // Module cache to avoid reloading models (shared across instances)
+  static std::map<std::string, std::shared_ptr<executorch::extension::module::Module>> moduleCache;
+  static std::mutex cacheMutex;
+
+  // Get or load a module from cache
+  static std::shared_ptr<executorch::extension::module::Module> getModule(const std::string &modelPath);
 
   // Preprocessing: letterbox resize
   cv::Mat letterbox(const cv::Mat &img, int newSize);

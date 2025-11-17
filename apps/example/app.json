@@ -9,9 +9,13 @@
   ],
   "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.swmansion.cardscannerexample"
+      "bundleIdentifier": "com.swmansion.cardscannerexample",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Camera access is required to scan trading cards in real-time"
+      }
   },
   "android": {
-      "package": "com.swmansion.cardscannerexample"
+      "package": "com.swmansion.cardscannerexample",
+      "permissions": ["CAMERA"]
   }
 }

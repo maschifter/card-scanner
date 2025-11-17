@@ -13,6 +13,46 @@ using namespace executorch::extension;
 using ::executorch::extension::module::Module;
 using ::executorch::runtime::Error;
 
+// Initialize static members
+std::map<std::string, std::shared_ptr<Module>> YoloSegmentation::moduleCache;
+std::mutex YoloSegmentation::cacheMutex;
+
+// Get or load a module from cache
+std::shared_ptr<Module> YoloSegmentation::getModule(const std::string &modelPath) {
+  // Strip "file://" prefix if present
+  std::string cleanPath = modelPath;
+  const std::string filePrefix = "file://";
+  if (cleanPath.find(filePrefix) == 0) {
+    cleanPath = cleanPath.substr(filePrefix.length());
+  }
+
+  std::lock_guard<std::mutex> lock(cacheMutex);
+
+  // Check if module is already cached
+  auto it = moduleCache.find(cleanPath);
+  if (it != moduleCache.end()) {
+    std::cout << "📦 Using cached YOLO module: " << cleanPath << std::endl;
+    return it->second;
+  }
+
+  // Load new module
+  std::cout << "🔄 Loading new YOLO module: " << cleanPath << std::endl;
+  auto module = std::make_shared<Module>(
+      cleanPath, Module::LoadMode::MmapUseMlockIgnoreErrors);
+
+  Error loadError = module->load();
+  if (loadError != Error::Ok) {
+    throw std::runtime_error("Failed to load model: " +
+                             std::to_string(static_cast<int>(loadError)));
+  }
+
+  // Cache the module
+  moduleCache[cleanPath] = module;
+  std::cout << "✅ YOLO module cached successfully" << std::endl;
+
+  return module;
+}
+
 YoloSegmentation::YoloSegmentation(const std::string &modelPath, float conf,
                                    float iou, int imgsz)
     : modelPath_(modelPath), conf_(conf), iou_(iou), imgsz_(imgsz) {}
@@ -683,28 +723,15 @@ SegmentationResult YoloSegmentation::segment(const cv::Mat &image) {
       1000.0;
   std::cout << "⏱️ Preprocessing: " << prepMs << "ms" << std::endl;
 
-  // Load model
+  // Get cached module or load new one
   auto modelLoadStart = std::chrono::high_resolution_clock::now();
-  std::string cleanModelPath = modelPath_;
-  const std::string filePrefix = "file://";
-  if (cleanModelPath.find(filePrefix) == 0) {
-    cleanModelPath = cleanModelPath.substr(filePrefix.length());
-  }
-
-  std::unique_ptr<Module> module = std::make_unique<Module>(
-      cleanModelPath, Module::LoadMode::MmapUseMlockIgnoreErrors);
-
-  Error loadError = module->load();
-  if (loadError != Error::Ok) {
-    throw std::runtime_error("Failed to load model: " +
-                             std::to_string(static_cast<int>(loadError)));
-  }
+  auto module = getModule(modelPath_);
   auto modelLoadEnd = std::chrono::high_resolution_clock::now();
   double modelLoadMs = std::chrono::duration_cast<std::chrono::microseconds>(
                            modelLoadEnd - modelLoadStart)
                            .count() /
                        1000.0;
-  std::cout << "⏱️ Model loading: " << modelLoadMs << "ms" << std::endl;
+  std::cout << "⏱️ Model loading/cache lookup: " << modelLoadMs << "ms" << std::endl;
 
   // Run inference
   std::vector<int> inputShape = {1, 3, imgsz_, imgsz_};

@@ -90,7 +90,8 @@ declare global {
     modelPath: string,
     imagePath: string,
     conf: number,
-    iou: number
+    iou: number,
+    outputDir: string
   ) => YoloSegmentationResult;
   var recognizeCards: (
     imagePath: string,
@@ -101,6 +102,7 @@ declare global {
     yoloIou?: number,
     topK?: number
   ) => CardRecognitionResult;
+  var getCardCount: (dbPath: string) => number;
 }
 
 if (global.runInference == null) {
@@ -124,3 +126,4 @@ export const loadCardEmbeddings = global.loadCardEmbeddings;
 export const searchSimilarCards = global.searchSimilarCards;
 export const runYoloSegmentation = global.runYoloSegmentation;
 export const recognizeCards = global.recognizeCards;
+export const getCardCount = global.getCardCount;

@@ -14,9 +14,12 @@ using namespace executorch::extension;
 using ::executorch::extension::module::Module;
 using ::executorch::runtime::Error;
 
-InferenceResult CardScanner::runInference(const std::string &modelPath) {
+// Initialize static members
+std::map<std::string, std::shared_ptr<Module>> CardScanner::moduleCache;
+std::mutex CardScanner::cacheMutex;
 
-  std::cout << "Object box version is " << obx_version_string() << std::endl;
+// Get or load a module from cache
+std::shared_ptr<Module> CardScanner::getModule(const std::string &modelPath) {
   // Strip "file://" prefix if present
   std::string cleanPath = modelPath;
   const std::string filePrefix = "file://";
@@ -24,8 +27,18 @@ InferenceResult CardScanner::runInference(const std::string &modelPath) {
     cleanPath = cleanPath.substr(filePrefix.length());
   }
 
-  // Create and load the module
-  std::unique_ptr<Module> module = std::make_unique<Module>(
+  std::lock_guard<std::mutex> lock(cacheMutex);
+
+  // Check if module is already cached
+  auto it = moduleCache.find(cleanPath);
+  if (it != moduleCache.end()) {
+    std::cout << "📦 Using cached module: " << cleanPath << std::endl;
+    return it->second;
+  }
+
+  // Load new module
+  std::cout << "🔄 Loading new module: " << cleanPath << std::endl;
+  auto module = std::make_shared<Module>(
       cleanPath, Module::LoadMode::MmapUseMlockIgnoreErrors);
 
   Error loadError = module->load();
@@ -34,6 +47,20 @@ InferenceResult CardScanner::runInference(const std::string &modelPath) {
                              "': Error " +
                              std::to_string(static_cast<int>(loadError)));
   }
+
+  // Cache the module
+  moduleCache[cleanPath] = module;
+  std::cout << "✅ Module cached successfully" << std::endl;
+
+  return module;
+}
+
+InferenceResult CardScanner::runInference(const std::string &modelPath) {
+
+  std::cout << "Object box version is " << obx_version_string() << std::endl;
+
+  // Get cached module or load new one
+  auto module = getModule(modelPath);
 
   // Get input metadata
   auto method_meta = module->method_meta("forward");
@@ -175,22 +202,8 @@ InferenceResult CardScanner::runInferenceOnImage(const std::string &modelPath,
 
   std::cout << "Preprocessed image to 224x224 RGB tensor" << std::endl;
 
-  // Strip "file://" prefix from model path
-  std::string cleanModelPath = modelPath;
-  if (cleanModelPath.find(filePrefix) == 0) {
-    cleanModelPath = cleanModelPath.substr(filePrefix.length());
-  }
-
-  // Create and load the module
-  std::unique_ptr<Module> module = std::make_unique<Module>(
-      cleanModelPath, Module::LoadMode::MmapUseMlockIgnoreErrors);
-
-  Error loadError = module->load();
-  if (loadError != Error::Ok) {
-    throw std::runtime_error("Failed to load model from '" + cleanModelPath +
-                             "': Error " +
-                             std::to_string(static_cast<int>(loadError)));
-  }
+  // Get cached module or load new one
+  auto module = getModule(modelPath);
 
   // Create input tensor
   std::vector<int> inputShape = {1, 3, 224, 224};
@@ -297,23 +310,8 @@ InferenceResult CardScanner::runInferenceOnMat(const std::string &modelPath,
 
   std::cout << "Preprocessed image to 224x224 RGB tensor" << std::endl;
 
-  // Strip "file://" prefix from model path
-  std::string cleanModelPath = modelPath;
-  const std::string filePrefix = "file://";
-  if (cleanModelPath.find(filePrefix) == 0) {
-    cleanModelPath = cleanModelPath.substr(filePrefix.length());
-  }
-
-  // Create and load the module
-  std::unique_ptr<Module> module = std::make_unique<Module>(
-      cleanModelPath, Module::LoadMode::MmapUseMlockIgnoreErrors);
-
-  Error loadError = module->load();
-  if (loadError != Error::Ok) {
-    throw std::runtime_error("Failed to load model from '" + cleanModelPath +
-                             "': Error " +
-                             std::to_string(static_cast<int>(loadError)));
-  }
+  // Get cached module or load new one
+  auto module = getModule(modelPath);
 
   // Create input tensor
   std::vector<int> inputShape = {1, 3, 224, 224};

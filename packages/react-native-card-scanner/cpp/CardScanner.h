@@ -5,6 +5,18 @@
 #include <opencv2/opencv.hpp>
 #include <string>
 #include <vector>
+#include <memory>
+#include <map>
+#include <mutex>
+
+namespace executorch {
+namespace extension {
+namespace module {
+class Module;
+}
+}
+}
+
 namespace cardscanner {
 
 struct InferenceResult {
@@ -28,6 +40,14 @@ public:
   // image: OpenCV Mat (BGR format)
   static InferenceResult runInferenceOnMat(const std::string &modelPath,
                                            const cv::Mat &image);
+
+private:
+  // Module cache to avoid reloading models
+  static std::map<std::string, std::shared_ptr<executorch::extension::module::Module>> moduleCache;
+  static std::mutex cacheMutex;
+
+  // Get or load a module from cache
+  static std::shared_ptr<executorch::extension::module::Module> getModule(const std::string &modelPath);
 };
 
 } // namespace cardscanner
