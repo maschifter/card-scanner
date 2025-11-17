@@ -32,15 +32,11 @@ find_package(ObjectBoxGenerator 4.0.0 REQUIRED)
 set(COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/common/rncardscanner")
 
 # --- Core C++ library with ObjectBox ---
+file(GLOB PACKAGE_SOURCES "${CPP_DIR}/*.cpp")
 add_library(
     cardscanner_cpp
     STATIC
-    "${COMMON_DIR}/CardScanner.cpp"
-    "${COMMON_DIR}/ObjectBoxDB.cpp"
-    "${COMMON_DIR}/ObjectBoxTest.cpp"
-    "${COMMON_DIR}/PathProvider.cpp"
-    "${COMMON_DIR}/YoloSegmentation.cpp"
-    "${COMMON_DIR}/CardRecognitionPipeline.cpp"
+    ${PACKAGE_SOURCES}
 )
 
 add_obx_schema(

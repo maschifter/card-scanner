@@ -20,10 +20,27 @@ using namespace facebook::react;
 RCT_EXPORT_MODULE(CardScannerInstaller)
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install) {
-  // Get the documents directory
-  NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-  NSString *documentsDirectory = [paths objectAtIndex:0];
-  std::string documentsPath = std::string([documentsDirectory UTF8String]);
+  // Get the library directory
+  NSArray *paths = NSSearchPathForDirectoriesInDomains(NSLibraryDirectory,
+                                                       NSUserDomainMask, YES);
+  NSString *libraryDirectory = [paths objectAtIndex:0];
+
+  // Create a "database" subdirectory
+  NSString *databaseDirectory =
+      [libraryDirectory stringByAppendingPathComponent:@"database"];
+
+  // Create the directory if it doesn't exist
+  NSFileManager *fileManager = [NSFileManager defaultManager];
+  if (![fileManager fileExistsAtPath:databaseDirectory]) {
+    [fileManager createDirectoryAtPath:databaseDirectory
+           withIntermediateDirectories:YES
+                            attributes:nil
+                                 error:nil];
+  }
+  NSLog(@"Native module database directory: %@",
+        databaseDirectory); // Added print statement
+
+  std::string documentsPath = std::string([databaseDirectory UTF8String]);
   pathprovider::set_db_path(documentsPath);
 
   auto jsiRuntime =

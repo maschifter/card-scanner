@@ -1,4 +1,10 @@
 import { CardScannerInstallerNativeModule } from './RnCardScannerModules';
+import {
+  downloadDatabase,
+  useDatabaseManager,
+  DatabaseInfo,
+  listDatabases,
+} from './DatabaseDownloader';
 
 export interface InferenceResult {
   outputShape: number[];
@@ -79,23 +85,23 @@ declare global {
   var runInference: (modelPath: string) => InferenceResult;
   var runInferenceOnImage: (
     modelPath: string,
-    imagePath: string
+    imagePath: string,
   ) => InferenceResult;
   var loadCardEmbeddings: (
     dbPath: string,
-    jsonPath: string
+    jsonPath: string,
   ) => LoadEmbeddingsResult;
   var searchSimilarCards: (
     dbPath: string,
     embedding: number[],
-    limit: number
+    limit: number,
   ) => CardSearchResult[];
   var runYoloSegmentation: (
     modelPath: string,
     imagePath: string,
     conf: number,
     iou: number,
-    outputDir: string
+    outputDir: string,
   ) => YoloSegmentationResult;
   var recognizeCards: (
     imagePath: string,
@@ -104,22 +110,23 @@ declare global {
     dbPath: string,
     yoloConf?: number,
     yoloIou?: number,
-    topK?: number
+    topK?: number,
   ) => CardRecognitionResult;
   var getCardCount: (dbPath: string) => number;
+  var swapDatabase: (sourcePath: string, gameName: string) => boolean;
 }
 
 if (global.runInference == null) {
   if (!CardScannerInstallerNativeModule) {
     throw new Error(
-      `Failed to install react-native-card-scanner: The native module could not be found.`
+      `Failed to install react-native-card-scanner: The native module could not be found.`,
     );
   }
   CardScannerInstallerNativeModule.install();
 
   if (global.runInference == null) {
     throw new Error(
-      `Failed to install react-native-card-scanner: The global 'runInference' function was not found after installation.`
+      `Failed to install react-native-card-scanner: The global 'runInference' function was not found after installation.`,
     );
   }
 }
@@ -131,3 +138,5 @@ export const searchSimilarCards = global.searchSimilarCards;
 export const runYoloSegmentation = global.runYoloSegmentation;
 export const recognizeCards = global.recognizeCards;
 export const getCardCount = global.getCardCount;
+export const swapDatabase = global.swapDatabase;
+export { downloadDatabase, useDatabaseManager, DatabaseInfo, listDatabases };
