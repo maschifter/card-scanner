@@ -238,7 +238,20 @@ InferenceResult CardScanner::runInferenceOnImage(const std::string &modelPath,
     embedding.push_back(0.0f);
   }
 
-  std::cout << "Extracted " << embeddingSize << "D embedding (already normalized by model)"
+  // L2 normalize the embedding (to match database embeddings)
+  float norm = 0.0f;
+  for (float val : embedding) {
+    norm += val * val;
+  }
+  norm = std::sqrt(norm);
+
+  if (norm > 0.0f) {
+    for (float &val : embedding) {
+      val /= norm;
+    }
+  }
+
+  std::cout << "Extracted and L2-normalized " << embeddingSize << "D embedding"
             << std::endl;
 
   return {outputShape, inferenceTimeMs, embedding};
@@ -336,7 +349,20 @@ InferenceResult CardScanner::runInferenceOnMat(const std::string &modelPath,
     embedding[i] = outputData[i];
   }
 
-  std::cout << "Extracted " << embeddingSize << "D embedding (already normalized by model)"
+  // L2 normalize the embedding (to match database embeddings)
+  float norm = 0.0f;
+  for (float val : embedding) {
+    norm += val * val;
+  }
+  norm = std::sqrt(norm);
+
+  if (norm > 0.0f) {
+    for (float &val : embedding) {
+      val /= norm;
+    }
+  }
+
+  std::cout << "Extracted and L2-normalized " << embeddingSize << "D embedding"
             << std::endl;
 
   return {outputShape, inferenceTimeMs, embedding};

@@ -344,7 +344,7 @@ export default function MainScreen() {
         dbPath,
         0.5,  // yoloConf
         0.0,  // yoloIou
-        3    // topK
+        3   // topK
       );
 
       setRecognitionResult(pipelineResult);

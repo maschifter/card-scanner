@@ -16,7 +16,8 @@ struct BBox {
 // Segmentation result for a single detection
 struct Detection {
   BBox box;
-  std::vector<std::vector<cv::Point>> mask; // mask contours
+  cv::Mat maskBinary; // binary mask (CV_8U, full resolution)
+  std::vector<std::vector<cv::Point>> maskContours; // mask contours for visualization
   std::vector<cv::Point2f> quad; // 4-point quadrilateral (TL, TR, BR, BL)
   cv::Mat dewarpedCard; // perspective-corrected card image
 };
@@ -57,11 +58,10 @@ private:
                                       const std::vector<float> &preds,
                                       const std::vector<float> &protos);
 
-  // Process masks from proto coefficients
-  std::vector<std::vector<cv::Point>>
-  processMask(const std::vector<float> &protos, int protoH, int protoW,
-              const std::vector<float> &maskCoeffs, const BBox &bbox,
-              const cv::Size &imgSize);
+  // Process masks from proto coefficients - returns binary mask
+  cv::Mat processMask(const std::vector<float> &protos, int protoH, int protoW,
+                      const std::vector<float> &maskCoeffs, const BBox &bbox,
+                      const cv::Size &imgSize);
 
   // Non-max suppression
   std::vector<int> nonMaxSuppression(const std::vector<BBox> &boxes,
@@ -84,6 +84,7 @@ private:
   bool isValidQuad(const std::vector<cv::Point2f> &quad);
 
   // Dewarp card to rectangular image
+  // aspect = width/height (default 0.63 matches Python implementation)
   cv::Mat warpPerspectiveCard(const cv::Mat &img,
                               const std::vector<cv::Point2f> &quad,
                               int targetH = 640, float aspect = 0.63f);

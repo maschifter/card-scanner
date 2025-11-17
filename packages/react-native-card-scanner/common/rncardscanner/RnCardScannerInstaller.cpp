@@ -304,13 +304,13 @@ void CardScannerInstaller::injectJSIBindings(
             detObj.setProperty(runtime, "box", box);
 
             // Add mask contours
-            jsi::Array contours(runtime, det.mask.size());
-            for (size_t j = 0; j < det.mask.size(); j++) {
-              jsi::Array contour(runtime, det.mask[j].size());
-              for (size_t k = 0; k < det.mask[j].size(); k++) {
+            jsi::Array contours(runtime, det.maskContours.size());
+            for (size_t j = 0; j < det.maskContours.size(); j++) {
+              jsi::Array contour(runtime, det.maskContours[j].size());
+              for (size_t k = 0; k < det.maskContours[j].size(); k++) {
                 jsi::Object point(runtime);
-                point.setProperty(runtime, "x", jsi::Value(det.mask[j][k].x));
-                point.setProperty(runtime, "y", jsi::Value(det.mask[j][k].y));
+                point.setProperty(runtime, "x", jsi::Value(det.maskContours[j][k].x));
+                point.setProperty(runtime, "y", jsi::Value(det.maskContours[j][k].y));
                 contour.setValueAtIndex(runtime, k, point);
               }
               contours.setValueAtIndex(runtime, j, contour);
