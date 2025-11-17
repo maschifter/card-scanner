@@ -32,7 +32,7 @@ static inline OBX_model* create_obx_model() {
     obx_model_property(model, "embedding", OBXPropertyType_FloatVector, 5, 6597812468947702453);
     obx_model_property_flags(model, OBXPropertyFlags_INDEXED);
     obx_model_property_index_hnsw_dimensions(model, 256);
-    obx_model_property_index_hnsw_distance_type(model, OBXVectorDistanceType_DotProduct);
+    obx_model_property_index_hnsw_distance_type(model, OBXVectorDistanceType_Cosine);
     obx_model_property_index_hnsw_neighbors_per_node(model, 16);
     obx_model_property_index_hnsw_indexing_search_count(model, 100);
     obx_model_property_index_id(model, 2, 5350240849271719983);

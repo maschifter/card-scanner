@@ -274,20 +274,26 @@ std::vector<CardSearchResult> ObjectBoxDB::search_similar_cards(
 
   obx::Box<Card> box(*store);
 
-  // Create a query with HNSW nearest neighbor search
+  // HNSW is an approximate algorithm - it doesn't guarantee the true top K.
+  // To get accurate results, we fetch more candidates, calculate exact similarities,
+  // then return the true top K. This is especially important for small K values.
+  int fetchLimit = std::max(limit * 5, limit + 50);
+
+  // Create a query with HNSW nearest neighbor search using Cosine distance
   auto query = box.query()
-                   .nearestNeighborsFloat32(Card_::embedding, query_embedding.data(), limit)
+                   .nearestNeighborsFloat32(Card_::embedding, query_embedding.data(), fetchLimit)
                    .build();
 
   auto cards = query.find();
 
+  // Calculate exact dot product similarity scores for all candidates
   for (const auto& card : cards) {
     CardSearchResult result;
     result.card_id = card.card_id;
     result.name = card.text;
 
-    // Calculate similarity score using dot product
-    // (assumes embeddings are already normalized, matching Python implementation)
+    // Calculate similarity score using dot product for normalized vectors
+    // (cosine similarity = dot product when vectors are normalized)
     float dot_product = 0.0f;
 
     for (size_t i = 0; i < 256; i++) {
@@ -298,11 +304,16 @@ std::vector<CardSearchResult> ObjectBoxDB::search_similar_cards(
     results.push_back(result);
   }
 
-  // Sort results by score in descending order (highest similarity first)
+  // Sort by exact similarity in descending order (highest similarity first)
   std::sort(results.begin(), results.end(),
             [](const CardSearchResult& a, const CardSearchResult& b) {
               return a.score > b.score;
             });
+
+  // Return only the true top K results
+  if (results.size() > static_cast<size_t>(limit)) {
+    results.resize(limit);
+  }
 
   return results;
 }

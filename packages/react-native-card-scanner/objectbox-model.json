@@ -33,7 +33,7 @@
           "flags": 8,
           "hnswParams": {
             "dimensions": 256,
-            "distance-type": "DotProduct",
+            "distance-type": "Cosine",
             "neighbors-per-node": 16,
             "indexing-search-count": 100
           }

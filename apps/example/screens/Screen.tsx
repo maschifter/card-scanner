@@ -74,26 +74,25 @@ export default function MainScreen() {
     setLoadResult(null);
 
     try {
-      // Pick JSON file from storage using document picker
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/json',
-        copyToCacheDirectory: true,
-      });
+      // Load from bundled assets
+      console.log('Loading embeddings from bundled assets...');
 
-      if (result.canceled) {
-        return;
-      }
+      // For iOS, we need to copy the asset from the app bundle
+      // Since .json files are treated as code by Metro, we'll use a workaround
+      const embeddingsData = require('../assets/lorcana_embeddings.json');
 
-      const jsonUri = result.assets[0].uri;
-      console.log('Selected JSON file:', jsonUri);
-      console.log('File name:', result.assets[0].name);
-      console.log('File size:', (result.assets[0].size! / 1024 / 1024).toFixed(2), 'MB');
+      // Write the JSON data to a file
+      const jsonPath = `${cacheDirectory}lorcana_embeddings.json`;
+      console.log('Writing embeddings to:', jsonPath);
+
+      await writeAsStringAsync(jsonPath, JSON.stringify(embeddingsData));
+      console.log('✅ Embeddings written to cache');
 
       const dbPath = `${documentDirectory}objectbox-cards`;
       console.log('Database path:', dbPath);
-      console.log('Loading embeddings from:', jsonUri);
+      console.log('Loading embeddings from:', jsonPath);
 
-      const loadResult = loadCardEmbeddings(dbPath, jsonUri);
+      const loadResult = loadCardEmbeddings(dbPath, jsonPath);
       setLoadResult(loadResult);
       console.log('✅ Load result:', loadResult);
     } catch (err) {
