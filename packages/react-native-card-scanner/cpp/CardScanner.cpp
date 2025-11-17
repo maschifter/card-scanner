@@ -146,12 +146,14 @@ InferenceResult CardScanner::runInference(const std::string &modelPath) {
   std::cout << "Extracted and L2-normalized " << embeddingSize << "D embedding"
             << std::endl;
 
-  return {outputShape, inferenceTimeMs, embedding};
+  return {outputShape, inferenceTimeMs, 0.0, embedding}; // No preprocessing for dummy data
 }
 
 InferenceResult CardScanner::runInferenceOnImage(const std::string &modelPath,
                                                  const std::string &imagePath) {
   std::cout << "Loading image from: " << imagePath << std::endl;
+
+  auto prepStart = std::chrono::high_resolution_clock::now();
 
   // Strip "file://" prefix from image path if present
   std::string cleanImagePath = imagePath;
@@ -200,7 +202,10 @@ InferenceResult CardScanner::runInferenceOnImage(const std::string &modelPath,
     }
   }
 
-  std::cout << "Preprocessed image to 224x224 RGB tensor" << std::endl;
+  auto prepEnd = std::chrono::high_resolution_clock::now();
+  double prepMs = std::chrono::duration_cast<std::chrono::microseconds>(prepEnd - prepStart).count() / 1000.0;
+
+  std::cout << "Preprocessed image to 224x224 RGB tensor in " << prepMs << "ms" << std::endl;
 
   // Get cached module or load new one
   auto module = getModule(modelPath);
@@ -267,7 +272,7 @@ InferenceResult CardScanner::runInferenceOnImage(const std::string &modelPath,
   std::cout << "Extracted and L2-normalized " << embeddingSize << "D embedding"
             << std::endl;
 
-  return {outputShape, inferenceTimeMs, embedding};
+  return {outputShape, inferenceTimeMs, prepMs, embedding};
 }
 
 InferenceResult CardScanner::runInferenceOnMat(const std::string &modelPath,
@@ -278,6 +283,8 @@ InferenceResult CardScanner::runInferenceOnMat(const std::string &modelPath,
 
   std::cout << "Processing cv::Mat image: " << image.cols << "x" << image.rows
             << std::endl;
+
+  auto prepStart = std::chrono::high_resolution_clock::now();
 
   // Resize to 224x224 (MobileNet input size)
   cv::Mat resized;
@@ -308,7 +315,10 @@ InferenceResult CardScanner::runInferenceOnMat(const std::string &modelPath,
     }
   }
 
-  std::cout << "Preprocessed image to 224x224 RGB tensor" << std::endl;
+  auto prepEnd = std::chrono::high_resolution_clock::now();
+  double prepMs = std::chrono::duration_cast<std::chrono::microseconds>(prepEnd - prepStart).count() / 1000.0;
+
+  std::cout << "Preprocessed image to 224x224 RGB tensor in " << prepMs << "ms" << std::endl;
 
   // Get cached module or load new one
   auto module = getModule(modelPath);
@@ -363,7 +373,7 @@ InferenceResult CardScanner::runInferenceOnMat(const std::string &modelPath,
   std::cout << "Extracted and L2-normalized " << embeddingSize << "D embedding"
             << std::endl;
 
-  return {outputShape, inferenceTimeMs, embedding};
+  return {outputShape, inferenceTimeMs, prepMs, embedding};
 }
 
 } // namespace cardscanner

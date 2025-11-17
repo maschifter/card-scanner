@@ -37,6 +37,8 @@ struct Detection {
 struct SegmentationResult {
   std::vector<Detection> detections;
   double inferenceTimeMs;
+  double preprocessingTimeMs;  // Time spent on preprocessing (letterbox, normalization)
+  double postprocessingTimeMs; // Time spent on postprocessing (NMS, mask processing)
   cv::Mat visualizedImage; // image with boxes and masks drawn
 };
 

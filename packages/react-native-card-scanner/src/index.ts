@@ -55,19 +55,23 @@ export interface RecognizedCard {
   matches: CardSearchResult[]; // Top similar cards from database
 }
 
-export interface CardRecognitionResult {
-  cards: RecognizedCard[];
-  yoloTimeMs: number; // YOLO inference time only
-  totalTimeMs: number; // Total pipeline time
+export interface TimingBreakdown {
+  yoloPreprocessingMs: number;
+  yoloInferenceMs: number;
+  yoloPostprocessingMs: number;
+  yoloTotalMs: number;
+  embeddingPreprocessingMs: number;
+  embeddingInferenceMs: number;
+  embeddingTotalMs: number;
+  databaseSearchMs: number;
+  totalPipelineMs: number;
 }
 
-export interface TimingBreakdown {
-  yoloInferenceMs: number;
-  yoloTotalMs: number;
-  yoloPostprocessingMs: number;
-  dbOpenMs: number;
-  perCardMs: number[];
-  totalPipelineMs: number;
+export interface CardRecognitionResult {
+  cards: RecognizedCard[];
+  yoloTimeMs: number; // YOLO inference time only (deprecated - use timingBreakdown)
+  totalTimeMs: number; // Total pipeline time (deprecated - use timingBreakdown)
+  timingBreakdown: TimingBreakdown; // Detailed timing information
 }
 
 // eslint-disable-next-line no-var

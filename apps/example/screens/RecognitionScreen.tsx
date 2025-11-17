@@ -135,18 +135,53 @@ export default function RecognitionScreen() {
       {recognitionResult && (
         <>
           <View style={styles.resultCard}>
-            <Text style={styles.cardTitle}>Performance</Text>
+            <Text style={styles.cardTitle}>Performance Statistics</Text>
             <View style={styles.statRow}>
               <Text style={styles.statLabel}>Cards Found:</Text>
               <Text style={styles.statValue}>{recognitionResult.cards.length}</Text>
             </View>
+
+            <Text style={styles.sectionSubtitle}>YOLO Segmentation</Text>
             <View style={styles.statRow}>
-              <Text style={styles.statLabel}>YOLO Time:</Text>
-              <Text style={styles.statValue}>{recognitionResult.yoloTimeMs.toFixed(1)} ms</Text>
+              <Text style={styles.statLabel}>  • Preprocessing:</Text>
+              <Text style={styles.statValue}>{recognitionResult.timingBreakdown.yoloPreprocessingMs.toFixed(1)} ms</Text>
             </View>
             <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Total Time:</Text>
-              <Text style={styles.statValue}>{recognitionResult.totalTimeMs.toFixed(1)} ms</Text>
+              <Text style={styles.statLabel}>  • Inference:</Text>
+              <Text style={styles.statValue}>{recognitionResult.timingBreakdown.yoloInferenceMs.toFixed(1)} ms</Text>
+            </View>
+            <View style={styles.statRow}>
+              <Text style={styles.statLabel}>  • Postprocessing:</Text>
+              <Text style={styles.statValue}>{recognitionResult.timingBreakdown.yoloPostprocessingMs.toFixed(1)} ms</Text>
+            </View>
+            <View style={[styles.statRow, styles.totalRow]}>
+              <Text style={styles.statLabelBold}>  YOLO Total:</Text>
+              <Text style={styles.statValueBold}>{recognitionResult.timingBreakdown.yoloTotalMs.toFixed(1)} ms</Text>
+            </View>
+
+            <Text style={styles.sectionSubtitle}>Embedding Extraction</Text>
+            <View style={styles.statRow}>
+              <Text style={styles.statLabel}>  • Preprocessing:</Text>
+              <Text style={styles.statValue}>{recognitionResult.timingBreakdown.embeddingPreprocessingMs.toFixed(1)} ms</Text>
+            </View>
+            <View style={styles.statRow}>
+              <Text style={styles.statLabel}>  • Inference:</Text>
+              <Text style={styles.statValue}>{recognitionResult.timingBreakdown.embeddingInferenceMs.toFixed(1)} ms</Text>
+            </View>
+            <View style={[styles.statRow, styles.totalRow]}>
+              <Text style={styles.statLabelBold}>  Embedding Total:</Text>
+              <Text style={styles.statValueBold}>{recognitionResult.timingBreakdown.embeddingTotalMs.toFixed(1)} ms</Text>
+            </View>
+
+            <Text style={styles.sectionSubtitle}>Database Search</Text>
+            <View style={[styles.statRow, styles.totalRow]}>
+              <Text style={styles.statLabel}>  • Search Time:</Text>
+              <Text style={styles.statValue}>{recognitionResult.timingBreakdown.databaseSearchMs.toFixed(1)} ms</Text>
+            </View>
+
+            <View style={[styles.statRow, styles.grandTotalRow]}>
+              <Text style={styles.statLabelGrand}>Total Pipeline:</Text>
+              <Text style={styles.statValueGrand}>{recognitionResult.timingBreakdown.totalPipelineMs.toFixed(1)} ms</Text>
             </View>
           </View>
 
@@ -434,5 +469,43 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
+  },
+  sectionSubtitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#4CAF50',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  statLabelBold: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  statValueBold: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#4CAF50',
+  },
+  totalRow: {
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingTop: 12,
+  },
+  grandTotalRow: {
+    borderTopWidth: 2,
+    borderTopColor: '#4CAF50',
+    marginTop: 16,
+    paddingTop: 12,
+  },
+  statLabelGrand: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  statValueGrand: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#4CAF50',
   },
 });

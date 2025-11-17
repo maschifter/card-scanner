@@ -368,6 +368,19 @@ void CardScannerInstaller::injectJSIBindings(
           result.setProperty(runtime, "yoloTimeMs", jsi::Value(pipelineResult.yoloTimeMs));
           result.setProperty(runtime, "totalTimeMs", jsi::Value(pipelineResult.totalTimeMs));
 
+          // Add detailed timing breakdown
+          jsi::Object timingBreakdown(runtime);
+          timingBreakdown.setProperty(runtime, "yoloPreprocessingMs", jsi::Value(pipelineResult.timingBreakdown.yoloPreprocessingMs));
+          timingBreakdown.setProperty(runtime, "yoloInferenceMs", jsi::Value(pipelineResult.timingBreakdown.yoloInferenceMs));
+          timingBreakdown.setProperty(runtime, "yoloPostprocessingMs", jsi::Value(pipelineResult.timingBreakdown.yoloPostprocessingMs));
+          timingBreakdown.setProperty(runtime, "yoloTotalMs", jsi::Value(pipelineResult.timingBreakdown.yoloTotalMs));
+          timingBreakdown.setProperty(runtime, "embeddingPreprocessingMs", jsi::Value(pipelineResult.timingBreakdown.embeddingPreprocessingMs));
+          timingBreakdown.setProperty(runtime, "embeddingInferenceMs", jsi::Value(pipelineResult.timingBreakdown.embeddingInferenceMs));
+          timingBreakdown.setProperty(runtime, "embeddingTotalMs", jsi::Value(pipelineResult.timingBreakdown.embeddingTotalMs));
+          timingBreakdown.setProperty(runtime, "databaseSearchMs", jsi::Value(pipelineResult.timingBreakdown.databaseSearchMs));
+          timingBreakdown.setProperty(runtime, "totalPipelineMs", jsi::Value(pipelineResult.timingBreakdown.totalPipelineMs));
+          result.setProperty(runtime, "timingBreakdown", timingBreakdown);
+
           // Add cards array
           jsi::Array cards(runtime, pipelineResult.cards.size());
           for (size_t i = 0; i < pipelineResult.cards.size(); i++) {

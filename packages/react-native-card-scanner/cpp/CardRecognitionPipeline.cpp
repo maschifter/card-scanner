@@ -63,11 +63,18 @@ CardRecognitionPipeline::recognize(const std::string &imagePath,
   double yoloTotalMs = std::chrono::duration_cast<std::chrono::microseconds>(yoloEnd - yoloStart).count() / 1000.0;
 
   std::cout << "✅ YOLO detected " << yoloResult.detections.size() << " cards" << std::endl;
-  std::cout << "   - YOLO inference only: " << yoloResult.inferenceTimeMs << "ms" << std::endl;
-  std::cout << "   - YOLO total (incl. postprocessing): " << yoloTotalMs << "ms" << std::endl;
+  std::cout << "   - YOLO preprocessing: " << yoloResult.preprocessingTimeMs << "ms" << std::endl;
+  std::cout << "   - YOLO inference: " << yoloResult.inferenceTimeMs << "ms" << std::endl;
+  std::cout << "   - YOLO postprocessing: " << yoloResult.postprocessingTimeMs << "ms" << std::endl;
+  std::cout << "   - YOLO total: " << yoloTotalMs << "ms" << std::endl;
 
   // Step 2: For each detected card, extract embedding and search database
   std::vector<CardRecognitionResult> results;
+
+  // Tracking for timing breakdown
+  double totalEmbeddingPrepMs = 0.0;
+  double totalEmbeddingInferenceMs = 0.0;
+  double totalDatabaseSearchMs = 0.0;
 
   // Get temp directory
   std::string tempDir;
@@ -133,11 +140,17 @@ CardRecognitionPipeline::recognize(const std::string &imagePath,
               .count() /
           1000.0;
 
+      // Accumulate timing
+      totalEmbeddingPrepMs += inferenceResult.preprocessingTimeMs;
+      totalEmbeddingInferenceMs += inferenceResult.inferenceTimeMs;
+
       // Search for similar cards in database
       auto searchStart = std::chrono::high_resolution_clock::now();
       auto matches = db.search_similar_cards(inferenceResult.embedding, topK);
       auto searchEnd = std::chrono::high_resolution_clock::now();
       double searchMs = std::chrono::duration_cast<std::chrono::microseconds>(searchEnd - searchStart).count() / 1000.0;
+
+      totalDatabaseSearchMs += searchMs;
 
       auto cardEnd = std::chrono::high_resolution_clock::now();
       double cardTotalMs = std::chrono::duration_cast<std::chrono::microseconds>(cardEnd - cardStart).count() / 1000.0;
@@ -194,7 +207,25 @@ CardRecognitionPipeline::recognize(const std::string &imagePath,
   std::cout << "   💡 Optimization: Loaded image once, saved ~" << imgLoadMs << "ms!" << std::endl;
   std::cout << "========================================" << std::endl;
 
-  return {results, yoloResult.inferenceTimeMs, totalTimeMs};
+  // Build detailed timing breakdown
+  TimingBreakdown timing;
+  timing.yoloPreprocessingMs = yoloResult.preprocessingTimeMs;
+  timing.yoloInferenceMs = yoloResult.inferenceTimeMs;
+  timing.yoloPostprocessingMs = yoloResult.postprocessingTimeMs;
+  timing.yoloTotalMs = yoloTotalMs;
+  timing.embeddingPreprocessingMs = totalEmbeddingPrepMs;
+  timing.embeddingInferenceMs = totalEmbeddingInferenceMs;
+  timing.embeddingTotalMs = totalEmbeddingPrepMs + totalEmbeddingInferenceMs;
+  timing.databaseSearchMs = totalDatabaseSearchMs;
+  timing.totalPipelineMs = totalTimeMs;
+
+  PipelineResult result;
+  result.cards = results;
+  result.yoloTimeMs = yoloResult.inferenceTimeMs; // deprecated
+  result.totalTimeMs = totalTimeMs; // deprecated
+  result.timingBreakdown = timing;
+
+  return result;
 }
 
 } // namespace cardscanner

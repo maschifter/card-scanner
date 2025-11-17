@@ -802,8 +802,14 @@ SegmentationResult YoloSegmentation::segment(const cv::Mat &image) {
   std::cout << "⏱️ Tensor extraction: " << tensorMs << "ms" << std::endl;
 
   // Postprocess
+  auto postStart = std::chrono::high_resolution_clock::now();
   std::vector<Detection> detections =
       postprocess(img, letterboxed, preds, protos);
+  auto postEnd = std::chrono::high_resolution_clock::now();
+  double postMs =
+      std::chrono::duration_cast<std::chrono::microseconds>(postEnd - postStart)
+          .count() /
+      1000.0;
 
   std::cout << "Found " << detections.size() << " detections" << std::endl;
 
@@ -824,7 +830,7 @@ SegmentationResult YoloSegmentation::segment(const cv::Mat &image) {
                    1000.0;
   std::cout << "⏱️ TOTAL segment() time: " << totalMs << "ms" << std::endl;
 
-  return {detections, inferenceTimeMs, visualized};
+  return {detections, inferenceTimeMs, prepMs, postMs, visualized};
 }
 
 SegmentationResult YoloSegmentation::segment(const std::string &imagePath) {

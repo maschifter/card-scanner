@@ -22,6 +22,7 @@ namespace cardscanner {
 struct InferenceResult {
   std::vector<int> outputShape;
   double inferenceTimeMs;
+  double preprocessingTimeMs; // Time spent on preprocessing (resize, normalize)
   std::vector<float> embedding; // 256D embedding vector extracted from model output
 };
 

@@ -15,11 +15,25 @@ struct CardRecognitionResult {
   double embeddingTimeMs;                // Time to extract embedding
 };
 
+// Detailed timing breakdown for the pipeline
+struct TimingBreakdown {
+  double yoloPreprocessingMs;
+  double yoloInferenceMs;
+  double yoloPostprocessingMs;
+  double yoloTotalMs;
+  double embeddingPreprocessingMs;
+  double embeddingInferenceMs;
+  double embeddingTotalMs;
+  double databaseSearchMs;
+  double totalPipelineMs;
+};
+
 // Pipeline result containing all detected cards
 struct PipelineResult {
   std::vector<CardRecognitionResult> cards;
-  double yoloTimeMs;    // YOLO inference time
-  double totalTimeMs;   // Total pipeline time
+  double yoloTimeMs;    // YOLO inference time (deprecated - use timingBreakdown)
+  double totalTimeMs;   // Total pipeline time (deprecated - use timingBreakdown)
+  TimingBreakdown timingBreakdown; // Detailed timing information
 };
 
 class CardRecognitionPipeline {
