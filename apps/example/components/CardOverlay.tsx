@@ -20,10 +20,9 @@ const CardOverlay = memo(function CardOverlay({ cards }: CardOverlayProps) {
     return null;
   }
 
-  console.log('Rendering overlay for:', topMatch.name);
-
   return (
     <View style={styles.overlay}>
+      {/* Card info banner */}
       <View style={styles.cardInfo}>
         <Text style={styles.cardName} numberOfLines={2}>
           {topMatch.name}
@@ -50,7 +49,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(76, 175, 80, 0.95)',
     padding: 16,
     borderRadius: 8,
-    marginBottom: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,

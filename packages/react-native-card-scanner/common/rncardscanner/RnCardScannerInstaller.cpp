@@ -244,8 +244,14 @@ void CardScannerInstaller::injectJSIBindings(
           cardscanner::YoloSegmentation yolo(modelPath, conf, iou, 384);
           auto segResult = yolo.segment(imagePath);
 
-          // Ensure output directory ends with /
+          // Strip file:// prefix from output directory if present (for cv::imwrite)
           std::string tempDir = outputDir;
+          const std::string filePrefix = "file://";
+          if (tempDir.find(filePrefix) == 0) {
+            tempDir = tempDir.substr(filePrefix.length());
+          }
+
+          // Ensure output directory ends with /
           if (!tempDir.empty() && tempDir.back() != '/') {
             tempDir += '/';
           }

@@ -13,6 +13,7 @@ export default function CameraScanner() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoadingModels, setIsLoadingModels] = useState(true);
   const [modelError, setModelError] = useState<string | null>(null);
+  const [capturedImageSize, setCapturedImageSize] = useState<{ width: number; height: number } | null>(null);
   const cameraRef = useRef<CameraView>(null);
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isScanningRef = useRef(false); // Use ref to avoid closure issues
@@ -159,6 +160,12 @@ export default function CameraScanner() {
         console.warn('No photo URI received');
         setIsProcessing(false);
         return;
+      }
+
+      // Store captured image dimensions for bounding box scaling
+      if (photo.width && photo.height) {
+        setCapturedImageSize({ width: photo.width, height: photo.height });
+        console.log('Captured image size:', photo.width, 'x', photo.height);
       }
 
       const { yolo, embedding, db } = modelPathsRef.current;

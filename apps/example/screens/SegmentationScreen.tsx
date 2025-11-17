@@ -64,6 +64,7 @@ export default function SegmentationScreen() {
       console.log('Model loaded:', models.yolo);
 
       console.log('Running YOLO segmentation...');
+      console.log('Output directory:', cacheDirectory);
       const result = runYoloSegmentation(
         models.yolo,
         selectedImage,
@@ -73,6 +74,8 @@ export default function SegmentationScreen() {
       );
 
       console.log('YOLO result:', result);
+      console.log('Visualized image path:', result.visualizedImagePath);
+      console.log('Dewarped card paths:', result.dewarpedCardPaths);
       setYoloResult(result);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -146,9 +149,11 @@ export default function SegmentationScreen() {
           <View style={styles.imageCard}>
             <Text style={styles.cardTitle}>Visualized Result</Text>
             <Image
-              source={{ uri: yoloResult.visualizedImagePath }}
+              source={{ uri: yoloResult.visualizedImagePath + '?t=' + Date.now() }}
               style={styles.image}
               resizeMode="contain"
+              onError={(e) => console.error('Failed to load visualized image:', e.nativeEvent.error)}
+              onLoad={() => console.log('Visualized image loaded')}
             />
           </View>
 
