@@ -18,7 +18,8 @@ std::map<std::string, std::shared_ptr<Module>> YoloSegmentation::moduleCache;
 std::mutex YoloSegmentation::cacheMutex;
 
 // Get or load a module from cache
-std::shared_ptr<Module> YoloSegmentation::getModule(const std::string &modelPath) {
+std::shared_ptr<Module>
+YoloSegmentation::getModule(const std::string &modelPath) {
   // Strip "file://" prefix if present
   std::string cleanPath = modelPath;
   const std::string filePrefix = "file://";
@@ -175,10 +176,11 @@ std::vector<int> YoloSegmentation::nonMaxSuppression(
   return keep;
 }
 
-cv::Mat
-YoloSegmentation::processMask(const std::vector<float> &protos, int protoH,
-                              int protoW, const std::vector<float> &maskCoeffs,
-                              const BBox &bbox, const cv::Size &imgSize) {
+cv::Mat YoloSegmentation::processMask(const std::vector<float> &protos,
+                                      int protoH, int protoW,
+                                      const std::vector<float> &maskCoeffs,
+                                      const BBox &bbox,
+                                      const cv::Size &imgSize) {
 
   int protoC = maskCoeffs.size();
 
@@ -246,7 +248,8 @@ YoloSegmentation::processMask(const std::vector<float> &protos, int protoH,
   // Check if we have multiple components (rare case)
   // Use simple contour count first - much faster than connectedComponents
   std::vector<std::vector<cv::Point>> contours;
-  cv::findContours(binaryMask.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+  cv::findContours(binaryMask.clone(), contours, cv::RETR_EXTERNAL,
+                   cv::CHAIN_APPROX_SIMPLE);
 
   cv::Mat fullMask = cv::Mat::zeros(imgSize, CV_8U);
 
@@ -256,8 +259,7 @@ YoloSegmentation::processMask(const std::vector<float> &protos, int protoH,
   } else if (contours.size() > 1) {
     // Multiple contours: find and use only the largest one
     auto largestContour = std::max_element(
-        contours.begin(), contours.end(),
-        [](const auto &a, const auto &b) {
+        contours.begin(), contours.end(), [](const auto &a, const auto &b) {
           return cv::contourArea(a) < cv::contourArea(b);
         });
 
@@ -394,8 +396,8 @@ std::vector<Detection> YoloSegmentation::postprocess(
     det.box = boxes[idx];
 
     auto maskStart = std::chrono::high_resolution_clock::now();
-    det.maskBinary = processMask(protos, protoH, protoW, maskCoeffs[idx], boxes[idx],
-                                 originalImg.size());
+    det.maskBinary = processMask(protos, protoH, protoW, maskCoeffs[idx],
+                                 boxes[idx], originalImg.size());
     auto maskEnd = std::chrono::high_resolution_clock::now();
     totalMaskMs += std::chrono::duration_cast<std::chrono::microseconds>(
                        maskEnd - maskStart)
@@ -403,8 +405,8 @@ std::vector<Detection> YoloSegmentation::postprocess(
                    1000.0;
 
     // Extract contours for visualization
-    cv::findContours(det.maskBinary.clone(), det.maskContours, cv::RETR_EXTERNAL,
-                     cv::CHAIN_APPROX_SIMPLE);
+    cv::findContours(det.maskBinary.clone(), det.maskContours,
+                     cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
     // Extract quad from mask and dewarp
     if (!det.maskBinary.empty()) {
@@ -413,7 +415,8 @@ std::vector<Detection> YoloSegmentation::postprocess(
 
       float scale = 0.25f; // Downsample to 25% for speed
       cv::Mat smallMask;
-      cv::resize(det.maskBinary, smallMask, cv::Size(), scale, scale, cv::INTER_NEAREST);
+      cv::resize(det.maskBinary, smallMask, cv::Size(), scale, scale,
+                 cv::INTER_NEAREST);
 
       auto quadSmall = quadFromMask(smallMask);
 
@@ -435,7 +438,8 @@ std::vector<Detection> YoloSegmentation::postprocess(
       // Dewarp if we have a valid quad
       if (det.quad.size() == 4) {
         auto warpStart = std::chrono::high_resolution_clock::now();
-        det.dewarpedCard = warpPerspectiveCard(originalImg, det.quad, 640, 0.63f);
+        det.dewarpedCard =
+            warpPerspectiveCard(originalImg, det.quad, 640, 0.63f);
         auto warpEnd = std::chrono::high_resolution_clock::now();
         totalWarpMs += std::chrono::duration_cast<std::chrono::microseconds>(
                            warpEnd - warpStart)
@@ -472,14 +476,16 @@ cv::Mat YoloSegmentation::visualize(const cv::Mat &img,
     if (det.quad.size() == 4) {
       std::vector<cv::Point> quadInt;
       for (const auto &p : det.quad) {
-        quadInt.push_back(cv::Point(static_cast<int>(p.x), static_cast<int>(p.y)));
+        quadInt.push_back(
+            cv::Point(static_cast<int>(p.x), static_cast<int>(p.y)));
       }
       cv::polylines(result, quadInt, true, cv::Scalar(0, 255, 0), 3);
     }
 
     // Draw bounding box (YELLOW for debugging)
     cv::rectangle(result, cv::Point(det.box.x1, det.box.y1),
-                  cv::Point(det.box.x2, det.box.y2), cv::Scalar(0, 255, 255), 1);
+                  cv::Point(det.box.x2, det.box.y2), cv::Scalar(0, 255, 255),
+                  1);
 
     // Draw confidence
     std::string label =
@@ -502,7 +508,8 @@ YoloSegmentation::orderQuad(const std::vector<cv::Point2f> &pts) {
   // TR has min(y-x), BL has max(y-x)
 
   if (pts.size() != 4) {
-    std::cerr << "Warning: orderQuad expects exactly 4 points, got " << pts.size() << std::endl;
+    std::cerr << "Warning: orderQuad expects exactly 4 points, got "
+              << pts.size() << std::endl;
     return pts;
   }
 
@@ -562,7 +569,8 @@ YoloSegmentation::orientQuad(const std::vector<cv::Point2f> &quad) {
   // Port of Python's _orient_quad_topmost_upright:
   // Find the edge with the smallest mid-y (topmost edge) and orient from there
 
-  const float TOPMOST_TIE_TOL = 2.0f; // tolerance for comparing edge mid-y values
+  const float TOPMOST_TIE_TOL =
+      2.0f; // tolerance for comparing edge mid-y values
 
   // Calculate midpoints of all 4 edges
   std::vector<cv::Point2f> mids(4);
@@ -653,7 +661,7 @@ std::vector<cv::Point2f> YoloSegmentation::quadFromMask(const cv::Mat &maskU8) {
   // Try polygon approximation - start with most likely epsilon values first
   float perimeter = cv::arcLength(hull, true);
   std::vector<float> epsilonFracs = {0.02f, 0.03f, 0.015f, 0.04f, 0.01f, 0.05f,
-                                     0.06f, 0.08f, 0.10f, 0.12f, 0.15f};
+                                     0.06f, 0.08f, 0.10f,  0.12f, 0.15f};
 
   for (float frac : epsilonFracs) {
     std::vector<cv::Point> approx;
@@ -731,7 +739,8 @@ SegmentationResult YoloSegmentation::segment(const cv::Mat &image) {
                            modelLoadEnd - modelLoadStart)
                            .count() /
                        1000.0;
-  std::cout << "⏱️ Model loading/cache lookup: " << modelLoadMs << "ms" << std::endl;
+  std::cout << "⏱️ Model loading/cache lookup: " << modelLoadMs << "ms"
+            << std::endl;
 
   // Run inference
   std::vector<int> inputShape = {1, 3, imgsz_, imgsz_};

@@ -29,34 +29,34 @@ set(CMAKE_SYSTEM_NAME ${ORIGINAL_CMAKE_SYSTEM_NAME})
 find_package(ObjectBoxGenerator 4.0.0 REQUIRED)
 
 # --- Source Directories ---
-set(CPP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cpp")
+set(COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/common/rncardscanner")
 
 # --- Core C++ library with ObjectBox ---
 add_library(
     cardscanner_cpp
     STATIC
-    "${CPP_DIR}/CardScanner.cpp"
-    "${CPP_DIR}/ObjectBoxDB.cpp"
-    "${CPP_DIR}/ObjectBoxTest.cpp"
-    "${CPP_DIR}/PathProvider.cpp"
-    "${CPP_DIR}/YoloSegmentation.cpp"
-    "${CPP_DIR}/CardRecognitionPipeline.cpp"
+    "${COMMON_DIR}/CardScanner.cpp"
+    "${COMMON_DIR}/ObjectBoxDB.cpp"
+    "${COMMON_DIR}/ObjectBoxTest.cpp"
+    "${COMMON_DIR}/PathProvider.cpp"
+    "${COMMON_DIR}/YoloSegmentation.cpp"
+    "${COMMON_DIR}/CardRecognitionPipeline.cpp"
 )
 
 add_obx_schema(
     TARGET cardscanner_cpp
-    SCHEMA_FILES "${CPP_DIR}/schema.fbs"
+    SCHEMA_FILES "${COMMON_DIR}/schema.fbs"
     INSOURCE
     CXX_STANDARD 14
 )
 
 # Manually add the include directory from the fetched objectbox-c source.
 # We cannot link against the 'objectbox' target because it's a binary compiled for the HOST architecture.
-# Binaries for target architectures are provided idependently by iOS and Android build systems. 
+# Binaries for target architectures are provided idependently by iOS and Android build systems.
 target_include_directories(
     cardscanner_cpp
     PUBLIC
-    "${CPP_DIR}"
+    "${COMMON_DIR}"
     "${CMAKE_CURRENT_BINARY_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/third-party/include"
     "${objectbox-c_SOURCE_DIR}/include"

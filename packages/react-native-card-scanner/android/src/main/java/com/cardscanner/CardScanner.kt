@@ -6,6 +6,7 @@ import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.common.annotations.FrameworkAPI
 import com.facebook.react.module.annotations.ReactModule
 import com.facebook.react.turbomodule.core.CallInvokerHolderImpl
+import android.util.Log
 
 @OptIn(FrameworkAPI::class)
 @ReactModule(name = CardScannerInstaller.NAME)
@@ -26,6 +27,7 @@ class CardScannerInstaller(reactContext: ReactApplicationContext) :
   init {
     try {
       System.loadLibrary("executorch")
+      Log.d("CardScannerInstaller", "Loaded library executorch")
       System.loadLibrary("react-native-card-scanner")
       val jsCallInvokerHolder = reactContext.jsCallInvokerHolder as CallInvokerHolderImpl
       mHybridData = initHybrid(reactContext.javaScriptContextHolder!!.get(), jsCallInvokerHolder)

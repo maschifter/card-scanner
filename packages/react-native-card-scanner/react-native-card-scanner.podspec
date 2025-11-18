@@ -69,7 +69,6 @@ Pod::Spec.new do |s|
 
   s.source_files = [
     "ios/CardScanner/**/*.{m,mm,h}",
-    "cpp/**/*.{cpp,c,h,hpp}",
     "common/**/*.{cpp,c,h,hpp}",
   ]
 
@@ -78,7 +77,6 @@ Pod::Spec.new do |s|
     "HEADER_SEARCH_PATHS" =>
       '"$(PODS_TARGET_SRCROOT)/ios" '+
       '"$(PODS_TARGET_SRCROOT)/common" '+
-      '"$(PODS_TARGET_SRCROOT)/cpp" '+
       '"$(PODS_TARGET_SRCROOT)/third-party/include" '+
       '"$(PODS_TARGET_SRCROOT)/build/ios/_deps/objectbox-c-src/include" '+
       '"$(PODS_TARGET_SRCROOT)/build/ios/_deps/objectbox-c-src/external/" '+

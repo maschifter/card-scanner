@@ -18,7 +18,6 @@ string(APPEND CMAKE_CXX_FLAGS " -DRCT_NEW_ARCH_ENABLED")
 set(ANDROID_CPP_DIR "${CMAKE_SOURCE_DIR}/src/main/cpp")
 set(JNI_LIBS_DIR "${CMAKE_SOURCE_DIR}/src/main/jniLibs")
 set(COMMON_CPP_DIR "${CMAKE_SOURCE_DIR}/../common")
-set(CPP_DIR "${CMAKE_SOURCE_DIR}/../cpp")
 set(LIBS_DIR "${CMAKE_SOURCE_DIR}/../third-party/android/libs")
 set(INCLUDE_DIR "${CMAKE_SOURCE_DIR}/../third-party/include")
 

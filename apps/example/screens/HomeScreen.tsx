@@ -1,12 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { autoLoadEmbeddings, checkDatabaseStatus, DatabaseStats } from '../utils/database';
+import { runYoloSegmentation } from 'react-native-card-scanner';
+import * as FileSystem from 'expo-file-system';
+import { Asset } from 'expo-asset';
+import { loadModels } from '../utils/models';
 
 export default function HomeScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState<DatabaseStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [autoLoadMessage, setAutoLoadMessage] = useState<string | null>(null);
+  const [isBenchmarkingYolo, setIsBenchmarkingYolo] = useState(false);
+  const [yoloResult, setYoloResult] = useState<string | null>(null);
 
   useEffect(() => {
     initializeDatabase();
@@ -347,5 +353,51 @@ const styles = StyleSheet.create({
   bold: {
     fontWeight: '600',
     color: '#333',
+  },
+  benchmarkCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  benchmarkDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+  },
+  benchmarkButton: {
+    backgroundColor: '#FF9800',
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  benchmarkButtonDisabled: {
+    backgroundColor: '#FFCC80',
+  },
+  benchmarkButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  benchmarkResult: {
+    marginTop: 16,
+    backgroundColor: '#FFF3E0',
+    padding: 16,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF9800',
+  },
+  benchmarkResultText: {
+    fontSize: 14,
+    color: '#E65100',
+    lineHeight: 20,
   },
 });

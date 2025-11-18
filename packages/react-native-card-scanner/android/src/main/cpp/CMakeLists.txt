@@ -1,5 +1,15 @@
 cmake_minimum_required(VERSION 3.14)
 
+# Set optimization flags for release builds
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG -ffast-math -funroll-loops")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -DNDEBUG -ffast-math -funroll-loops")
+
+# Enable NEON for ARM64
+if(ANDROID_ABI STREQUAL "arm64-v8a")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=armv8-a")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=armv8-a")
+endif()
+
 file(GLOB_RECURSE ANDROID_CPP_SOURCES CONFIGURE_DEPENDS "${ANDROID_CPP_DIR}/*.cpp")
 file(GLOB_RECURSE COMMON_CPP_SOURCES CONFIGURE_DEPENDS "${COMMON_CPP_DIR}/*.cpp" "${COMMON_CPP_DIR}/*.c")
 
@@ -13,7 +23,6 @@ target_include_directories(
   PUBLIC
   "${COMMON_CPP_DIR}"
   "${ANDROID_CPP_DIR}"
-  "${CPP_DIR}"
   "${INCLUDE_DIR}"
   "${REACT_NATIVE_DIR}/ReactCommon"
   "${REACT_NATIVE_DIR}/ReactAndroid/src/main/jni/react/turbomodule"
@@ -43,6 +52,16 @@ set_target_properties(executorch PROPERTIES
                       IMPORTED_LOCATION "${LIBS_DIR}/executorch/${ANDROID_ABI}/libexecutorch.so")
 
 
+# ------- OpenCV (common for all ABIs) -------
+set(OPENCV_LIBS
+  "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_core.a"
+  "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_imgproc.a"
+  "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_features2d.a"
+  "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_highgui.a"
+  "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_photo.a"
+  "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_video.a"
+)
+
 if(ANDROID_ABI STREQUAL "arm64-v8a")
   target_compile_definitions(react-native-card-scanner PRIVATE ARCH_ARM64)
 
@@ -55,26 +74,12 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
   # ------- cpuinfo -------
   add_library(cpuinfo SHARED IMPORTED)
 
-  # ------- OpenCV -------
-
-  set(OPENCV_LIBS
-    "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_core.a"
-    "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_features2d.a"
-    "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_highgui.a"
-    "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_imgproc.a"
-    "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_photo.a"
-    "${LIBS_DIR}/opencv/${ANDROID_ABI}/libopencv_video.a"
+  # OpenCV third-party libs for arm64
+  set(OPENCV_THIRD_PARTY_LIBS
+    "${LIBS_DIR}/opencv-third-party/${ANDROID_ABI}/libkleidicv_hal.a"
+    "${LIBS_DIR}/opencv-third-party/${ANDROID_ABI}/libkleidicv_thread.a"
+    "${LIBS_DIR}/opencv-third-party/${ANDROID_ABI}/libkleidicv.a"
   )
-
-  if(ANDROID_ABI STREQUAL "arm64-v8a")
-    set(OPENCV_THIRD_PARTY_LIBS
-      "${LIBS_DIR}/opencv-third-party/${ANDROID_ABI}/libkleidicv_hal.a"
-      "${LIBS_DIR}/opencv-third-party/${ANDROID_ABI}/libkleidicv_thread.a"
-      "${LIBS_DIR}/opencv-third-party/${ANDROID_ABI}/libkleidicv.a"
-    )
-  elseif(ANDROID_ABI STREQUAL "x86_64")
-    set(OPENCV_THIRD_PARTY_LIBS "")
-  endif()
 
   set_target_properties(cpuinfo PROPERTIES
                         IMPORTED_LOCATION "${LIBS_DIR}/cpuinfo/${ANDROID_ABI}/libcpuinfo.so")
@@ -82,6 +87,12 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     "pthreadpool"
     "cpuinfo"
   )
+elseif(ANDROID_ABI STREQUAL "x86_64")
+  set(OPENCV_THIRD_PARTY_LIBS "")
+  set(EXECUTORCH_LIBS "")
+else()
+  set(OPENCV_THIRD_PARTY_LIBS "")
+  set(EXECUTORCH_LIBS "")
 endif()
 
 target_link_libraries(
