@@ -720,6 +720,9 @@ SegmentationResult YoloSegmentation::segment(const cv::Mat &image) {
   cv::Mat img = image; // Use the provided image
   std::cout << "Processing image: " << img.cols << "x" << img.rows << std::endl;
 
+  // Disable OpenCV threading to prevent interference with ExecutorTorch
+  cv::setNumThreads(0);
+
   // Preprocess
   auto prepStart = std::chrono::high_resolution_clock::now();
   cv::Mat letterboxed;
