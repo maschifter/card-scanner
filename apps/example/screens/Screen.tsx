@@ -39,6 +39,8 @@ declare global {
   function runTests(): string;
 }
 
+const DEFAULT_GAME_NAME = 'mtg';
+
 // Helper function to ensure image is in JPEG format (not HEIC)
 async function ensureJPEG(uri: string): Promise<string> {
   // Check if the image is HEIC/HEIF format
@@ -116,11 +118,9 @@ export default function MainScreen() {
         'MB',
       );
 
-      const dbPath = `${documentDirectory}objectbox-cards`;
-      console.log('Database path:', dbPath);
       console.log('Loading embeddings from:', jsonUri);
 
-      const loadResult = loadCardEmbeddings(dbPath, jsonUri);
+      const loadResult = loadCardEmbeddings(DEFAULT_GAME_NAME, jsonUri);
       setLoadResult(loadResult);
       console.log('✅ Load result:', loadResult);
     } catch (err) {
@@ -140,10 +140,13 @@ export default function MainScreen() {
         return;
       }
 
-      const dbPath = `${documentDirectory}objectbox-cards`;
       console.log('Searching for similar cards...');
       console.log(result.embedding);
-      const results = searchSimilarCards(dbPath, result.embedding, 10);
+      const results = searchSimilarCards(
+        DEFAULT_GAME_NAME,
+        result.embedding,
+        10,
+      );
       setSearchResults(results);
       console.log('Found', results.length, 'similar cards');
     } catch (err) {
@@ -370,19 +373,17 @@ export default function MainScreen() {
         embeddingModelPath = embeddingCachePath;
       }
 
-      const dbPath = `${documentDirectory}objectbox-cards`;
-
       console.log('🚀 Running complete pipeline...');
       console.log('YOLO model:', yoloModelPath);
       console.log('Embedding model:', embeddingModelPath);
-      console.log('Database:', dbPath);
+      console.log('Database game:', DEFAULT_GAME_NAME);
 
       // Run complete pipeline
       const pipelineResult = recognizeCards(
         imageUri,
         yoloModelPath,
         embeddingModelPath,
-        dbPath,
+        DEFAULT_GAME_NAME,
         0.5, // yoloConf
         0.0, // yoloIou
         3, // topK
@@ -407,13 +408,13 @@ export default function MainScreen() {
     downloadError,
     downloadSuccess,
     databases,
-  } = useDatabaseManager(documentDirectory || '');
+  } = useDatabaseManager('');
 
   const handleDownloadAndSwap = async () => {
     setError(null);
     setSwapResult(null);
-    const dbName = 'lorocana';
-    const downloadUrl = 'file:///Users/bartlomiejobrochta/Downloads/data.mdb';
+    const dbName = 'mtg';
+    const downloadUrl = 'http://localhost:3000/data.mdb';
     const success = await downloadAndSwap(dbName, downloadUrl);
     if (success) {
       setSwapResult(downloadSuccess);
@@ -423,10 +424,7 @@ export default function MainScreen() {
   };
 
   return (
-    <ScrollView
-      style={styles.scrollView}
-      contentContainerStyle={styles.container}
-    >
+    <ScrollView style={styles.scrollView} contentContai={styles.container}>
       <Text style={styles.title}>Card Scanner Example</Text>
       <Text style={styles.subtitle}>TCG Card Recognition with Embeddings</Text>
 

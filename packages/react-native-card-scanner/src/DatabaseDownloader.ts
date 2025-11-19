@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as RNFS from 'react-native-fs';
-import { swapDatabase } from './index';
+import { swapDatabase, DatabaseInfo } from './index';
 
 export const downloadDatabase = async (
   url: string,
@@ -36,44 +36,27 @@ export const downloadDatabase = async (
   return tmpPath;
 };
 
-export interface DatabaseInfo {
-  gameName: string;
-  path: string;
-}
-
 // This function now takes dbBasePath as an argument
-export const listDatabases = async (
-  dbBasePath: string,
-): Promise<DatabaseInfo[]> => {
-  console.log(`[listDatabases] Called with dbBasePath: ${dbBasePath}`);
-  if (!dbBasePath) {
-    console.log(`[listDatabases] dbBasePath is empty, returning empty array.`);
-    return [];
-  }
+export const listDatabases = async (): Promise<DatabaseInfo[]> => {
+  console.log(`[listDatabases] Calling native listAvailableGames...`);
+
   try {
-    // Use RNFS to list directories if possible, otherwise this needs to be passed from native side or consuming app
-    // For now, we'll assume RNFS can list directories in the base path
-    const items = await RNFS.readDir(dbBasePath);
-    const databases: DatabaseInfo[] = [];
-    for (const item of items) {
-      if (item.isDirectory()) {
-        // Only consider directories as potential databases
-        console.log(
-          `[listDatabases] Found database directory: ${item.name} at path: ${item.path}`,
-        );
-        databases.push({ gameName: item.name, path: item.path });
-      }
-    }
+    const databases: DatabaseInfo[] = await listAvailableGames();
+
     console.log(`[listDatabases] Found ${databases.length} databases.`);
     return databases;
   } catch (error) {
-    console.error('[listDatabases] Error listing databases:', error);
+    console.error(
+      '[listDatabases] Error listing databases from native core:',
+      error,
+    );
+    // If the native call fails (e.g., JSI module not loaded), return empty.
     return [];
   }
 };
 
 // useDatabaseManager now accepts dbBasePath as a parameter
-export const useDatabaseManager = (dbBasePath: string) => {
+export const useDatabaseManager = () => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
@@ -81,66 +64,60 @@ export const useDatabaseManager = (dbBasePath: string) => {
 
   const refreshDatabases = useCallback(async () => {
     console.log(
-      `[useDatabaseManager] Refreshing databases for dbBasePath: ${dbBasePath}`,
+      `[useDatabaseManager] Refreshing databases using native core...`,
     );
-    const dbList = await listDatabases(dbBasePath);
+    const dbList = await listDatabases();
     setDatabases(dbList);
-  }, [dbBasePath]);
+  }, []);
+
+  const downloadAndSwap = useCallback(
+    async (dbName: string, downloadUrl: string) => {
+      setIsDownloading(true);
+      setDownloadError(null);
+      setDownloadSuccess(null);
+      try {
+        console.log(
+          `[downloadAndSwap] Starting download and swap for dbName: ${dbName}, from URL: ${downloadUrl}`,
+        );
+        const downloadedPath = await downloadDatabase(downloadUrl, dbName);
+        console.log(
+          `[downloadAndSwap] Database downloaded to temporary path: ${downloadedPath}`,
+        );
+
+        const targetPath = `${dbName}`;
+        console.log(
+          `[downloadAndSwap] Calling native swapDatabase with sourcePath: ${downloadedPath}, gameName: ${targetPath}`,
+        );
+
+        const success = swapDatabase(downloadedPath, targetPath);
+        if (success) {
+          setDownloadSuccess(`Successfully swapped database for ${dbName}`);
+          console.log(
+            `[downloadAndSwap] Successfully swapped database for ${dbName}`,
+          );
+          await refreshDatabases();
+          return true;
+        } else {
+          throw new Error(`Failed to swap database for ${dbName}`);
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        setDownloadError(`Failed to download or swap database: ${errorMsg}`);
+        console.error(
+          '[downloadAndSwap] Error downloading or swapping database:',
+          errorMsg,
+        );
+        return false;
+      } finally {
+        setIsDownloading(false);
+      }
+    },
+    [refreshDatabases],
+  );
 
   useEffect(() => {
-    if (dbBasePath) {
-      console.log(
-        `[useDatabaseManager] Setting native database base path to: ${dbBasePath}`,
-      );
-      refreshDatabases();
-    } else {
-      console.log(
-        `[useDatabaseManager] dbBasePath is empty, skipping setDatabaseBasePath and refresh.`,
-      );
-    }
-  }, [dbBasePath, refreshDatabases]);
-
-  const downloadAndSwap = async (dbName: string, downloadUrl: string) => {
-    setIsDownloading(true);
-    setDownloadError(null);
-    setDownloadSuccess(null);
-    try {
-      console.log(
-        `[downloadAndSwap] Starting download and swap for dbName: ${dbName}, from URL: ${downloadUrl}`,
-      );
-      const downloadedPath = await downloadDatabase(downloadUrl, dbName);
-      console.log(
-        `[downloadAndSwap] Database downloaded to temporary path: ${downloadedPath}`,
-      );
-
-      const targetPath = `${dbName}`;
-      console.log(
-        `[downloadAndSwap] Calling native swapDatabase with sourcePath: ${downloadedPath}, gameName (targetSuffix): ${targetPath}`,
-      );
-
-      const success = swapDatabase(downloadedPath, targetPath);
-      if (success) {
-        setDownloadSuccess(`Successfully swapped database for ${dbName}`);
-        console.log(
-          `[downloadAndSwap] Successfully swapped database for ${dbName}`,
-        );
-        refreshDatabases();
-        return true;
-      } else {
-        throw new new Error(`Failed to swap database for ${dbName}`)();
-      }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      setDownloadError(`Failed to download or swap database: ${errorMsg}`);
-      console.error(
-        '[downloadAndSwap] Error downloading or swapping database:',
-        errorMsg,
-      );
-      return false;
-    } finally {
-      setIsDownloading(false);
-    }
-  };
+    refreshDatabases();
+  }, [refreshDatabases]);
 
   return {
     downloadAndSwap,

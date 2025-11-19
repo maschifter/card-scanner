@@ -1,16 +1,10 @@
 #include "RnCardScannerInstaller.h"
 #include "CardRecognitionPipeline.h"
 #include "CardScanner.h"
-<<<<<<< HEAD
-#include "ObjectBoxDB.h"
-#include "ObjectBoxTest.h"
-    =======
 #include "DatabaseManager.h"
-#include "DatabaseSwapper.h"
 #include "ObjectBoxDB.h"
 #include "ObjectBoxTest.h"
 #include "PathProvider.h"
-    >>>>>>> f559c73 ([FEAT] Laid foundation for DB downloader)
 #include "YoloSegmentation.h"
 
 #include <iostream>
@@ -23,10 +17,9 @@
 
     namespace rncardscanner {
 
-  void CardScannerInstaller::injectJSIBindings(
-      jsi::Runtime * jsiRuntime,
-      std::shared_ptr<react::CallInvoker> callInvoker) {
-    std::cout << "Injecting JSI bindings for CardScanner" << std::endl;
+void CardScannerInstaller::injectJSIBindings(
+    jsi::Runtime *jsiRuntime, std::shared_ptr<react::CallInvoker> callInvoker) {
+  std::cout << "Injecting JSI bindings for CardScanner" << std::endl;
 
     // Create the 'runInference' host function
     auto runInferenceFunc = jsi::Function::createFromHostFunction(
@@ -153,92 +146,91 @@
     jsiRuntime->global().setProperty(*jsiRuntime, "runTests",
                                      std::move(runTestsFunc));
 
-    // Create the 'loadCardEmbeddings' host function
-    auto loadEmbeddingsFunc = jsi::Function::createFromHostFunction(
-        *jsiRuntime,
-        jsi::PropNameID::forAscii(*jsiRuntime, "loadCardEmbeddings"), 2,
-        [](jsi::Runtime &runtime, const jsi::Value &thisValue,
-           const jsi::Value *args, size_t count) -> jsi::Value {
-          if (count < 2 || !args[0].isString() || !args[1].isString()) {
-            throw jsi::JSError(runtime, "loadCardEmbeddings expects two string "
-                                        "arguments (dbPath, jsonPath)");
+  // Create the 'loadCardEmbeddings' host function
+  auto loadEmbeddingsFunc = jsi::Function::createFromHostFunction(
+      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "loadCardEmbeddings"),
+      2,
+      [](jsi::Runtime &runtime, const jsi::Value &thisValue,
+         const jsi::Value *args, size_t count) -> jsi::Value {
+        if (count < 2 || !args[0].isString() || !args[1].isString()) {
+          throw jsi::JSError(runtime, "loadCardEmbeddings expects two string "
+                                      "arguments (dbPath, jsonPath)");
+        }
+
+        std::string dbPath = args[0].asString(runtime).utf8(runtime);
+        std::string jsonPath = args[1].asString(runtime).utf8(runtime);
+        std::cout << "[RnCardScannerInstaller] loadCardEmbeddings - dbPath: "
+                  << dbPath << ", jsonPath: " << jsonPath << std::endl;
+
+        // Strip "file://" prefix if present
+        const std::string filePrefix = "file://";
+        if (dbPath.find(filePrefix) == 0) {
+          dbPath = dbPath.substr(filePrefix.length());
+        }
+        if (jsonPath.find(filePrefix) == 0) {
+          jsonPath = jsonPath.substr(filePrefix.length());
+        }
+
+        try {
+          // Create ObjectBoxDB instance
+          ObjectBoxDB db(dbPath);
+          int count = db.load_embeddings_from_json(jsonPath);
+
+          // Return result object with count
+          jsi::Object result(runtime);
+          result.setProperty(runtime, "loaded", jsi::Value(count));
+          result.setProperty(
+              runtime, "totalCards",
+              jsi::Value(static_cast<double>(db.get_card_count())));
+
+          return result;
+        } catch (const std::exception &e) {
+          throw jsi::JSError(
+              runtime, std::string("Failed to load embeddings: ") + e.what());
+        }
+      });
+
+  // Install the function on the global object
+  jsiRuntime->global().setProperty(*jsiRuntime, "loadCardEmbeddings",
+                                   std::move(loadEmbeddingsFunc));
+
+  // Create the 'searchSimilarCards' host function
+  auto searchSimilarFunc = jsi::Function::createFromHostFunction(
+      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "searchSimilarCards"),
+      3,
+      [](jsi::Runtime &runtime, const jsi::Value &thisValue,
+         const jsi::Value *args, size_t count) -> jsi::Value {
+        if (count < 3 || !args[0].isString() || !args[1].isObject() ||
+            !args[2].isNumber()) {
+          throw jsi::JSError(runtime,
+                             "searchSimilarCards expects (dbPath: string, "
+                             "embedding: number[], limit: number)");
+        }
+
+        std::string dbPath = args[0].asString(runtime).utf8(runtime);
+        jsi::Array embeddingArray = args[1].asObject(runtime).asArray(runtime);
+        int limit = static_cast<int>(args[2].asNumber());
+        std::cout << "[RnCardScannerInstaller] searchSimilarCards - dbPath: "
+                  << dbPath << ", limit: " << limit << std::endl;
+
+        // Strip "file://" prefix if present
+        const std::string filePrefix = "file://";
+        if (dbPath.find(filePrefix) == 0) {
+          dbPath = dbPath.substr(filePrefix.length());
+        }
+
+        try {
+          // Convert JSI array to C++ vector
+          std::vector<float> queryEmbedding;
+          queryEmbedding.reserve(embeddingArray.size(runtime));
+          for (size_t i = 0; i < embeddingArray.size(runtime); i++) {
+            queryEmbedding.push_back(static_cast<float>(
+                embeddingArray.getValueAtIndex(runtime, i).asNumber()));
           }
 
-          std::string dbPath = args[0].asString(runtime).utf8(runtime);
-          std::string jsonPath = args[1].asString(runtime).utf8(runtime);
-          std::cout << "[RnCardScannerInstaller] loadCardEmbeddings - dbPath: "
-                    << dbPath << ", jsonPath: " << jsonPath << std::endl;
-
-          // Strip "file://" prefix if present
-          const std::string filePrefix = "file://";
-          if (dbPath.find(filePrefix) == 0) {
-            dbPath = dbPath.substr(filePrefix.length());
-          }
-          if (jsonPath.find(filePrefix) == 0) {
-            jsonPath = jsonPath.substr(filePrefix.length());
-          }
-
-          try {
-            // Create ObjectBoxDB instance
-            ObjectBoxDB db(dbPath);
-            int count = db.load_embeddings_from_json(jsonPath);
-
-            // Return result object with count
-            jsi::Object result(runtime);
-            result.setProperty(runtime, "loaded", jsi::Value(count));
-            result.setProperty(
-                runtime, "totalCards",
-                jsi::Value(static_cast<double>(db.get_card_count())));
-
-            return result;
-          } catch (const std::exception &e) {
-            throw jsi::JSError(
-                runtime, std::string("Failed to load embeddings: ") + e.what());
-          }
-        });
-
-    // Install the function on the global object
-    jsiRuntime->global().setProperty(*jsiRuntime, "loadCardEmbeddings",
-                                     std::move(loadEmbeddingsFunc));
-
-    // Create the 'searchSimilarCards' host function
-    auto searchSimilarFunc = jsi::Function::createFromHostFunction(
-        *jsiRuntime,
-        jsi::PropNameID::forAscii(*jsiRuntime, "searchSimilarCards"), 3,
-        [](jsi::Runtime &runtime, const jsi::Value &thisValue,
-           const jsi::Value *args, size_t count) -> jsi::Value {
-          if (count < 3 || !args[0].isString() || !args[1].isObject() ||
-              !args[2].isNumber()) {
-            throw jsi::JSError(runtime,
-                               "searchSimilarCards expects (dbPath: string, "
-                               "embedding: number[], limit: number)");
-          }
-
-          std::string dbPath = args[0].asString(runtime).utf8(runtime);
-          jsi::Array embeddingArray =
-              args[1].asObject(runtime).asArray(runtime);
-          int limit = static_cast<int>(args[2].asNumber());
-          std::cout << "[RnCardScannerInstaller] searchSimilarCards - dbPath: "
-                    << dbPath << ", limit: " << limit << std::endl;
-
-          // Strip "file://" prefix if present
-          const std::string filePrefix = "file://";
-          if (dbPath.find(filePrefix) == 0) {
-            dbPath = dbPath.substr(filePrefix.length());
-          }
-
-          try {
-            // Convert JSI array to C++ vector
-            std::vector<float> queryEmbedding;
-            queryEmbedding.reserve(embeddingArray.size(runtime));
-            for (size_t i = 0; i < embeddingArray.size(runtime); i++) {
-              queryEmbedding.push_back(static_cast<float>(
-                  embeddingArray.getValueAtIndex(runtime, i).asNumber()));
-            }
-
-            // Create ObjectBoxDB instance and search
-            ObjectBoxDB db(dbPath);
-            auto results = db.search_similar_cards(queryEmbedding, limit);
+          // Create ObjectBoxDB instance and search
+          ObjectBoxDB db(dbPath);
+          auto results = db.search_similar_cards(queryEmbedding, limit);
 
             // Convert results to JSI array
             jsi::Array resultsArray(runtime, results.size());
@@ -400,29 +392,28 @@
     jsiRuntime->global().setProperty(*jsiRuntime, "runYoloSegmentation",
                                      std::move(yoloSegmentFunc));
 
-    // Create the 'recognizeCards' host function (full pipeline)
-    auto recognizeCardsFunc = jsi::Function::createFromHostFunction(
-        *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "recognizeCards"),
-        6,
-        [](jsi::Runtime &runtime, const jsi::Value &thisValue,
-           const jsi::Value *args, size_t count) -> jsi::Value {
-          if (count < 4 || !args[0].isString() || !args[1].isString() ||
-              !args[2].isString() || !args[3].isString()) {
-            throw jsi::JSError(runtime,
-                               "recognizeCards expects at least (imagePath: "
-                               "string, yoloModelPath: string, "
-                               "embeddingModelPath: string, dbPath: string)");
-          }
+  // Create the 'recognizeCards' host function (full pipeline)
+  auto recognizeCardsFunc = jsi::Function::createFromHostFunction(
+      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "recognizeCards"), 6,
+      [](jsi::Runtime &runtime, const jsi::Value &thisValue,
+         const jsi::Value *args, size_t count) -> jsi::Value {
+        if (count < 4 || !args[0].isString() || !args[1].isString() ||
+            !args[2].isString() || !args[3].isString()) {
+          throw jsi::JSError(runtime,
+                             "recognizeCards expects at least (imagePath: "
+                             "string, yoloModelPath: string, "
+                             "embeddingModelPath: string, dbPath: string)");
+        }
 
-          std::string imagePath = args[0].asString(runtime).utf8(runtime);
-          std::string yoloModelPath = args[1].asString(runtime).utf8(runtime);
-          std::string embeddingModelPath =
-              args[2].asString(runtime).utf8(runtime);
-          std::string dbPath = "" + pathprovider::get_db_path() + "lorocana/";
-          std::cout << "[RnCardScannerInstaller] recognizeCards - imagePath: "
-                    << imagePath << ", yoloModelPath: " << yoloModelPath
-                    << ", embeddingModelPath: " << embeddingModelPath
-                    << ", dbPath: " << dbPath << std::endl;
+        std::string imagePath = args[0].asString(runtime).utf8(runtime);
+        std::string yoloModelPath = args[1].asString(runtime).utf8(runtime);
+        std::string embeddingModelPath =
+            args[2].asString(runtime).utf8(runtime);
+        std::string dbPath = "" + pathprovider::get_db_path() + "lorocana/";
+        std::cout << "[RnCardScannerInstaller] recognizeCards - imagePath: "
+                  << imagePath << ", yoloModelPath: " << yoloModelPath
+                  << ", embeddingModelPath: " << embeddingModelPath
+                  << ", dbPath: " << dbPath << std::endl;
 
           // Optional parameters with defaults
           float yoloConf = (count > 4 && args[4].isNumber())
@@ -435,11 +426,10 @@
                          ? static_cast<int>(args[6].asNumber())
                          : 10;
 
-          try {
-            auto pipelineResult =
-                cardscanner::CardRecognitionPipeline::recognize(
-                    imagePath, yoloModelPath, embeddingModelPath, dbPath,
-                    yoloConf, yoloIou, topK);
+        try {
+          auto pipelineResult = cardscanner::CardRecognitionPipeline::recognize(
+              imagePath, yoloModelPath, embeddingModelPath, dbPath, yoloConf,
+              yoloIou, topK);
 
             // Create result object
             jsi::Object result(runtime);
@@ -532,71 +522,35 @@
     jsiRuntime->global().setProperty(*jsiRuntime, "recognizeCards",
                                      std::move(recognizeCardsFunc));
 
-    // Create the 'getCardCount' host function
-    auto getCardCountFunc = jsi::Function::createFromHostFunction(
-        *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "getCardCount"), 1,
-        [](jsi::Runtime &runtime, const jsi::Value &thisValue,
-           const jsi::Value *args, size_t count) -> jsi::Value {
-          if (count < 1 || !args[0].isString()) {
-            throw jsi::JSError(
-                runtime, "getCardCount expects one string argument (dbPath)");
-          }
+  // Create the 'swapDatabase' host function
+  auto swapDatabaseFunc = jsi::Function::createFromHostFunction(
+      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "swapDatabase"), 2,
+      [](jsi::Runtime &runtime, const jsi::Value &thisValue,
+         const jsi::Value *args, size_t count) -> jsi::Value {
+        if (count != 2 || !args[0].isString() || !args[1].isString()) {
+          throw jsi::JSError(runtime, "swapDatabase expects two string "
+                                      "arguments (sourcePath, gameName)");
+        }
 
-          std::string dbPath = args[0].asString(runtime).utf8(runtime);
+        std::string sourcePath = args[0].asString(runtime).utf8(runtime);
+        std::string gameName = args[1].asString(runtime).utf8(runtime);
+        std::string targetSuffix = gameName + "/data.mdb";
+        std::cout << "[RnCardScannerInstaller] swapDatabase - sourcePath: "
+                  << sourcePath << ", gameName: " << gameName
+                  << ", targetSuffix: " << targetSuffix << std::endl;
 
-          // Strip "file://" prefix if present
-          const std::string filePrefix = "file://";
-          if (dbPath.find(filePrefix) == 0) {
-            dbPath = dbPath.substr(filePrefix.length());
-          }
+        try {
+          bool success =
+              cardscanner::DatabaseSwapper::swap(sourcePath, targetSuffix);
+          return jsi::Value(success);
+        } catch (const std::exception &e) {
+          throw jsi::JSError(runtime,
+                             std::string("Database swap failed: ") + e.what());
+        }
+      });
 
-          try {
-            // Create ObjectBoxDB instance and get count
-            ObjectBoxDB db(dbPath);
-            uint64_t count = db.get_card_count();
-
-            return jsi::Value(static_cast<double>(count));
-          } catch (const std::exception &e) {
-            throw jsi::JSError(
-                runtime, std::string("Failed to get card count: ") + e.what());
-          }
-        });
-
-    // Install the function on the global object
-    jsiRuntime->global().setProperty(*jsiRuntime, "getCardCount",
-                                     std::move(getCardCountFunc));
-
-    threads::utils::unsafeSetupThreadPool();
-    threads::GlobalThreadPool::initialize();
-    // Create the 'swapDatabase' host function
-    auto swapDatabaseFunc = jsi::Function::createFromHostFunction(
-        *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "swapDatabase"), 2,
-        [](jsi::Runtime &runtime, const jsi::Value &thisValue,
-           const jsi::Value *args, size_t count) -> jsi::Value {
-          if (count != 2 || !args[0].isString() || !args[1].isString()) {
-            throw jsi::JSError(runtime, "swapDatabase expects two string "
-                                        "arguments (sourcePath, gameName)");
-          }
-
-          std::string sourcePath = args[0].asString(runtime).utf8(runtime);
-          std::string gameName = args[1].asString(runtime).utf8(runtime);
-          std::string targetSuffix = gameName + "/data.mdb";
-          std::cout << "[RnCardScannerInstaller] swapDatabase - sourcePath: "
-                    << sourcePath << ", gameName: " << gameName
-                    << ", targetSuffix: " << targetSuffix << std::endl;
-
-          try {
-            bool success =
-                cardscanner::DatabaseSwapper::swap(sourcePath, targetSuffix);
-            return jsi::Value(success);
-          } catch (const std::exception &e) {
-            throw jsi::JSError(runtime, std::string("Database swap failed: ") +
-                                            e.what());
-          }
-        });
-
-    jsiRuntime->global().setProperty(*jsiRuntime, "swapDatabase",
-                                     std::move(swapDatabaseFunc));
-  }
+  jsiRuntime->global().setProperty(*jsiRuntime, "swapDatabase",
+                                   std::move(swapDatabaseFunc));
+}
 
 } // namespace rncardscanner

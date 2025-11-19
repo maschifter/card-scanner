@@ -1,5 +1,6 @@
 #include "CardRecognitionPipeline.h"
 #include "CardScanner.h"
+#include "DatabaseManager.h"
 #include "YoloSegmentation.h"
 #include <chrono>
 #include <iostream>
@@ -8,7 +9,7 @@
 namespace cardscanner {
 
 cv::Mat CardRecognitionPipeline::cropCard(const cv::Mat &img, float x1,
-                                           float y1, float x2, float y2) {
+                                          float y1, float x2, float y2) {
   // Clamp coordinates to image bounds
   int ix1 = std::max(0, static_cast<int>(x1));
   int iy1 = std::max(0, static_cast<int>(y1));
@@ -24,12 +25,10 @@ cv::Mat CardRecognitionPipeline::cropCard(const cv::Mat &img, float x1,
   return img(roi).clone();
 }
 
-PipelineResult
-CardRecognitionPipeline::recognize(const std::string &imagePath,
-                                   const std::string &yoloModelPath,
-                                   const std::string &embeddingModelPath,
-                                   const std::string &dbPath, float yoloConf,
-                                   float yoloIou, int topK) {
+PipelineResult CardRecognitionPipeline::recognize(
+    const std::string &imagePath, const std::string &yoloModelPath,
+    const std::string &embeddingModelPath, const std::string &gameName,
+    float yoloConf, float yoloIou, int topK) {
 
   auto pipelineStart = std::chrono::high_resolution_clock::now();
 
@@ -47,25 +46,36 @@ CardRecognitionPipeline::recognize(const std::string &imagePath,
   auto imgLoadStart = std::chrono::high_resolution_clock::now();
   cv::Mat img = cv::imread(cleanImagePath);
   auto imgLoadEnd = std::chrono::high_resolution_clock::now();
-  double imgLoadMs = std::chrono::duration_cast<std::chrono::microseconds>(imgLoadEnd - imgLoadStart).count() / 1000.0;
+  double imgLoadMs = std::chrono::duration_cast<std::chrono::microseconds>(
+                         imgLoadEnd - imgLoadStart)
+                         .count() /
+                     1000.0;
 
   if (img.empty()) {
     throw std::runtime_error("Failed to load image: " + cleanImagePath);
   }
 
-  std::cout << "📷 Loaded image: " << img.cols << "x" << img.rows << " in " << imgLoadMs << "ms" << std::endl;
+  std::cout << "📷 Loaded image: " << img.cols << "x" << img.rows << " in "
+            << imgLoadMs << "ms" << std::endl;
 
   // Step 1: Run YOLO segmentation to detect cards (using the loaded image)
   auto yoloStart = std::chrono::high_resolution_clock::now();
   YoloSegmentation yolo(yoloModelPath, yoloConf, yoloIou, 384);
   auto yoloResult = yolo.segment(img); // Pass cv::Mat instead of path!
   auto yoloEnd = std::chrono::high_resolution_clock::now();
-  double yoloTotalMs = std::chrono::duration_cast<std::chrono::microseconds>(yoloEnd - yoloStart).count() / 1000.0;
+  double yoloTotalMs =
+      std::chrono::duration_cast<std::chrono::microseconds>(yoloEnd - yoloStart)
+          .count() /
+      1000.0;
 
-  std::cout << "✅ YOLO detected " << yoloResult.detections.size() << " cards" << std::endl;
-  std::cout << "   - YOLO preprocessing: " << yoloResult.preprocessingTimeMs << "ms" << std::endl;
-  std::cout << "   - YOLO inference: " << yoloResult.inferenceTimeMs << "ms" << std::endl;
-  std::cout << "   - YOLO postprocessing: " << yoloResult.postprocessingTimeMs << "ms" << std::endl;
+  std::cout << "✅ YOLO detected " << yoloResult.detections.size() << " cards"
+            << std::endl;
+  std::cout << "   - YOLO preprocessing: " << yoloResult.preprocessingTimeMs
+            << "ms" << std::endl;
+  std::cout << "   - YOLO inference: " << yoloResult.inferenceTimeMs << "ms"
+            << std::endl;
+  std::cout << "   - YOLO postprocessing: " << yoloResult.postprocessingTimeMs
+            << "ms" << std::endl;
   std::cout << "   - YOLO total: " << yoloTotalMs << "ms" << std::endl;
 
   // Step 2: For each detected card, extract embedding and search database
@@ -78,29 +88,34 @@ CardRecognitionPipeline::recognize(const std::string &imagePath,
 
   // Get temp directory
   std::string tempDir;
-  #ifdef __APPLE__
-    #include <TargetConditionals.h>
-    #if TARGET_OS_IPHONE
-      tempDir = std::string(getenv("TMPDIR") ?: "/tmp/");
-    #else
-      tempDir = "/tmp/";
-    #endif
-  #else
-    tempDir = "/data/local/tmp/";
-  #endif
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+  tempDir = std::string(getenv("TMPDIR") ?: "/tmp/");
+#else
+  tempDir = "/tmp/";
+#endif
+#else
+  tempDir = "/data/local/tmp/";
+#endif
 
   std::cout << "Using temp directory: " << tempDir << std::endl;
 
   // Open database once for all searches
   auto dbStart = std::chrono::high_resolution_clock::now();
-  std::string cleanDbPath = dbPath;
-  if (cleanDbPath.find(filePrefix) == 0) {
-    cleanDbPath = cleanDbPath.substr(filePrefix.length());
+  auto &dbManager = DatabaseManager::getInstance();
+  ObjectBoxDB *db = dbManager.getOrCreateStore(gameName);
+  if (!db) {
+    throw std::runtime_error("Database store could not be opened for game: " +
+                             gameName);
   }
-  ObjectBoxDB db(cleanDbPath);
   auto dbEnd = std::chrono::high_resolution_clock::now();
-  double dbOpenMs = std::chrono::duration_cast<std::chrono::microseconds>(dbEnd - dbStart).count() / 1000.0;
-  std::cout << "📦 Database opened in " << dbOpenMs << "ms" << std::endl;
+  double dbOpenMs =
+      std::chrono::duration_cast<std::chrono::microseconds>(dbEnd - dbStart)
+          .count() /
+      1000.0;
+  std::cout << "📦 Database handle retrieved in " << dbOpenMs << "ms for game '"
+            << gameName << "'" << std::endl;
   std::cout << std::endl;
 
   for (size_t i = 0; i < yoloResult.detections.size(); i++) {
@@ -108,7 +123,8 @@ CardRecognitionPipeline::recognize(const std::string &imagePath,
     auto cardStart = std::chrono::high_resolution_clock::now();
 
     std::cout << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" << std::endl;
-    std::cout << "📇 Card " << (i + 1) << "/" << yoloResult.detections.size() << std::endl;
+    std::cout << "📇 Card " << (i + 1) << "/" << yoloResult.detections.size()
+              << std::endl;
 
     try {
       cv::Mat cardImg;
@@ -121,12 +137,15 @@ CardRecognitionPipeline::recognize(const std::string &imagePath,
                   << cardImg.rows << ")" << std::endl;
       } else {
         cardImg = cropCard(img, detection.box.x1, detection.box.y1,
-                          detection.box.x2, detection.box.y2);
+                           detection.box.x2, detection.box.y2);
         std::cout << "   ⚠ Using bbox crop (dewarping failed)" << std::endl;
       }
 
       auto prepEnd = std::chrono::high_resolution_clock::now();
-      double prepMs = std::chrono::duration_cast<std::chrono::microseconds>(prepEnd - prepStart).count() / 1000.0;
+      double prepMs = std::chrono::duration_cast<std::chrono::microseconds>(
+                          prepEnd - prepStart)
+                          .count() /
+                      1000.0;
 
       // Extract embedding from card (directly from cv::Mat, no disk I/O!)
       auto embeddingStart = std::chrono::high_resolution_clock::now();
@@ -136,7 +155,7 @@ CardRecognitionPipeline::recognize(const std::string &imagePath,
 
       double embeddingTimeMs =
           std::chrono::duration_cast<std::chrono::microseconds>(embeddingEnd -
-                                                                 embeddingStart)
+                                                                embeddingStart)
               .count() /
           1000.0;
 
@@ -146,25 +165,33 @@ CardRecognitionPipeline::recognize(const std::string &imagePath,
 
       // Search for similar cards in database
       auto searchStart = std::chrono::high_resolution_clock::now();
-      auto matches = db.search_similar_cards(inferenceResult.embedding, topK);
+      auto matches = db->search_similar_cards(inferenceResult.embedding, topK);
       auto searchEnd = std::chrono::high_resolution_clock::now();
-      double searchMs = std::chrono::duration_cast<std::chrono::microseconds>(searchEnd - searchStart).count() / 1000.0;
+      double searchMs = std::chrono::duration_cast<std::chrono::microseconds>(
+                            searchEnd - searchStart)
+                            .count() /
+                        1000.0;
 
       totalDatabaseSearchMs += searchMs;
 
       auto cardEnd = std::chrono::high_resolution_clock::now();
-      double cardTotalMs = std::chrono::duration_cast<std::chrono::microseconds>(cardEnd - cardStart).count() / 1000.0;
+      double cardTotalMs =
+          std::chrono::duration_cast<std::chrono::microseconds>(cardEnd -
+                                                                cardStart)
+              .count() /
+          1000.0;
 
       std::cout << "   ⏱️  Timings:" << std::endl;
       std::cout << "      - Image prep: " << prepMs << "ms" << std::endl;
-      std::cout << "      - Embedding extraction: " << embeddingTimeMs << "ms" << std::endl;
+      std::cout << "      - Embedding extraction: " << embeddingTimeMs << "ms"
+                << std::endl;
       std::cout << "      - Database search: " << searchMs << "ms" << std::endl;
       std::cout << "      - Card total: " << cardTotalMs << "ms" << std::endl;
 
       std::cout << "   🎯 Found " << matches.size() << " matches";
       if (!matches.empty()) {
-        std::cout << " - Top: " << matches[0].name
-                  << " (" << (matches[0].score * 100.0) << "%)" << std::endl;
+        std::cout << " - Top: " << matches[0].name << " ("
+                  << (matches[0].score * 100.0) << "%)" << std::endl;
       } else {
         std::cout << std::endl;
       }
@@ -189,11 +216,10 @@ CardRecognitionPipeline::recognize(const std::string &imagePath,
   }
 
   auto pipelineEnd = std::chrono::high_resolution_clock::now();
-  double totalTimeMs =
-      std::chrono::duration_cast<std::chrono::microseconds>(pipelineEnd -
-                                                             pipelineStart)
-          .count() /
-      1000.0;
+  double totalTimeMs = std::chrono::duration_cast<std::chrono::microseconds>(
+                           pipelineEnd - pipelineStart)
+                           .count() /
+                       1000.0;
 
   std::cout << std::endl;
   std::cout << "========================================" << std::endl;
@@ -204,7 +230,8 @@ CardRecognitionPipeline::recognize(const std::string &imagePath,
   std::cout << "   YOLO time: " << yoloTotalMs << "ms" << std::endl;
   std::cout << "   Database open: " << dbOpenMs << "ms" << std::endl;
   std::cout << "   Total time: " << totalTimeMs << "ms" << std::endl;
-  std::cout << "   💡 Optimization: Loaded image once, saved ~" << imgLoadMs << "ms!" << std::endl;
+  std::cout << "   💡 Optimization: Loaded image once, saved ~" << imgLoadMs
+            << "ms!" << std::endl;
   std::cout << "========================================" << std::endl;
 
   // Build detailed timing breakdown
@@ -222,7 +249,7 @@ CardRecognitionPipeline::recognize(const std::string &imagePath,
   PipelineResult result;
   result.cards = results;
   result.yoloTimeMs = yoloResult.inferenceTimeMs; // deprecated
-  result.totalTimeMs = totalTimeMs; // deprecated
+  result.totalTimeMs = totalTimeMs;               // deprecated
   result.timingBreakdown = timing;
 
   return result;

@@ -13,13 +13,11 @@
 #include <sstream>
 #include <sys/stat.h>
 
-ObjectBoxDB::ObjectBoxDB() : ObjectBoxDB("/lorocana") {}
-
 ObjectBoxDB::ObjectBoxDB(const std::string &db_path) : db_path_(db_path) {
   // Create directory if it doesn't exist
   struct stat st;
   if (stat(db_path_.c_str(), &st) != 0) {
-// Directory doesn't exist, create it
+    // Directory doesn't exist, create it
 #ifdef _WIN32
     _mkdir(db_path_.c_str());
 #else
@@ -47,119 +45,62 @@ void ObjectBoxDB::clear_box() {
   box.removeAll();
 }
 
-void ObjectBoxDB::test_insert() {
-  std::cout << "Running test_insert..." << std::endl;
-  clear_box();
+std::vector<CardSearchResult>
+ObjectBoxDB::search_similar_cards(const std::vector<float> &query_embedding,
+                                  int limit) {
+
+  std::vector<CardSearchResult> results;
+
+  if (query_embedding.size() != 256) {
+    std::cerr << "Error: Query embedding must have 256 dimensions, got "
+              << query_embedding.size() << std::endl;
+    return results;
+  }
+
   obx::Box<Card> box(*store);
 
-  Card new_card{};
-  new_card.text = "Buy milk";
-  obx_id id = box.put(new_card);
+  // Create a query with HNSW nearest neighbor search
+  auto query = box.query()
+                   .nearestNeighborsFloat32(
+                       Card_::embedding, query_embedding.data(), limit = 10000)
+                   .build();
 
-  assert(id != 0);
-  auto card = box.get(id);
-  assert(card);
-  assert(card->text == "Buy milk");
+  auto cards = query.find();
 
-  std::cout << "Insert test passed." << std::endl;
-}
+  for (const auto &card : cards) {
+    CardSearchResult result;
+    result.card_id = card.card_id;
+    result.name = card.text;
 
-void ObjectBoxDB::test_read() {
-  std::cout << "Running test_read..." << std::endl;
-  clear_box();
-  obx::Box<Card> box(*store);
+    // Calculate similarity score using dot product
+    // (assumes embeddings are already normalized, matching Python
+    // implementation)
+    float dot_product = 0.0f;
 
-  Card new_card{};
-  new_card.text = "Test read";
-  obx_id id = box.put(new_card);
-
-  auto card = box.get(id);
-  assert(card);
-  assert(card->text == "Test read");
-
-  std::cout << "Read test passed." << std::endl;
-}
-
-void ObjectBoxDB::test_update() {
-  std::cout << "Running test_update..." << std::endl;
-  clear_box();
-  obx::Box<Card> box(*store);
-
-  Card new_card{};
-  new_card.text = "Test update";
-  obx_id id = box.put(new_card);
-
-  auto card = box.get(id);
-  card->text = "Updated text";
-  box.put(*card);
-
-  auto updated_card = box.get(id);
-  assert(updated_card);
-  assert(updated_card->text == "Updated text");
-
-  std::cout << "Update test passed." << std::endl;
-}
-
-void ObjectBoxDB::test_delete() {
-  std::cout << "Running test_delete..." << std::endl;
-  clear_box();
-  obx::Box<Card> box(*store);
-
-  Card new_card{};
-  new_card.text = "Test delete";
-  obx_id id = box.put(new_card);
-
-  box.remove(id);
-  auto card = box.get(id);
-  assert(!card);
-
-  std::cout << "Delete test passed." << std::endl;
-}
-
-void ObjectBoxDB::test_similarity_search() {
-  std::cout << "Running test_similarity_search..." << std::endl;
-  clear_box();
-  obx::Box<Card> box(*store);
-
-  // Insert test cards with embeddings
-  for (int i = 0; i < 5; i++) {
-    Card card{};
-    card.card_id = "test-" + std::to_string(i);
-    card.text = "Test Card " + std::to_string(i);
-    card.date_created = static_cast<uint64_t>(std::time(nullptr));
-
-    // Create a simple embedding (256 dimensions)
-    std::vector<float> embedding(256);
-    for (size_t j = 0; j < 256; j++) {
-      embedding[j] = static_cast<float>(i + j * 0.01);
+    for (size_t i = 0; i < 256; i++) {
+      dot_product += query_embedding[i] * card.embedding[i];
     }
-    card.embedding = embedding;
-    box.put(card);
+
+    result.score = dot_product;
+    results.push_back(result);
   }
 
-  // Create a query embedding similar to card 2
-  std::vector<float> query_embedding(256);
-  for (size_t j = 0; j < 256; j++) {
-    query_embedding[j] = static_cast<float>(2 + j * 0.01);
-  }
+  // Sort results by score in descending order (highest similarity first)
+  std::sort(results.begin(), results.end(),
+            [](const CardSearchResult &a, const CardSearchResult &b) {
+              return a.score > b.score;
+            });
 
-  // Search for similar cards
-  auto results = search_similar_cards(query_embedding, 3);
-  assert(results.size() > 0);
-  // assert(results[0].card_id == "test-2"); // Most similar should be card 2
-
-  std::cout << "Similarity search test passed. Found " << results.size()
-            << " results." << std::endl;
+  return results;
 }
 
-void ObjectBoxDB::run_all_tests() {
-  test_insert();
-  test_read();
-  test_update();
-  test_delete();
-  test_similarity_search();
+uint64_t ObjectBoxDB::get_card_count() {
+  obx::Box<Card> box(*store);
+  return box.count();
 }
 
+// TODO: Delete this method - leftover from prototyping
+// Unused method, can be removed later
 int ObjectBoxDB::load_embeddings_from_json(const std::string &json_path) {
   std::ifstream file(json_path);
   if (!file.is_open()) {
@@ -204,7 +145,6 @@ int ObjectBoxDB::load_embeddings_from_json(const std::string &json_path) {
     if (content[pos] != '{')
       break; // Expected object start
 
-    // Parse object
     Card card{};
     std::vector<float> embedding;
 
@@ -271,67 +211,4 @@ int ObjectBoxDB::load_embeddings_from_json(const std::string &json_path) {
   std::cout << "Successfully loaded " << count << " cards with embeddings."
             << std::endl;
   return count;
-}
-
-std::vector<CardSearchResult>
-ObjectBoxDB::search_similar_cards(const std::vector<float> &query_embedding,
-                                  int limit) {
-
-  std::vector<CardSearchResult> results;
-
-  if (query_embedding.size() != 256) {
-    std::cerr << "Error: Query embedding must have 256 dimensions, got "
-              << query_embedding.size() << std::endl;
-    return results;
-  }
-
-  obx::Box<Card> box(*store);
-
-  // HNSW is an approximate algorithm - it doesn't guarantee the true top K.
-  // To get accurate results, we fetch more candidates, calculate exact
-  // similarities, then return the true top K. This is especially important for
-  // small K values.
-  int fetchLimit = std::max(limit * 5, limit + 50);
-
-  // Create a query with HNSW nearest neighbor search using Cosine distance
-  auto query = box.query().nearestNeighborsFloat32(
-      Card_::embedding, query_embedding.data(), limit = 10000)
-
-                   auto cards = query.find();
-
-  for (const auto &card : cards) {
-    CardSearchResult result;
-    result.card_id = card.card_id;
-    result.name = card.text;
-
-    // Calculate similarity score using dot product
-    // (assumes embeddings are already normalized, matching Python
-    // implementation)
-    float dot_product = 0.0f;
-
-    for (size_t i = 0; i < 256; i++) {
-      dot_product += query_embedding[i] * card.embedding[i];
-    }
-
-    result.score = dot_product;
-    results.push_back(result);
-  }
-
-  // Sort by exact similarity in descending order (highest similarity first)
-  std::sort(results.begin(), results.end(),
-            [](const CardSearchResult &a, const CardSearchResult &b) {
-              return a.score > b.score;
-            });
-
-  // Return only the true top K results
-  if (results.size() > static_cast<size_t>(limit)) {
-    results.resize(limit);
-  }
-
-  return results;
-}
-
-uint64_t ObjectBoxDB::get_card_count() {
-  obx::Box<Card> box(*store);
-  return box.count();
 }

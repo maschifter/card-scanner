@@ -1,5 +1,6 @@
 #pragma once
 
+#include <DatabaseManager.h>
 #include <ReactCommon/CallInvoker.h>
 #include <jsi/jsi.h>
 #include <memory>

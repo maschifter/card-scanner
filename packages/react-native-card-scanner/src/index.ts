@@ -6,6 +6,10 @@ import {
   listDatabases,
 } from './DatabaseDownloader';
 
+export interface DatabaseInfo {
+  gameName: string;
+  path: string;
+}
 export interface InferenceResult {
   outputShape: number[];
   inferenceTimeMs: number;
@@ -80,6 +84,9 @@ export interface CardRecognitionResult {
   timingBreakdown: TimingBreakdown; // Detailed timing information
 }
 
+// JSI function signature:
+// export const listAvailableGames: () => DatabaseInfo[];
+
 // eslint-disable-next-line no-var
 declare global {
   var runInference: (modelPath: string) => InferenceResult;
@@ -88,11 +95,11 @@ declare global {
     imagePath: string,
   ) => InferenceResult;
   var loadCardEmbeddings: (
-    dbPath: string,
+    gameName: string,
     jsonPath: string,
   ) => LoadEmbeddingsResult;
   var searchSimilarCards: (
-    dbPath: string,
+    gameName: string,
     embedding: number[],
     limit: number,
   ) => CardSearchResult[];
@@ -107,13 +114,15 @@ declare global {
     imagePath: string,
     yoloModelPath: string,
     embeddingModelPath: string,
-    dbPath: string,
+    gameName: string,
     yoloConf?: number,
     yoloIou?: number,
     topK?: number,
   ) => CardRecognitionResult;
   var getCardCount: (dbPath: string) => number;
   var swapDatabase: (sourcePath: string, gameName: string) => boolean;
+  var listAvailableGames: () => DatabaseInfo[];
+  var closeGameStore: (gameName: string) => void;
 }
 
 if (global.runInference == null) {
@@ -139,4 +148,6 @@ export const runYoloSegmentation = global.runYoloSegmentation;
 export const recognizeCards = global.recognizeCards;
 export const getCardCount = global.getCardCount;
 export const swapDatabase = global.swapDatabase;
+export const listAvailableGames = global.listAvailableGames;
+export const closeGameStore = global.closeGameStore;
 export { downloadDatabase, useDatabaseManager, DatabaseInfo, listDatabases };

@@ -42,7 +42,7 @@ public:
   static PipelineResult recognize(const std::string &imagePath,
                                    const std::string &yoloModelPath,
                                    const std::string &embeddingModelPath,
-                                   const std::string &dbPath,
+                                   const std::string &gameName,
                                    float yoloConf = 0.5f,
                                    float yoloIou = 0.7f,
                                    int topK = 10);
