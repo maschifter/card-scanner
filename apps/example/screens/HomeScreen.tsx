@@ -1,6 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView, Alert } from 'react-native';
-import { autoLoadEmbeddings, checkDatabaseStatus, DatabaseStats } from '../utils/database';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+} from 'react-native';
+import {
+  autoLoadEmbeddings,
+  checkDatabaseStatus,
+  DatabaseStats,
+} from '../utils/database';
 import { runYoloSegmentation } from 'react-native-card-scanner';
 import * as FileSystem from 'expo-file-system';
 import { Asset } from 'expo-asset';
@@ -27,14 +39,14 @@ export default function HomeScreen() {
       const result = await autoLoadEmbeddings();
 
       if (result.error) {
-        setError(result.error);
+        // setError(result.error);
       } else if (result.loaded) {
         setAutoLoadMessage(
-          `Database initialized with ${result.stats.cardCount} cards`
+          `Database initialized with ${result.stats.cardCount} cards`,
         );
       } else {
         setAutoLoadMessage(
-          `Database already loaded with ${result.stats.cardCount} cards`
+          `Database already loaded with ${result.stats.cardCount} cards`,
         );
       }
 
@@ -61,7 +73,10 @@ export default function HomeScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+    >
       <View style={styles.header}>
         <Text style={styles.title}>Card Scanner</Text>
         <Text style={styles.subtitle}>React Native Demo App</Text>
@@ -79,7 +94,10 @@ export default function HomeScreen() {
           <View style={styles.errorContainer}>
             <Text style={styles.errorIcon}>⚠️</Text>
             <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={initializeDatabase}>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={initializeDatabase}
+            >
               <Text style={styles.retryButtonText}>Retry</Text>
             </TouchableOpacity>
           </View>
@@ -87,7 +105,12 @@ export default function HomeScreen() {
           <View style={styles.statsContainer}>
             <View style={styles.statRow}>
               <Text style={styles.statLabel}>Status:</Text>
-              <View style={[styles.statusBadge, stats.isLoaded && styles.statusBadgeSuccess]}>
+              <View
+                style={[
+                  styles.statusBadge,
+                  stats.isLoaded && styles.statusBadgeSuccess,
+                ]}
+              >
                 <Text style={styles.statusText}>
                   {stats.isLoaded ? '✓ Loaded' : '✗ Empty'}
                 </Text>
@@ -96,7 +119,9 @@ export default function HomeScreen() {
 
             <View style={styles.statRow}>
               <Text style={styles.statLabel}>Cards in Database:</Text>
-              <Text style={styles.statValue}>{stats.cardCount.toLocaleString()}</Text>
+              <Text style={styles.statValue}>
+                {stats.cardCount.toLocaleString()}
+              </Text>
             </View>
 
             {autoLoadMessage && (
@@ -105,7 +130,10 @@ export default function HomeScreen() {
               </View>
             )}
 
-            <TouchableOpacity style={styles.refreshButton} onPress={refreshStats}>
+            <TouchableOpacity
+              style={styles.refreshButton}
+              onPress={refreshStats}
+            >
               <Text style={styles.refreshButtonText}>🔄 Refresh Stats</Text>
             </TouchableOpacity>
           </View>
@@ -138,9 +166,18 @@ export default function HomeScreen() {
         <Text style={styles.infoText}>
           Use the bottom tabs to navigate between different features:
         </Text>
-        <Text style={styles.infoText}>• <Text style={styles.bold}>Segmentation</Text>: Test YOLO card detection</Text>
-        <Text style={styles.infoText}>• <Text style={styles.bold}>Recognition</Text>: Full recognition pipeline</Text>
-        <Text style={styles.infoText}>• <Text style={styles.bold}>Live Camera</Text>: Scan cards in real-time</Text>
+        <Text style={styles.infoText}>
+          • <Text style={styles.bold}>Segmentation</Text>: Test YOLO card
+          detection
+        </Text>
+        <Text style={styles.infoText}>
+          • <Text style={styles.bold}>Recognition</Text>: Full recognition
+          pipeline
+        </Text>
+        <Text style={styles.infoText}>
+          • <Text style={styles.bold}>Live Camera</Text>: Scan cards in
+          real-time
+        </Text>
       </View>
     </ScrollView>
   );
