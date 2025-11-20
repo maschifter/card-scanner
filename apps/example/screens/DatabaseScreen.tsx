@@ -28,7 +28,8 @@ export default function DatabaseManagerScreen() {
   } = useDatabaseManager();
 
   const [localGameName, setLocalGameName] = useState('lorocana');
-  const [downloadUrlSuffix, setDownloadUrlSuffix] = useState('data.mdb');
+  const [downloadUrlSuffix, setDownloadUrlSuffix] =
+    useState('lorocana/data.mdb');
   const [loadResult, setLoadResult] = useState<LoadEmbeddingsResult | null>(
     null,
   );

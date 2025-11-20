@@ -1,0 +1,15 @@
+attribute "uid";
+
+table Card (uid: "4543021307474494599") {
+
+    id: ulong (id: 0, uid: "107870412950560418");
+    card_id: string (id: 1, uid: "4115431560651478346");
+
+    text: string (id: 2, uid: "4182759642550461463");
+
+    date_created: ulong (id: 3, uid: "2893808917602724763");
+
+    /// objectbox: index=hnsw, hnsw-dimensions=256, hnsw-neighbors-per-node=16, hnsw-indexing-search-count=100, hnsw-distance-type=DotProduct
+    embedding: [float] (id: 4, uid: "6597812468947702453");
+    
+}

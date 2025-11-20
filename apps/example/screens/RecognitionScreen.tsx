@@ -127,12 +127,8 @@ export default function RecognitionScreen() {
         <Text style={styles.subtitle}>Full Pipeline + Database Search</Text>
       </View>
 
-      <View style={styles.buttonContainer}>
+      <View style={styles.dbControlCard}>
         <Text style={styles.cardTitle}>Select Database</Text>
-        <Text style={styles.sectionSubtitle}>
-          Target Game: {selectedGame || 'N/A'}
-        </Text>
-
         <View style={styles.gameButtonGrid}>
           {databases.length > 0 ? (
             databases.map((dbInfo: DatabaseInfo) => (
@@ -143,6 +139,7 @@ export default function RecognitionScreen() {
                   dbInfo.gameName === selectedGame && styles.gameButtonActive,
                 ]}
                 onPress={() => setSelectedGame(dbInfo.gameName)}
+                disabled={isProcessing}
               >
                 <Text
                   style={[
@@ -161,6 +158,22 @@ export default function RecognitionScreen() {
             </Text>
           )}
         </View>
+
+        <TouchableOpacity
+          style={[
+            styles.refreshButton,
+            isProcessing && styles.refreshButtonDisabled,
+          ]}
+          onPress={refreshDatabases}
+          disabled={isProcessing}
+        >
+          <Text style={styles.refreshButtonText}>🔄 Refresh Database List</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.sectionSubtitle}>
+          Target Game: {selectedGame || 'N/A'} (Ready:{' '}
+          {isDbReady ? 'YES' : 'NO'})
+        </Text>
 
         <TouchableOpacity style={styles.primaryButton} onPress={pickImage}>
           <Text style={styles.primaryButtonText}>Pick Image</Text>
@@ -317,7 +330,7 @@ export default function RecognitionScreen() {
                   {card.matches && card.matches.length > 0 ? (
                     <View style={styles.matchesContainer}>
                       <Text style={styles.matchesTitle}>Top Matches:</Text>
-                      {card.matches.map((match, matchIndex) => (
+                      {card.matches.slice(0, 10).map((match, matchIndex) => (
                         <View key={matchIndex} style={styles.matchItem}>
                           <View style={styles.matchRank}>
                             <Text style={styles.matchRankText}>
@@ -353,6 +366,60 @@ export default function RecognitionScreen() {
 }
 
 const styles = StyleSheet.create({
+  dbControlCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  gameButtonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 10,
+    marginBottom: 15,
+  },
+  gameButton: {
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 5, // Rounded pill shape
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+  },
+  gameButtonActive: {
+    backgroundColor: '#4CAF50',
+    borderColor: '#306932',
+  },
+  gameButtonText: {
+    color: '#333',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  gameButtonTextActive: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  refreshButton: {
+    backgroundColor: '#607D8B',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  refreshButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  refreshButtonDisabled: {
+    backgroundColor: '#B0BEC5',
+  },
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
@@ -384,9 +451,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 8,
     alignItems: 'center',
-  },
-  secondaryButton: {
-    backgroundColor: '#2196F3',
   },
   primaryButtonText: {
     color: '#fff',

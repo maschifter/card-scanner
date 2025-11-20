@@ -33,23 +33,36 @@ export default function HomeScreen() {
     DEFAULT_GAME_NAME,
   );
   const [yoloResult, setYoloResult] = useState<string | null>(null);
-
-  const {
-    databases,
-    refreshDatabases: fetchGameList, // Renamed to clearly fetch the list of available games
-  } = useDatabaseManager();
+  const { databases, refreshDatabases } = useDatabaseManager();
 
   useEffect(() => {
-    initializeDatabase();
-    fetchGameList().then(() => setIsLoading(false));
+    refreshDatabases()
+      .then(() => {})
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : String(err));
+        setIsLoading(false);
+      });
   }, []);
 
   useEffect(() => {
-    if (databases.length > 0 && !selectedGame) {
+    if (databases.length > 0 && selectedGame === DEFAULT_GAME_NAME) {
+      const defaultExists = databases.find(
+        (db) => db.gameName === DEFAULT_GAME_NAME,
+      );
+
+      if (!defaultExists) {
+        setSelectedGame(databases[0].gameName);
+      }
+    } else if (databases.length > 0 && selectedGame === null) {
       setSelectedGame(databases[0].gameName);
     }
-    refreshStats(selectedGame);
-  }, [databases, selectedGame]);
+  }, [databases]);
+
+  useEffect(() => {
+    if (selectedGame) {
+      refreshStats(selectedGame);
+    }
+  }, [selectedGame]);
 
   const refreshStats = async (gameName: string) => {
     // Takes gameName as argument
@@ -57,6 +70,7 @@ export default function HomeScreen() {
     setError(null);
     setAutoLoadMessage(null);
 
+    refreshDatabases();
     try {
       const newStats = await checkDatabaseStatus(gameName);
       setStats(newStats);
@@ -111,38 +125,48 @@ export default function HomeScreen() {
 
       <View style={styles.statsCard}>
         <Text style={styles.cardTitle}>Database Status</Text>
-        <View style={styles.gamePickerContainer}>
-          <Text style={styles.statLabel}>Select Game:</Text>
-          <View style={styles.gameButtonGrid}>
-            {databases.length > 0 ? (
-              databases.map((dbInfo: DatabaseInfo) => (
-                <TouchableOpacity
-                  key={dbInfo.gameName}
+
+        <Text style={styles.cardTitle}>Select Database</Text>
+        <View style={styles.gameButtonGrid}>
+          {databases.length > 0 ? (
+            databases.map((dbInfo: DatabaseInfo) => (
+              <TouchableOpacity
+                key={dbInfo.gameName}
+                style={[
+                  styles.gameButton,
+                  dbInfo.gameName === selectedGame && styles.gameButtonActive,
+                ]}
+                onPress={() => setSelectedGame(dbInfo.gameName)}
+              >
+                <Text
                   style={[
-                    styles.gameButton,
-                    dbInfo.gameName === selectedGame && styles.gameButtonActive,
+                    styles.gameButtonText,
+                    dbInfo.gameName === selectedGame &&
+                      styles.gameButtonTextActive,
                   ]}
-                  onPress={() => setSelectedGame(dbInfo.gameName)}
-                  disabled={isLoading}
                 >
-                  <Text
-                    style={[
-                      styles.gameButtonText,
-                      dbInfo.gameName === selectedGame &&
-                        styles.gameButtonTextActive,
-                    ]}
-                  >
-                    {dbInfo.gameName}
-                  </Text>
-                </TouchableOpacity>
-              ))
-            ) : (
-              <Text style={styles.loadingText}>
-                No databases available. Check Databases tab.
-              </Text>
-            )}
-          </View>
+                  {dbInfo.gameName}
+                </Text>
+              </TouchableOpacity>
+            ))
+          ) : (
+            <Text style={styles.loadingText}>
+              No databases found. Go to the Databases tab to download one.
+            </Text>
+          )}
         </View>
+
+        <TouchableOpacity
+          style={[styles.refreshButton]}
+          onPress={refreshDatabases}
+        >
+          <Text style={styles.refreshButtonText}>🔄 Refresh Database List</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.sectionSubtitle}>
+          Target Game: {selectedGame || 'N/A'}
+        </Text>
+
         {isLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#4CAF50" />
@@ -190,7 +214,7 @@ export default function HomeScreen() {
 
             <TouchableOpacity
               style={styles.refreshButton}
-              onPress={refreshStats}
+              onPress={() => refreshStats(selectedGame)}
             >
               <Text style={styles.refreshButtonText}>🔄 Refresh Stats</Text>
             </TouchableOpacity>
@@ -494,5 +518,68 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#E65100',
     lineHeight: 20,
+  },
+
+  dbControlCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  sectionSubtitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#4CAF50',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  gameButtonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 10,
+    marginBottom: 15,
+  },
+  gameButton: {
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 5, // Rounded pill shape
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+  },
+  gameButtonActive: {
+    backgroundColor: '#4CAF50',
+    borderColor: '#306932',
+  },
+  gameButtonText: {
+    color: '#333',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  gameButtonTextActive: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  refreshButton: {
+    backgroundColor: '#607D8B',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  refreshButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  refreshButtonDisabled: {
+    backgroundColor: '#B0BEC5',
   },
 });

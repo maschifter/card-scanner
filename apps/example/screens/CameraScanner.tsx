@@ -35,7 +35,7 @@ export default function CameraScanner() {
   const modelPathsRef = useRef<{
     yolo: string;
     embedding: string;
-    db: string;
+    gameName: string;
   } | null>(null);
 
   // Load models on mount
@@ -87,7 +87,7 @@ export default function CameraScanner() {
       modelPathsRef.current = {
         yolo: yoloModelPath,
         embedding: embeddingModelPath,
-        db: dbPath,
+        gameName: 'lorocana',
       };
 
       console.log('Models loaded successfully');
@@ -193,7 +193,7 @@ export default function CameraScanner() {
         console.log('Captured image size:', photo.width, 'x', photo.height);
       }
 
-      const { yolo, embedding, db } = modelPathsRef.current;
+      const { yolo, embedding, gameName } = modelPathsRef.current;
 
       console.log('Running recognition...');
 
@@ -202,7 +202,7 @@ export default function CameraScanner() {
         photo.uri,
         yolo,
         embedding,
-        db,
+        gameName,
         0.5, // yoloConf
         0.0, // yoloIou
         1, // topK - only get top 1 match per card

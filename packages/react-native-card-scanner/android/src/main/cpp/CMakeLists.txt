@@ -22,6 +22,12 @@ target_include_directories(
   react-native-card-scanner
   PUBLIC
   "${COMMON_CPP_DIR}"
+  "${COMMON_CPP_DIR}/rncardscanner"  
+  "${COMMON_CPP_DIR}/rncardscanner/database"
+  "${COMMON_CPP_DIR}/rncardscanner/host_objects"
+  "${COMMON_CPP_DIR}/rncardscanner/jsi"
+  "${COMMON_CPP_DIR}/rncardscanner/runners"
+  "${COMMON_CPP_DIR}/rncardscanner/threads"
   "${ANDROID_CPP_DIR}"
   "${INCLUDE_DIR}"
   "${REACT_NATIVE_DIR}/ReactCommon"
