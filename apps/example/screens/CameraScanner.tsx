@@ -1,8 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Platform,
+  ActivityIndicator,
+} from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { recognizeCards, RecognizedCard } from 'react-native-card-scanner';
-import { cacheDirectory, documentDirectory, copyAsync } from 'expo-file-system/legacy';
+import {
+  cacheDirectory,
+  documentDirectory,
+  copyAsync,
+} from 'expo-file-system/legacy';
 import { Asset } from 'expo-asset';
 import CardOverlay from '../components/CardOverlay';
 
@@ -13,7 +24,10 @@ export default function CameraScanner() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoadingModels, setIsLoadingModels] = useState(true);
   const [modelError, setModelError] = useState<string | null>(null);
-  const [capturedImageSize, setCapturedImageSize] = useState<{ width: number; height: number } | null>(null);
+  const [capturedImageSize, setCapturedImageSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
   const cameraRef = useRef<CameraView>(null);
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isScanningRef = useRef(false); // Use ref to avoid closure issues
@@ -37,15 +51,20 @@ export default function CameraScanner() {
       console.log('Loading models from assets...');
 
       // Load assets
-      const yoloAsset = await Asset.loadAsync(require('../assets/yolo11n-seg.pte'));
-      const embeddingAsset = await Asset.loadAsync(require('../assets/embedding_model.pte'));
+      const yoloAsset = await Asset.loadAsync(
+        require('../assets/yolo11n-seg.pte'),
+      );
+      const embeddingAsset = await Asset.loadAsync(
+        require('../assets/embedding_model.pte'),
+      );
 
       let yoloModelPath: string;
       let embeddingModelPath: string;
 
       if (Platform.OS === 'android') {
         yoloModelPath = yoloAsset[0].localUri || yoloAsset[0].uri;
-        embeddingModelPath = embeddingAsset[0].localUri || embeddingAsset[0].uri;
+        embeddingModelPath =
+          embeddingAsset[0].localUri || embeddingAsset[0].uri;
       } else {
         // iOS: Copy to cache
         const yoloCachePath = `${cacheDirectory}yolo11n-seg.pte`;
@@ -65,8 +84,6 @@ export default function CameraScanner() {
         embeddingModelPath = embeddingCachePath;
       }
 
-      const dbPath = `${documentDirectory}objectbox-cards`;
-
       modelPathsRef.current = {
         yolo: yoloModelPath,
         embedding: embeddingModelPath,
@@ -76,7 +93,6 @@ export default function CameraScanner() {
       console.log('Models loaded successfully');
       console.log('YOLO:', yoloModelPath);
       console.log('Embedding:', embeddingModelPath);
-      console.log('DB:', dbPath);
 
       setIsLoadingModels(false);
     } catch (error) {
@@ -127,7 +143,11 @@ export default function CameraScanner() {
     const now = Date.now();
     const timeSinceLastCapture = now - lastCaptureTimeRef.current;
     if (timeSinceLastCapture < 1000) {
-      console.log('Skipping - too soon since last capture:', timeSinceLastCapture, 'ms');
+      console.log(
+        'Skipping - too soon since last capture:',
+        timeSinceLastCapture,
+        'ms',
+      );
       return;
     }
 
@@ -137,7 +157,12 @@ export default function CameraScanner() {
     console.log('  modelPathsRef.current:', !!modelPathsRef.current);
 
     // Skip if already processing or camera not ready or not scanning or models not loaded
-    if (isProcessing || !cameraRef.current || !isScanningRef.current || !modelPathsRef.current) {
+    if (
+      isProcessing ||
+      !cameraRef.current ||
+      !isScanningRef.current ||
+      !modelPathsRef.current
+    ) {
       console.log('Skipping frame capture');
       return;
     }
@@ -178,9 +203,9 @@ export default function CameraScanner() {
         yolo,
         embedding,
         db,
-        0.5,  // yoloConf
-        0.0,  // yoloIou
-        1     // topK - only get top 1 match per card
+        0.5, // yoloConf
+        0.0, // yoloIou
+        1, // topK - only get top 1 match per card
       );
 
       console.log('Recognition complete:', result.cards.length, 'cards found');
@@ -189,7 +214,10 @@ export default function CameraScanner() {
       if (isScanningRef.current) {
         try {
           if (result.cards && result.cards.length > 0) {
-            console.log('Detected cards:', result.cards.map(c => c.matches[0]?.name));
+            console.log(
+              'Detected cards:',
+              result.cards.map((c) => c.matches[0]?.name),
+            );
             console.log('Updating state with new cards...');
             setDetectedCards([...result.cards]); // Create new array to ensure re-render
             console.log('State updated');
@@ -201,7 +229,6 @@ export default function CameraScanner() {
           console.error('Error updating state:', stateError);
         }
       }
-
     } catch (error) {
       console.error('Error processing frame:', error);
       // Continue processing, don't crash
@@ -221,7 +248,11 @@ export default function CameraScanner() {
   }, []);
 
   if (!permission) {
-    return <View style={styles.container}><Text>Loading...</Text></View>;
+    return (
+      <View style={styles.container}>
+        <Text>Loading...</Text>
+      </View>
+    );
   }
 
   if (!permission.granted) {
@@ -258,11 +289,7 @@ export default function CameraScanner() {
 
   return (
     <View style={styles.container}>
-      <CameraView
-        ref={cameraRef}
-        style={styles.camera}
-        facing="back"
-      >
+      <CameraView ref={cameraRef} style={styles.camera} facing="back">
         {/* Processing indicator */}
         {isProcessing && (
           <View style={styles.processingIndicator}>

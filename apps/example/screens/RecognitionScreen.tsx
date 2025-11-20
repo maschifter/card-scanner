@@ -1,25 +1,37 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { recognizeCards, CardRecognitionResult } from 'react-native-card-scanner';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Image,
+  ActivityIndicator,
+  TouchableOpacity,
+} from 'react-native';
+import {
+  recognizeCards,
+  CardRecognitionResult,
+  useDatabaseManager,
+  DatabaseInfo,
+} from 'react-native-card-scanner';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { loadModels } from '../utils/models';
-import { DATABASE_PATH } from '../utils/database';
 
 // Helper to convert HEIC to JPEG
 async function ensureJPEG(uri: string): Promise<string> {
-  const isHEIC = uri.toLowerCase().endsWith('.heic') ||
-                 uri.toLowerCase().endsWith('.heif') ||
-                 uri.includes('.heic') ||
-                 uri.includes('.heif');
+  const isHEIC =
+    uri.toLowerCase().endsWith('.heic') ||
+    uri.toLowerCase().endsWith('.heif') ||
+    uri.includes('.heic') ||
+    uri.includes('.heif');
 
   if (isHEIC) {
     console.log('HEIC image detected, converting to JPEG...');
-    const manipResult = await ImageManipulator.manipulateAsync(
-      uri,
-      [],
-      { compress: 1, format: ImageManipulator.SaveFormat.JPEG }
-    );
+    const manipResult = await ImageManipulator.manipulateAsync(uri, [], {
+      compress: 1,
+      format: ImageManipulator.SaveFormat.JPEG,
+    });
     console.log('Converted to JPEG:', manipResult.uri);
     return manipResult.uri;
   }
@@ -29,9 +41,29 @@ async function ensureJPEG(uri: string): Promise<string> {
 
 export default function RecognitionScreen() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [recognitionResult, setRecognitionResult] = useState<CardRecognitionResult | null>(null);
+  const [recognitionResult, setRecognitionResult] =
+    useState<CardRecognitionResult | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { databases, refreshDatabases } = useDatabaseManager();
+  const [selectedGame, setSelectedGame] = useState<string | null>(null);
+  const [isDbReady, setIsDbReady] = useState(false);
+
+  useEffect(() => {
+    refreshDatabases();
+  }, [refreshDatabases]);
+
+  useEffect(() => {
+    if (databases.length > 0 && !selectedGame) {
+      setSelectedGame(databases[0].gameName);
+      setIsDbReady(true);
+    } else if (databases.length > 0 && selectedGame) {
+      setIsDbReady(true);
+    } else {
+      setIsDbReady(false);
+    }
+  }, [databases, selectedGame]);
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -68,10 +100,10 @@ export default function RecognitionScreen() {
         selectedImage,
         models.yolo,
         models.embedding,
-        DATABASE_PATH,
-        0.5,  // yoloConf
-        0.0,  // yoloIou
-        3     // topK matches per card
+        selectedGame,
+        0.5, // yoloConf
+        0.0, // yoloIou
+        3, // topK matches per card
       );
 
       console.log('Recognition result:', result);
@@ -86,13 +118,50 @@ export default function RecognitionScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+    >
       <View style={styles.header}>
         <Text style={styles.title}>Recognition Demo</Text>
         <Text style={styles.subtitle}>Full Pipeline + Database Search</Text>
       </View>
 
       <View style={styles.buttonContainer}>
+        <Text style={styles.cardTitle}>Select Database</Text>
+        <Text style={styles.sectionSubtitle}>
+          Target Game: {selectedGame || 'N/A'}
+        </Text>
+
+        <View style={styles.gameButtonGrid}>
+          {databases.length > 0 ? (
+            databases.map((dbInfo: DatabaseInfo) => (
+              <TouchableOpacity
+                key={dbInfo.gameName}
+                style={[
+                  styles.gameButton,
+                  dbInfo.gameName === selectedGame && styles.gameButtonActive,
+                ]}
+                onPress={() => setSelectedGame(dbInfo.gameName)}
+              >
+                <Text
+                  style={[
+                    styles.gameButtonText,
+                    dbInfo.gameName === selectedGame &&
+                      styles.gameButtonTextActive,
+                  ]}
+                >
+                  {dbInfo.gameName}
+                </Text>
+              </TouchableOpacity>
+            ))
+          ) : (
+            <Text style={styles.loadingText}>
+              No databases found. Go to the Databases tab to download one.
+            </Text>
+          )}
+        </View>
+
         <TouchableOpacity style={styles.primaryButton} onPress={pickImage}>
           <Text style={styles.primaryButtonText}>Pick Image</Text>
         </TouchableOpacity>
@@ -113,14 +182,20 @@ export default function RecognitionScreen() {
       {selectedImage && (
         <View style={styles.imageCard}>
           <Text style={styles.cardTitle}>Selected Image</Text>
-          <Image source={{ uri: selectedImage }} style={styles.image} resizeMode="contain" />
+          <Image
+            source={{ uri: selectedImage }}
+            style={styles.image}
+            resizeMode="contain"
+          />
         </View>
       )}
 
       {isProcessing && (
         <View style={styles.loadingCard}>
           <ActivityIndicator size="large" color="#4CAF50" />
-          <Text style={styles.loadingText}>Running recognition pipeline...</Text>
+          <Text style={styles.loadingText}>
+            Running recognition pipeline...
+          </Text>
           <Text style={styles.loadingSubtext}>This may take a few seconds</Text>
         </View>
       )}
@@ -138,50 +213,86 @@ export default function RecognitionScreen() {
             <Text style={styles.cardTitle}>Performance Statistics</Text>
             <View style={styles.statRow}>
               <Text style={styles.statLabel}>Cards Found:</Text>
-              <Text style={styles.statValue}>{recognitionResult.cards.length}</Text>
+              <Text style={styles.statValue}>
+                {recognitionResult.cards.length}
+              </Text>
             </View>
 
             <Text style={styles.sectionSubtitle}>YOLO Segmentation</Text>
             <View style={styles.statRow}>
-              <Text style={styles.statLabel}>  • Preprocessing:</Text>
-              <Text style={styles.statValue}>{recognitionResult.timingBreakdown.yoloPreprocessingMs.toFixed(1)} ms</Text>
+              <Text style={styles.statLabel}> • Preprocessing:</Text>
+              <Text style={styles.statValue}>
+                {recognitionResult.timingBreakdown.yoloPreprocessingMs.toFixed(
+                  1,
+                )}{' '}
+                ms
+              </Text>
             </View>
             <View style={styles.statRow}>
-              <Text style={styles.statLabel}>  • Inference:</Text>
-              <Text style={styles.statValue}>{recognitionResult.timingBreakdown.yoloInferenceMs.toFixed(1)} ms</Text>
+              <Text style={styles.statLabel}> • Inference:</Text>
+              <Text style={styles.statValue}>
+                {recognitionResult.timingBreakdown.yoloInferenceMs.toFixed(1)}{' '}
+                ms
+              </Text>
             </View>
             <View style={styles.statRow}>
-              <Text style={styles.statLabel}>  • Postprocessing:</Text>
-              <Text style={styles.statValue}>{recognitionResult.timingBreakdown.yoloPostprocessingMs.toFixed(1)} ms</Text>
+              <Text style={styles.statLabel}> • Postprocessing:</Text>
+              <Text style={styles.statValue}>
+                {recognitionResult.timingBreakdown.yoloPostprocessingMs.toFixed(
+                  1,
+                )}{' '}
+                ms
+              </Text>
             </View>
             <View style={[styles.statRow, styles.totalRow]}>
-              <Text style={styles.statLabelBold}>  YOLO Total:</Text>
-              <Text style={styles.statValueBold}>{recognitionResult.timingBreakdown.yoloTotalMs.toFixed(1)} ms</Text>
+              <Text style={styles.statLabelBold}> YOLO Total:</Text>
+              <Text style={styles.statValueBold}>
+                {recognitionResult.timingBreakdown.yoloTotalMs.toFixed(1)} ms
+              </Text>
             </View>
 
             <Text style={styles.sectionSubtitle}>Embedding Extraction</Text>
             <View style={styles.statRow}>
-              <Text style={styles.statLabel}>  • Preprocessing:</Text>
-              <Text style={styles.statValue}>{recognitionResult.timingBreakdown.embeddingPreprocessingMs.toFixed(1)} ms</Text>
+              <Text style={styles.statLabel}> • Preprocessing:</Text>
+              <Text style={styles.statValue}>
+                {recognitionResult.timingBreakdown.embeddingPreprocessingMs.toFixed(
+                  1,
+                )}{' '}
+                ms
+              </Text>
             </View>
             <View style={styles.statRow}>
-              <Text style={styles.statLabel}>  • Inference:</Text>
-              <Text style={styles.statValue}>{recognitionResult.timingBreakdown.embeddingInferenceMs.toFixed(1)} ms</Text>
+              <Text style={styles.statLabel}> • Inference:</Text>
+              <Text style={styles.statValue}>
+                {recognitionResult.timingBreakdown.embeddingInferenceMs.toFixed(
+                  1,
+                )}{' '}
+                ms
+              </Text>
             </View>
             <View style={[styles.statRow, styles.totalRow]}>
-              <Text style={styles.statLabelBold}>  Embedding Total:</Text>
-              <Text style={styles.statValueBold}>{recognitionResult.timingBreakdown.embeddingTotalMs.toFixed(1)} ms</Text>
+              <Text style={styles.statLabelBold}> Embedding Total:</Text>
+              <Text style={styles.statValueBold}>
+                {recognitionResult.timingBreakdown.embeddingTotalMs.toFixed(1)}{' '}
+                ms
+              </Text>
             </View>
 
             <Text style={styles.sectionSubtitle}>Database Search</Text>
             <View style={[styles.statRow, styles.totalRow]}>
-              <Text style={styles.statLabel}>  • Search Time:</Text>
-              <Text style={styles.statValue}>{recognitionResult.timingBreakdown.databaseSearchMs.toFixed(1)} ms</Text>
+              <Text style={styles.statLabel}> • Search Time:</Text>
+              <Text style={styles.statValue}>
+                {recognitionResult.timingBreakdown.databaseSearchMs.toFixed(1)}{' '}
+                ms
+              </Text>
             </View>
 
             <View style={[styles.statRow, styles.grandTotalRow]}>
               <Text style={styles.statLabelGrand}>Total Pipeline:</Text>
-              <Text style={styles.statValueGrand}>{recognitionResult.timingBreakdown.totalPipelineMs.toFixed(1)} ms</Text>
+              <Text style={styles.statValueGrand}>
+                {recognitionResult.timingBreakdown.totalPipelineMs.toFixed(1)}{' '}
+                ms
+              </Text>
             </View>
           </View>
 
@@ -209,7 +320,9 @@ export default function RecognitionScreen() {
                       {card.matches.map((match, matchIndex) => (
                         <View key={matchIndex} style={styles.matchItem}>
                           <View style={styles.matchRank}>
-                            <Text style={styles.matchRankText}>#{matchIndex + 1}</Text>
+                            <Text style={styles.matchRankText}>
+                              #{matchIndex + 1}
+                            </Text>
                           </View>
                           <View style={styles.matchInfo}>
                             <Text style={styles.matchName}>{match.name}</Text>
@@ -228,7 +341,9 @@ export default function RecognitionScreen() {
             </View>
           ) : (
             <View style={styles.resultCard}>
-              <Text style={styles.noCardsText}>No cards detected in the image</Text>
+              <Text style={styles.noCardsText}>
+                No cards detected in the image
+              </Text>
             </View>
           )}
         </>

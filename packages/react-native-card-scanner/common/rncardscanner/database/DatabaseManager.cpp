@@ -47,10 +47,7 @@ ObjectBoxDB *DatabaseManager::getOrCreateStore(const std::string &gameName) {
     return it->second.get(); // Store found in activeStores - Retrun it
   }
 
-  // If store is not found
-
-  // This gets us full path, but ObjectBoxDB files are handling that - lets
-  const std::string path = getStorePath(gameName);
+  const std::string path = resolvePathFor(gameName);
   GameStorePtr newGameStore = std::make_unique<ObjectBoxDB>(path);
   ObjectBoxDB *rawStorePtr = newGameStore.get();
   activeStores_.emplace(gameName, std::move(newGameStore));

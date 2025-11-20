@@ -13,10 +13,15 @@ import {
   checkDatabaseStatus,
   DatabaseStats,
 } from '../utils/database';
-import { runYoloSegmentation } from 'react-native-card-scanner';
+import {
+  runYoloSegmentation,
+  useDatabaseManager,
+} from 'react-native-card-scanner';
 import * as FileSystem from 'expo-file-system';
 import { Asset } from 'expo-asset';
 import { loadModels } from '../utils/models';
+
+const DEFAULT_GAME_NAME = 'lorocana';
 
 export default function HomeScreen() {
   const [isLoading, setIsLoading] = useState(true);
@@ -24,11 +29,46 @@ export default function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
   const [autoLoadMessage, setAutoLoadMessage] = useState<string | null>(null);
   const [isBenchmarkingYolo, setIsBenchmarkingYolo] = useState(false);
+  const [selectedGame, setSelectedGame] = useState<string | null>(
+    DEFAULT_GAME_NAME,
+  );
   const [yoloResult, setYoloResult] = useState<string | null>(null);
+
+  const {
+    databases,
+    refreshDatabases: fetchGameList, // Renamed to clearly fetch the list of available games
+  } = useDatabaseManager();
 
   useEffect(() => {
     initializeDatabase();
+    fetchGameList().then(() => setIsLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (databases.length > 0 && !selectedGame) {
+      setSelectedGame(databases[0].gameName);
+    }
+    refreshStats(selectedGame);
+  }, [databases, selectedGame]);
+
+  const refreshStats = async (gameName: string) => {
+    // Takes gameName as argument
+    setIsLoading(true);
+    setError(null);
+    setAutoLoadMessage(null);
+
+    try {
+      const newStats = await checkDatabaseStatus(gameName);
+      setStats(newStats);
+
+      setAutoLoadMessage(`Stats loaded for: ${gameName}`);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      setError(errorMsg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const initializeDatabase = async () => {
     setIsLoading(true);
@@ -59,19 +99,6 @@ export default function HomeScreen() {
     }
   };
 
-  const refreshStats = async () => {
-    setIsLoading(true);
-    try {
-      const newStats = await checkDatabaseStatus();
-      setStats(newStats);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      setError(errorMsg);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
     <ScrollView
       style={styles.container}
@@ -84,7 +111,38 @@ export default function HomeScreen() {
 
       <View style={styles.statsCard}>
         <Text style={styles.cardTitle}>Database Status</Text>
-
+        <View style={styles.gamePickerContainer}>
+          <Text style={styles.statLabel}>Select Game:</Text>
+          <View style={styles.gameButtonGrid}>
+            {databases.length > 0 ? (
+              databases.map((dbInfo: DatabaseInfo) => (
+                <TouchableOpacity
+                  key={dbInfo.gameName}
+                  style={[
+                    styles.gameButton,
+                    dbInfo.gameName === selectedGame && styles.gameButtonActive,
+                  ]}
+                  onPress={() => setSelectedGame(dbInfo.gameName)}
+                  disabled={isLoading}
+                >
+                  <Text
+                    style={[
+                      styles.gameButtonText,
+                      dbInfo.gameName === selectedGame &&
+                        styles.gameButtonTextActive,
+                    ]}
+                  >
+                    {dbInfo.gameName}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <Text style={styles.loadingText}>
+                No databases available. Check Databases tab.
+              </Text>
+            )}
+          </View>
+        </View>
         {isLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#4CAF50" />

@@ -119,7 +119,7 @@ declare global {
     yoloIou?: number,
     topK?: number,
   ) => CardRecognitionResult;
-  var getCardCount: (dbPath: string) => number;
+  var getCardCount: (gameName: string) => number;
   var swapDatabase: (sourcePath: string, gameName: string) => boolean;
   var listAvailableGames: () => DatabaseInfo[];
   var closeGameStore: (gameName: string) => void;

@@ -340,27 +340,23 @@ void CardScannerInstaller::injectJSIBindings(
   // Create the 'recognizeCards' host function (full pipeline)
   auto recognizeCardsFunc = jsi::Function::createFromHostFunction(
       *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "recognizeCards"), 6,
-      [](jsi::Runtime &runtime, const jsi::Value &thisValue,
-         const jsi::Value *args, size_t count) -> jsi::Value {
+      [&dbManager](jsi::Runtime &runtime, const jsi::Value &thisValue,
+                   const jsi::Value *args, size_t count) -> jsi::Value {
         if (count < 4 || !args[0].isString() || !args[1].isString() ||
             !args[2].isString() || !args[3].isString()) {
           throw jsi::JSError(runtime,
                              "recognizeCards expects at least (imagePath: "
                              "string, yoloModelPath: string, "
-                             "embeddingModelPath: string, dbPath: string)");
+                             "embeddingModelPath: string, gameName: string)");
         }
 
         std::string imagePath = args[0].asString(runtime).utf8(runtime);
         std::string yoloModelPath = args[1].asString(runtime).utf8(runtime);
         std::string embeddingModelPath =
             args[2].asString(runtime).utf8(runtime);
-        std::string dbPath = "" + pathprovider::get_db_path() + "lorocana/";
-        std::cout << "[RnCardScannerInstaller] recognizeCards - imagePath: "
-                  << imagePath << ", yoloModelPath: " << yoloModelPath
-                  << ", embeddingModelPath: " << embeddingModelPath
-                  << ", dbPath: " << dbPath << std::endl;
 
-        // Optional parameters with defaults
+        std::string gameName = args[3].asString(runtime).utf8(runtime);
+
         float yoloConf = (count > 4 && args[4].isNumber())
                              ? static_cast<float>(args[4].asNumber())
                              : 0.5f;
@@ -373,7 +369,7 @@ void CardScannerInstaller::injectJSIBindings(
 
         try {
           auto pipelineResult = cardscanner::CardRecognitionPipeline::recognize(
-              imagePath, yoloModelPath, embeddingModelPath, dbPath, yoloConf,
+              imagePath, yoloModelPath, embeddingModelPath, gameName, yoloConf,
               yoloIou, topK);
 
           // Create result object
@@ -514,6 +510,7 @@ void CardScannerInstaller::injectJSIBindings(
       0,
       [&dbManager](jsi::Runtime &runtime, const jsi::Value &thisValue,
                    const jsi::Value *args, size_t count) -> jsi::Value {
+        dbManager.scanForExistingStores();
         std::set<std::string> games = dbManager.getKnownGames();
 
         jsi::Array result(runtime, games.size());
@@ -590,9 +587,7 @@ void CardScannerInstaller::injectJSIBindings(
         if (count < 1 || !args[0].isString()) {
           throw jsi::JSError(runtime,
                              "getCardCount expects one string argument "
-                             "(gameName)"); // Changed
-                                            // argument
-                                            // name
+                             "(gameName)");
         }
 
         std::string gameName = args[0].asString(runtime).utf8(runtime);

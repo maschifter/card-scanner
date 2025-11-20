@@ -1,11 +1,21 @@
-import { documentDirectory, cacheDirectory, writeAsStringAsync } from 'expo-file-system/legacy';
-import { loadCardEmbeddings, getCardCount, LoadEmbeddingsResult } from 'react-native-card-scanner';
+import {
+  documentDirectory,
+  cacheDirectory,
+  writeAsStringAsync,
+} from 'expo-file-system/legacy';
+import {
+  loadCardEmbeddings,
+  getCardCount,
+  LoadEmbeddingsResult,
+} from 'react-native-card-scanner';
 
-// Database path constant
-export const DATABASE_PATH = `${documentDirectory}objectbox-cards`;
+// WARNING: Do not use path - specify only game name - CPP handles pathing!
+// export const DATABASE_PATH = `${documentDirectory}objectbox-cards`;
 
 // JSON embeddings path in cache
 export const EMBEDDINGS_CACHE_PATH = `${cacheDirectory}lorcana_embeddings.json`;
+
+const DEFAULT_GAME = 'lorocana';
 
 export interface DatabaseStats {
   cardCount: number;
@@ -15,9 +25,11 @@ export interface DatabaseStats {
 /**
  * Check if database has embeddings loaded
  */
-export async function checkDatabaseStatus(): Promise<DatabaseStats> {
+export async function checkDatabaseStatus(
+  gameName: string,
+): Promise<DatabaseStats> {
   try {
-    const cardCount = getCardCount(DATABASE_PATH);
+    const cardCount = getCardCount(gameName);
     return {
       cardCount,
       isLoaded: cardCount > 0,
@@ -42,12 +54,14 @@ export async function loadEmbeddingsFromAssets(): Promise<LoadEmbeddingsResult> 
 
   // Write to cache directory
   console.log('Writing embeddings to:', EMBEDDINGS_CACHE_PATH);
-  await writeAsStringAsync(EMBEDDINGS_CACHE_PATH, JSON.stringify(embeddingsData));
+  await writeAsStringAsync(
+    EMBEDDINGS_CACHE_PATH,
+    JSON.stringify(embeddingsData),
+  );
   console.log('Embeddings written to cache');
 
   // Load into ObjectBox database
-  console.log('Loading into database:', DATABASE_PATH);
-  const loadResult = loadCardEmbeddings(DATABASE_PATH, EMBEDDINGS_CACHE_PATH);
+  const loadResult = loadCardEmbeddings(DEFAULT_GAME, EMBEDDINGS_CACHE_PATH);
   console.log('Load result:', loadResult);
 
   return loadResult;
@@ -63,7 +77,7 @@ export async function autoLoadEmbeddings(): Promise<{
   error?: string;
 }> {
   try {
-    const stats = await checkDatabaseStatus();
+    const stats = await checkDatabaseStatus(DEFAULT_GAME);
 
     // If already loaded, skip
     if (stats.isLoaded) {
@@ -76,7 +90,7 @@ export async function autoLoadEmbeddings(): Promise<{
     const result = await loadEmbeddingsFromAssets();
 
     // Get updated stats
-    const newStats = await checkDatabaseStatus();
+    const newStats = await checkDatabaseStatus(DEFAULT_GAME);
 
     return { loaded: true, stats: newStats, result };
   } catch (error) {
