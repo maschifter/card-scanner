@@ -5727,6 +5727,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"expo-file-system@npm:^19.0.19":
+  version: 19.0.19
+  resolution: "expo-file-system@npm:19.0.19"
+  peerDependencies:
+    expo: "*"
+    react-native: "*"
+  checksum: 10/14e9cdd3b03ad60ec071c63f663772e5318d3ad6220b21870ca65709949bc783e497caf30e8298b14cc5843c4cdba2f3d6db9e1f31454a8bf14c3b3314ebada2
+  languageName: node
+  linkType: hard
+
 "expo-file-system@npm:~19.0.17":
   version: 19.0.17
   resolution: "expo-file-system@npm:19.0.17"
@@ -10088,6 +10098,7 @@ __metadata:
   resolution: "react-native-card-scanner@workspace:packages/react-native-card-scanner"
   dependencies:
     "@types/react": "npm:19.1.0"
+    expo-file-system: "npm:^19.0.19"
     react: "npm:19.1.0"
     react-native: "npm:0.81.4"
     react-native-builder-bob: "npm:^0.30.2"

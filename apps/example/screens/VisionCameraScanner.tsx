@@ -1,7 +1,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Dimensions } from 'react-native';
-import { Camera, useCameraDevice, useCameraPermission, useFrameProcessor } from 'react-native-vision-camera';
-import { scanFaces, type VCDetection } from 'react-native-card-scanner';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  Dimensions,
+  Image,
+  Platform,
+  StatusBar,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  Camera,
+  runAtTargetFps,
+  useCameraDevice,
+  useCameraFormat,
+  useCameraPermission,
+  useFrameProcessor,
+} from 'react-native-vision-camera';
+import { startScanning, type VCDetection } from 'react-native-card-scanner';
 import { Asset } from 'expo-asset';
 import { cacheDirectory, copyAsync } from 'expo-file-system/legacy';
 import Svg, { Rect } from 'react-native-svg';
@@ -11,23 +29,40 @@ import { useSharedValue } from 'react-native-reanimated';
 const screenWidth = Dimensions.get('window').width;
 const screenHeight = Dimensions.get('window').height;
 
+// Game name for card database lookup
+const GAME_NAME = 'lorcana';
+
 export default function VisionCameraScanner() {
+  const insets = useSafeAreaInsets();
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
+  const format = useCameraFormat(device, [
+    { videoResolution: { width: 1920, height: 1080 } },
+  ]);
   const [isScanning, setIsScanning] = useState(false);
   const [isLoadingModels, setIsLoadingModels] = useState(true);
   const [modelError, setModelError] = useState<string | null>(null);
   const [modelPath, setModelPath] = useState<string | null>(null);
+  const [embeddingModelPath, setEmbeddingModelPath] = useState<string | null>(
+    null,
+  );
   const [detections, setDetections] = useState<VCDetection[]>([]);
-  const [frameSize, setFrameSize] = useState({ width: 1920, height: 1080 });
+  // Coordinates are from rotated frame (portrait 1080x1920)
+  const [frameSize, setFrameSize] = useState({ width: 1080, height: 1920 });
+  const [recognizedCards, setRecognizedCards] = useState<string[]>([]);
+  const [cardWithConfidence, setCardWithConfidence] = useState<string | null>(
+    null,
+  );
+  const [croppedImagePath, setCroppedImagePath] = useState<string | null>(null);
+  const [timingStats, setTimingStats] = useState<any>(null);
   const lastProcessedTime = useSharedValue(0);
 
-  // Load YOLO model on mount
+  // Load models on mount
   useEffect(() => {
-    loadModel();
+    loadModels();
   }, []);
 
-  const loadModel = async () => {
+  const loadModels = async () => {
     try {
       setIsLoadingModels(true);
 
@@ -39,94 +74,218 @@ export default function VisionCameraScanner() {
         throw new Error('Failed to load YOLO model');
       }
 
-      // Copy to cache directory
-      const localPath = `${cacheDirectory}yolo11n-seg.pte`;
+      // Copy YOLO model to cache directory
+      const yoloLocalPath = `${cacheDirectory}yolo11n-seg.pte`;
       await copyAsync({
         from: yoloAsset.localUri,
-        to: localPath,
+        to: yoloLocalPath,
       });
 
-      setModelPath(localPath);
-      console.log('✅ YOLO model loaded:', localPath);
+      setModelPath(yoloLocalPath);
+      console.log('✅ YOLO model loaded:', yoloLocalPath);
+
+      // Load the embedding model for card recognition
+      try {
+        const embeddingAsset = Asset.fromModule(
+          require('../assets/embedding_model.pte'),
+        );
+        await embeddingAsset.downloadAsync();
+
+        if (embeddingAsset.localUri) {
+          const embeddingLocalPath = `${cacheDirectory}embedding_model.pte`;
+          await copyAsync({
+            from: embeddingAsset.localUri,
+            to: embeddingLocalPath,
+          });
+          setEmbeddingModelPath(embeddingLocalPath);
+          console.log('✅ Embedding model loaded:', embeddingLocalPath);
+        }
+      } catch (embErr) {
+        console.warn(
+          '⚠️ Embedding model not found, card recognition will be disabled:',
+          embErr,
+        );
+      }
+
       setIsLoadingModels(false);
     } catch (error) {
-      console.error('Failed to load model:', error);
+      console.error('Failed to load models:', error);
       setModelError(error instanceof Error ? error.message : String(error));
       setIsLoadingModels(false);
     }
   };
 
-  const updateDetectionsCallback = useRunOnJS((count: number, x1s: number[], y1s: number[], x2s: number[], y2s: number[], confs: number[], width: number, height: number) => {
-    const dets: VCDetection[] = [];
-    for (let i = 0; i < count; i++) {
-      dets.push({
-        box: {
-          x1: x1s[i],
-          y1: y1s[i],
-          x2: x2s[i],
-          y2: y2s[i],
-          conf: confs[i],
+  const updateDetectionsCallback = useRunOnJS(
+    (
+      count: number,
+      x1s: number[],
+      y1s: number[],
+      x2s: number[],
+      y2s: number[],
+      confs: number[],
+      cardNames: string[],
+      croppedPaths: string[],
+      width: number,
+      height: number,
+    ) => {
+      const dets: VCDetection[] = [];
+      const names: string[] = [];
+
+      for (let i = 0; i < count; i++) {
+        dets.push({
+          box: {
+            x1: x1s[i],
+            y1: y1s[i],
+            x2: x2s[i],
+            y2: y2s[i],
+            conf: confs[i],
+          },
+        });
+
+        // Log recognized card names
+        if (cardNames[i]) {
+          names.push(cardNames[i]);
         }
-      });
-    }
-    console.log(dets);
-    setDetections(dets);
-    setFrameSize({ width, height });
+      }
+
+      setDetections(dets);
+      setRecognizedCards(names);
+      setFrameSize({ width, height });
+
+      // Set first cropped image path for display
+      if (croppedPaths.length > 0 && croppedPaths[0]) {
+        setCroppedImagePath(croppedPaths[0]);
+      }
+    },
+    [],
+  );
+
+  const updateCardWithConfidenceCallback = useRunOnJS((cardInfo: string) => {
+    setCardWithConfidence(cardInfo);
+  }, []);
+
+  const updateTimingStatsCallback = useRunOnJS((stats: any) => {
+    setTimingStats(stats);
   }, []);
 
   // Frame processor (runs on separate thread)
-  const frameProcessor = useFrameProcessor((frame) => {
-    'worklet';
+  const frameProcessor = useFrameProcessor(
+    (frame) => {
+      'worklet';
+      runAtTargetFps(5, () => {
+        if (!isScanning || !modelPath) {
+          return;
+        }
 
-    if (!isScanning || !modelPath) {
-      return;
-    }
+        // Call startScanning with optional embedding model and game name for recognition
+        const result = startScanning(
+          frame,
+          modelPath,
+          embeddingModelPath ?? undefined,
+          embeddingModelPath ? GAME_NAME : undefined,
+        );
 
-    // Throttle to 5 FPS (200ms between frames)
-    const now = Date.now();
-    const timeSinceLastProcess = now - lastProcessedTime.value;
-    if (timeSinceLastProcess < 200) {
-      return; // Skip this frame
-    }
-    lastProcessedTime.value = now;
+        // Extract detection data into separate arrays
+        if (result.cardCount > 0) {
+          const x1s: number[] = [];
+          const y1s: number[] = [];
+          const x2s: number[] = [];
+          const y2s: number[] = [];
+          const confs: number[] = [];
+          const cardNames: string[] = [];
 
-    const result = scanFaces(frame, modelPath);
+          const croppedPaths: string[] = [];
 
-    // Extract detection data into separate arrays
-    if (result.cardCount > 0) {
-      const x1s: number[] = [];
-      const y1s: number[] = [];
-      const x2s: number[] = [];
-      const y2s: number[] = [];
-      const confs: number[] = [];
+          for (let i = 0; i < result.detections.length; i++) {
+            const det = result.detections[i];
+            x1s.push(det.box.x1);
+            y1s.push(det.box.y1);
+            x2s.push(det.box.x2);
+            y2s.push(det.box.y2);
+            confs.push(det.box.conf);
 
-      for (let i = 0; i < result.detections.length; i++) {
-        const box = result.detections[i].box;
-        x1s.push(box.x1);
-        y1s.push(box.y1);
-        x2s.push(box.x2);
-        y2s.push(box.y2);
-        confs.push(box.conf);
-      }
+            // Get card name from top match if available
+            const topMatch = det.matches?.[0];
+            cardNames.push(topMatch?.name ?? '');
 
-      updateDetectionsCallback(result.cardCount, x1s, y1s, x2s, y2s, confs, result.frameWidth, result.frameHeight);
-    } else {
-      updateDetectionsCallback(0, [], [], [], [], [], result.frameWidth, result.frameHeight);
-    }
-    // Log detailed timing breakdown
-    console.log(
-      `📊 Frame: ${result.frameWidth}x${result.frameHeight} | ` +
-      `Extract: ${result.frameExtractionMs.toFixed(2)}ms | ` +
-      `YOLO: ${result.inferenceTimeMs.toFixed(2)}ms | ` +
-      `Total: ${result.totalMs.toFixed(2)}ms | ` +
-      `Cards: ${result.cardCount}`
-    );
+            // Get cropped image path
+            croppedPaths.push(det.croppedImagePath ?? '');
+          }
 
-    // Log frame properties (first time only)
-    if (result.debug) {
-      console.log(`🔍 ${result.debug}`);
-    }
-  }, [isScanning, modelPath, updateDetectionsCallback]);
+          // Set card with confidence for first detection
+          if (result.detections.length > 0) {
+            const firstMatch = result.detections[0].matches?.[0];
+            if (firstMatch) {
+              updateCardWithConfidenceCallback(
+                `${firstMatch.name} (${(firstMatch.score * 100).toFixed(1)}%)`,
+              );
+            }
+          }
+
+          // Set timing stats
+          updateTimingStatsCallback({
+            total: result.totalMs,
+            frameExtraction: result.frameExtractionMs,
+            yoloPreprocess: result.yoloPreprocessMs,
+            yoloInference: result.yoloInferenceMs,
+            yoloPostprocess: result.yoloPostprocessMs,
+            embeddingPreprocess: result.embeddingPreprocessMs,
+            embeddingInference: result.embeddingInferenceMs,
+            dbSearch: result.dbSearchMs,
+          });
+
+          updateDetectionsCallback(
+            result.cardCount,
+            x1s,
+            y1s,
+            x2s,
+            y2s,
+            confs,
+            cardNames,
+            croppedPaths,
+            result.frameWidth,
+            result.frameHeight,
+          );
+        } else {
+          updateDetectionsCallback(
+            0,
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            result.frameWidth,
+            result.frameHeight,
+          );
+        }
+
+        // Log detailed timing breakdown
+        const yoloTotal =
+          (result.yoloPreprocessMs ?? 0) +
+          (result.yoloInferenceMs ?? 0) +
+          (result.yoloPostprocessMs ?? 0);
+        const embeddingTotal =
+          (result.embeddingPreprocessMs ?? 0) +
+          (result.embeddingInferenceMs ?? 0);
+
+        console.log(
+          `📊 Frame: ${result.frameWidth}x${result.frameHeight} | Total: ${result.totalMs.toFixed(2)}ms\n` +
+            `  Extract: ${result.frameExtractionMs.toFixed(2)}ms\n` +
+            `  YOLO: ${yoloTotal.toFixed(2)}ms (pre:${(result.yoloPreprocessMs ?? 0).toFixed(1)} + inf:${(result.yoloInferenceMs ?? 0).toFixed(1)} + post:${(result.yoloPostprocessMs ?? 0).toFixed(1)})\n` +
+            `  Embedding: ${embeddingTotal.toFixed(2)}ms (pre:${(result.embeddingPreprocessMs ?? 0).toFixed(1)} + inf:${(result.embeddingInferenceMs ?? 0).toFixed(1)})\n` +
+            `  DB Search: ${(result.dbSearchMs ?? 0).toFixed(2)}ms | Cards: ${result.cardCount}`,
+        );
+
+        // Log frame properties (first time only)
+        if (result.debug) {
+          console.log(`🔍 ${result.debug}`);
+        }
+      });
+    },
+    [isScanning, modelPath, embeddingModelPath, updateDetectionsCallback],
+  );
 
   const toggleScanning = () => {
     setIsScanning(!isScanning);
@@ -159,7 +318,6 @@ export default function VisionCameraScanner() {
       <View style={styles.container}>
         <Text style={styles.errorText}>Failed to load models:</Text>
         <Text style={styles.errorText}>{modelError}</Text>
-
       </View>
     );
   }
@@ -175,11 +333,12 @@ export default function VisionCameraScanner() {
   return (
     <View style={styles.container}>
       <Camera
-        style={styles.camera}
+        style={StyleSheet.absoluteFill}
         device={device}
+        format={format}
         isActive={true}
         frameProcessor={frameProcessor}
-        pixelFormat="yuv"
+        pixelFormat={Platform.OS === 'ios' ? 'rgb' : 'yuv'}
       />
 
       {/* Bounding box overlay */}
@@ -189,15 +348,13 @@ export default function VisionCameraScanner() {
             {detections.map((detection, index) => {
               const box = detection.box;
 
-              // Coordinates are already in original frame space (1920x1080)
-              // Just map directly to screen coordinates
-              const scaleX = screenWidth / frameSize.width;
-              const scaleY = screenHeight / frameSize.height;
+              // Use uniform X scaling (works on iOS)
+              const scale = screenWidth / frameSize.width;
 
-              const x = box.x1 * scaleX;
-              const y = box.y1 * scaleY;
-              const width = (box.x2 - box.x1) * scaleX;
-              const height = (box.y2 - box.y1) * scaleY;
+              const x = box.x1 * scale;
+              const y = box.y1 * scale;
+              const width = (box.x2 - box.x1) * scale;
+              const height = (box.y2 - box.y1) * scale;
 
               return (
                 <Rect
@@ -214,18 +371,74 @@ export default function VisionCameraScanner() {
             })}
           </Svg>
           {/* Debug info */}
-          <View style={{ position: 'absolute', top: 100, left: 20, backgroundColor: 'rgba(0,0,0,0.7)', padding: 10 }}>
-            <Text style={{ color: 'white', fontSize: 12 }}>
-              Frame: {frameSize.width}x{frameSize.height}{'\n'}
-              Screen: {screenWidth.toFixed(0)}x{screenHeight.toFixed(0)}{'\n'}
+          <View
+            style={{
+              position: 'absolute',
+              top: 100,
+              left: 20,
+              backgroundColor: 'rgba(0,0,0,0.7)',
+              padding: 10,
+              maxWidth: 200,
+            }}
+          >
+            <Text style={{ color: 'white', fontSize: 11, lineHeight: 16 }}>
+              {/* Card info with confidence */}
+              {cardWithConfidence && (
+                <>
+                  🎴 {cardWithConfidence}
+                  {'\n\n'}
+                </>
+              )}
+              {/* Timing breakdown */}
+              {timingStats && (
+                <>
+                  ⏱️ Total: {timingStats.total?.toFixed(1)}ms{'\n'}
+                  {'  '}Extract: {timingStats.frameExtraction?.toFixed(1)}ms
+                  {'\n'}
+                  {'  '}YOLO:{' '}
+                  {(
+                    (timingStats.yoloPreprocess ?? 0) +
+                    (timingStats.yoloInference ?? 0) +
+                    (timingStats.yoloPostprocess ?? 0)
+                  ).toFixed(1)}
+                  ms{'\n'}
+                  {'    '}Pre: {timingStats.yoloPreprocess?.toFixed(1)}ms{'\n'}
+                  {'    '}Inf: {timingStats.yoloInference?.toFixed(1)}ms{'\n'}
+                  {'    '}Post: {timingStats.yoloPostprocess?.toFixed(1)}ms
+                  {'\n'}
+                  {'  '}Emb:{' '}
+                  {(
+                    (timingStats.embeddingPreprocess ?? 0) +
+                    (timingStats.embeddingInference ?? 0)
+                  ).toFixed(1)}
+                  ms{'\n'}
+                  {'    '}Pre: {timingStats.embeddingPreprocess?.toFixed(1)}ms
+                  {'\n'}
+                  {'    '}Inf: {timingStats.embeddingInference?.toFixed(1)}ms
+                  {'\n'}
+                  {'  '}DB: {timingStats.dbSearch?.toFixed(1)}ms{'\n\n'}
+                </>
+              )}
               Detections: {detections.length}
             </Text>
+            {croppedImagePath && (
+              <Image
+                source={{ uri: croppedImagePath }}
+                style={{
+                  width: 150,
+                  height: 200,
+                  marginTop: 10,
+                  borderRadius: 4,
+                }}
+                resizeMode="contain"
+              />
+            )}
           </View>
         </View>
       )}
 
       {/* Controls */}
-      <View style={styles.controls}>
+      <View style={[styles.controls, { paddingBottom: insets.bottom + 20 }]}>
         <TouchableOpacity
           style={[styles.scanButton, isScanning && styles.scanButtonActive]}
           onPress={toggleScanning}
@@ -270,7 +483,7 @@ const styles = StyleSheet.create({
   },
   controls: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 0,
     left: 0,
     right: 0,
     alignItems: 'center',

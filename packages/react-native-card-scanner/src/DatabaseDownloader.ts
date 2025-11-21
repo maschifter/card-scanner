@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import * as RNFS from 'react-native-fs';
+import * as FileSystem from 'expo-file-system/legacy';
 import { swapDatabase, DatabaseInfo } from './index';
 
 export const downloadDatabase = async (
@@ -7,29 +7,29 @@ export const downloadDatabase = async (
   dbName: string,
 ): Promise<string> => {
   console.log(`[downloadDatabase] Called with url: ${url}, dbName: ${dbName}`);
-  const tmpDir = RNFS.CachesDirectoryPath + '/db_downloads/';
+  const tmpDir = FileSystem.cacheDirectory + 'db_downloads/';
   console.log(`[downloadDatabase] Temporary directory: ${tmpDir}`);
-  await RNFS.mkdir(tmpDir);
+
+  const dirInfo = await FileSystem.getInfoAsync(tmpDir);
+  if (!dirInfo.exists) {
+    await FileSystem.makeDirectoryAsync(tmpDir, { intermediates: true });
+  }
 
   const tmpPath = tmpDir + `${dbName}.mdb`;
-  if (await RNFS.exists(tmpPath)) {
+  const fileInfo = await FileSystem.getInfoAsync(tmpPath);
+  if (fileInfo.exists) {
     console.log('[downloadDatabase] Deleting old temporary file:', tmpPath);
-    await RNFS.unlink(tmpPath);
+    await FileSystem.deleteAsync(tmpPath);
   }
   console.log(
     `[downloadDatabase] Temporary file path for download: ${tmpPath}`,
   );
 
-  const options = {
-    fromUrl: url,
-    toFile: tmpPath,
-  };
+  const downloadResult = await FileSystem.downloadAsync(url, tmpPath);
 
-  const downloadResult = await RNFS.downloadFile(options).promise;
-
-  if (downloadResult.statusCode !== 200) {
+  if (downloadResult.status !== 200) {
     throw new Error(
-      `Failed to download database from ${url}. Status code: ${downloadResult.statusCode}`,
+      `Failed to download database from ${url}. Status code: ${downloadResult.status}`,
     );
   }
   console.log(`[downloadDatabase] Download successful to: ${tmpPath}`);

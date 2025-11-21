@@ -552,8 +552,15 @@ void CardScannerInstaller::injectJSIBindings(
         std::string gameName = args[0].asString(runtime).utf8(runtime);
         std::string jsonPath = args[1].asString(runtime).utf8(runtime);
 
-        // Clean jsonPath (dbPath handling is now inside the Manager)
+        // Clean jsonPath - strip file:// prefix if present
         std::string cleanJsonPath = jsonPath;
+        const std::string filePrefix = "file://";
+        if (cleanJsonPath.find(filePrefix) == 0) {
+          cleanJsonPath = cleanJsonPath.substr(filePrefix.length());
+        }
+
+        std::cout << "📦 Loading embeddings from: " << cleanJsonPath
+                  << " for game: " << gameName << std::endl;
 
         try {
           // Get the store via the Manager (opens it if not already open)
@@ -616,11 +623,13 @@ void CardScannerInstaller::injectJSIBindings(
   jsiRuntime->global().setProperty(*jsiRuntime, "getCardCount",
                                    std::move(getCardCountFunc));
 
-  auto myPlugin = [=](jsi::Runtime &runtime, const jsi::Value &thisArg,
-                      const jsi::Value *args, size_t count) -> jsi::Value {
+  auto myPlugin = [&dbManager](jsi::Runtime &runtime, const jsi::Value &thisArg,
+                               const jsi::Value *args,
+                               size_t count) -> jsi::Value {
     if (count < 2) {
       throw jsi::JSError(runtime,
-                         "myCppPlugin expects 2 arguments: (frame, modelPath)");
+                         "myCppPlugin expects at least 2 arguments: (frame, "
+                         "yoloModelPath, [embeddingModelPath], [gameName])");
     }
 
     try {
@@ -629,14 +638,28 @@ void CardScannerInstaller::injectJSIBindings(
       // Get the Frame HostObject (first argument)
       auto frameObj = args[0].asObject(runtime);
 
-      // Get model path (second argument)
+      // Get YOLO model path (second argument)
       if (!args[1].isString()) {
-        throw jsi::JSError(runtime, "modelPath must be a string");
+        throw jsi::JSError(runtime, "yoloModelPath must be a string");
       }
       std::string modelPath = args[1].asString(runtime).utf8(runtime);
 
+      // Optional: embedding model path (third argument)
+      std::string embeddingModelPath = "";
+      if (count > 2 && args[2].isString()) {
+        embeddingModelPath = args[2].asString(runtime).utf8(runtime);
+      }
+
+      // Optional: game name for database lookup (fourth argument)
+      std::string gameName = "";
+      if (count > 3 && args[3].isString()) {
+        gameName = args[3].asString(runtime).utf8(runtime);
+      }
+
+      bool doRecognition = !embeddingModelPath.empty() && !gameName.empty();
+
       // Disable OpenCV threading to prevent interference with ExecutorTorch
-      cv::setNumThreads(0);
+      // cv::setNumThreads(0);
 
       auto startFrameExtraction = std::chrono::high_resolution_clock::now();
 
@@ -678,25 +701,23 @@ void CardScannerInstaller::injectJSIBindings(
 
           // Get buffer data
           uint8_t *data = arrayBuffer.data(runtime);
-          size_t size = arrayBuffer.size(runtime);
 
-          frameDebug = "Buffer: " + std::to_string(size) +
-                       " bytes, format: " + pixelFormat;
-
-          // YUV format: Extract Y plane (grayscale) and convert to BGR
-          // Y plane is first width*height bytes
-          frameImage = cv::Mat(height, width, CV_8UC1, data).clone();
-          cv::cvtColor(frameImage, frameImage, cv::COLOR_GRAY2BGR);
-
-          frameDebug += " (YUV Y-plane)";
+          if (pixelFormat == "rgb") {
+            // iOS: BGRA format (4 bytes per pixel)
+            frameImage = cv::Mat(height, width, CV_8UC4, data).clone();
+            cv::cvtColor(frameImage, frameImage, cv::COLOR_BGRA2BGR);
+          } else {
+            // Android: YUV420 format (1.5 bytes per pixel)
+            cv::Mat yuvMat(height + height / 2, width, CV_8UC1, data);
+            cv::cvtColor(yuvMat, frameImage, cv::COLOR_YUV2BGR_NV21);
+          }
+          cv::rotate(frameImage, frameImage, cv::ROTATE_90_CLOCKWISE);
 
         } catch (const std::exception &e) {
           frameDebug = "Error: " + std::string(e.what());
-          frameImage = cv::Mat(height, width, CV_8UC3, cv::Scalar(0, 0, 0));
         }
       } else {
         frameDebug = "toArrayBuffer N/A";
-        frameImage = cv::Mat(height, width, CV_8UC3, cv::Scalar(0, 0, 0));
       }
 
       auto endFrameExtraction = std::chrono::high_resolution_clock::now();
@@ -710,6 +731,89 @@ void CardScannerInstaller::injectJSIBindings(
       auto segResult = yolo.segment(frameImage);
       auto endYolo = std::chrono::high_resolution_clock::now();
 
+      // If recognition is enabled, run embedding extraction and database search
+      std::vector<std::vector<CardSearchResult>> cardMatches;
+      std::vector<std::string> croppedImagePaths;
+      double recognitionTimeMs = 0.0;
+      double embeddingPreprocessMs = 0.0;
+      double embeddingInferenceMs = 0.0;
+      double dbSearchMs = 0.0;
+
+      if (doRecognition && !segResult.detections.empty()) {
+        auto startRecognition = std::chrono::high_resolution_clock::now();
+
+        // Get database handle
+        ObjectBoxDB *db = dbManager.getOrCreateStore(gameName);
+        if (db) {
+          for (const auto &det : segResult.detections) {
+            try {
+              cv::Mat cardImg;
+
+              // Use dewarped card if available, otherwise crop from bbox
+              if (!det.dewarpedCard.empty()) {
+                cardImg = det.dewarpedCard;
+              } else {
+                // Crop card from frame using bounding box
+                int ix1 = std::max(0, static_cast<int>(det.box.x1));
+                int iy1 = std::max(0, static_cast<int>(det.box.y1));
+                int ix2 =
+                    std::min(frameImage.cols, static_cast<int>(det.box.x2));
+                int iy2 =
+                    std::min(frameImage.rows, static_cast<int>(det.box.y2));
+
+                if (ix2 > ix1 && iy2 > iy1) {
+                  cv::Rect roi(ix1, iy1, ix2 - ix1, iy2 - iy1);
+                  cardImg = frameImage(roi).clone();
+                }
+              }
+
+              if (!cardImg.empty()) {
+                // Save cropped card image to tmp for debugging
+                static int cardSaveCounter = 0;
+                std::string tempDir = std::string(getenv("TMPDIR") ?: "/tmp/");
+                std::string debugPath = tempDir + "card_crop_" +
+                                        std::to_string(cardSaveCounter++) +
+                                        ".jpg";
+                cv::imwrite(debugPath, cardImg);
+                croppedImagePaths.push_back("file://" + debugPath);
+
+                // Extract embedding with timing
+                auto startEmbedding = std::chrono::high_resolution_clock::now();
+                auto inferenceResult =
+                    cardscanner::CardScanner::runInferenceOnMat(
+                        embeddingModelPath, cardImg);
+                auto endEmbedding = std::chrono::high_resolution_clock::now();
+
+                // Accumulate embedding timing (preprocess + inference only, no postprocess)
+                embeddingPreprocessMs += inferenceResult.preprocessingTimeMs;
+                embeddingInferenceMs += inferenceResult.inferenceTimeMs;
+
+                // Search database
+                auto startDbSearch = std::chrono::high_resolution_clock::now();
+                auto matches =
+                    db->search_similar_cards(inferenceResult.embedding, 3);
+                auto endDbSearch = std::chrono::high_resolution_clock::now();
+                dbSearchMs += std::chrono::duration<double, std::milli>(
+                                  endDbSearch - startDbSearch)
+                                  .count();
+
+                cardMatches.push_back(matches);
+              } else {
+                cardMatches.push_back({});
+              }
+            } catch (const std::exception &e) {
+              std::cerr << "Card recognition failed: " << e.what() << std::endl;
+              cardMatches.push_back({});
+            }
+          }
+        }
+
+        auto endRecognition = std::chrono::high_resolution_clock::now();
+        recognitionTimeMs = std::chrono::duration<double, std::milli>(
+                                endRecognition - startRecognition)
+                                .count();
+      }
+
       auto endTotal = std::chrono::high_resolution_clock::now();
       double totalMs =
           std::chrono::duration<double, std::milli>(endTotal - startTotal)
@@ -717,42 +821,45 @@ void CardScannerInstaller::injectJSIBindings(
 
       // Convert result to JSI Object
       jsi::Object result(runtime);
-      result.setProperty(runtime, "inferenceTimeMs",
-                         jsi::Value(segResult.inferenceTimeMs));
       result.setProperty(
           runtime, "cardCount",
           jsi::Value(static_cast<int>(segResult.detections.size())));
+      result.setProperty(runtime, "totalMs", jsi::Value(totalMs));
+
+      // Frame extraction timing
       result.setProperty(runtime, "frameExtractionMs",
                          jsi::Value(frameExtractionMs));
-      result.setProperty(runtime, "totalMs", jsi::Value(totalMs));
-      result.setProperty(runtime, "frameWidth", jsi::Value(width));
-      result.setProperty(runtime, "frameHeight", jsi::Value(height));
+
+      // YOLO timing breakdown
+      result.setProperty(runtime, "yoloPreprocessMs",
+                         jsi::Value(segResult.preprocessingTimeMs));
+      result.setProperty(runtime, "yoloInferenceMs",
+                         jsi::Value(segResult.inferenceTimeMs));
+      result.setProperty(runtime, "yoloPostprocessMs",
+                         jsi::Value(segResult.postprocessingTimeMs));
+
+      // Embedding/recognition timing breakdown
+      result.setProperty(runtime, "embeddingPreprocessMs",
+                         jsi::Value(embeddingPreprocessMs));
+      result.setProperty(runtime, "embeddingInferenceMs",
+                         jsi::Value(embeddingInferenceMs));
+      result.setProperty(runtime, "dbSearchMs", jsi::Value(dbSearchMs));
+      result.setProperty(runtime, "recognitionTotalMs",
+                         jsi::Value(recognitionTimeMs));
+      // Return rotated frame dimensions
+      result.setProperty(runtime, "frameWidth", jsi::Value(frameImage.cols));
+      result.setProperty(runtime, "frameHeight", jsi::Value(frameImage.rows));
       result.setProperty(runtime, "debug",
                          jsi::String::createFromUtf8(runtime, frameDebug));
 
-      // Save visualization to temp directory for debugging
-      if (!segResult.detections.empty()) {
-        std::string tempPath = "/tmp/card_detection_viz.jpg";
-        // cv::imwrite(tempPath, segResult.visualized);
-        std::cout << "📸 Saved visualization to: " << tempPath << std::endl;
-        std::cout << "   Frame size: " << frameImage.cols << "x"
-                  << frameImage.rows << std::endl;
-        for (size_t i = 0; i < segResult.detections.size(); i++) {
-          const auto &det = segResult.detections[i];
-          std::cout << "   Box " << i << ": [" << det.box.x1 << ", "
-                    << det.box.y1 << ", " << det.box.x2 << ", " << det.box.y2
-                    << "]" << std::endl;
-        }
-      }
-
-      // Convert detections array
+      // Convert detections array with recognition results
       jsi::Array detections(runtime, segResult.detections.size());
       for (size_t i = 0; i < segResult.detections.size(); i++) {
         const auto &det = segResult.detections[i];
 
         jsi::Object jsDetection(runtime);
 
-        // Bounding box
+        // Return coordinates from the rotated frame
         jsi::Object box(runtime);
         box.setProperty(runtime, "x1", jsi::Value(det.box.x1));
         box.setProperty(runtime, "y1", jsi::Value(det.box.y1));
@@ -760,6 +867,31 @@ void CardScannerInstaller::injectJSIBindings(
         box.setProperty(runtime, "y2", jsi::Value(det.box.y2));
         box.setProperty(runtime, "conf", jsi::Value(det.box.conf));
         jsDetection.setProperty(runtime, "box", box);
+
+        // Add recognition matches if available
+        if (i < cardMatches.size() && !cardMatches[i].empty()) {
+          jsi::Array matches(runtime, cardMatches[i].size());
+          for (size_t j = 0; j < cardMatches[i].size(); j++) {
+            jsi::Object matchObj(runtime);
+            matchObj.setProperty(runtime, "cardId",
+                                 jsi::String::createFromUtf8(
+                                     runtime, cardMatches[i][j].card_id));
+            matchObj.setProperty(
+                runtime, "name",
+                jsi::String::createFromUtf8(runtime, cardMatches[i][j].name));
+            matchObj.setProperty(runtime, "score",
+                                 jsi::Value(cardMatches[i][j].score));
+            matches.setValueAtIndex(runtime, j, matchObj);
+          }
+          jsDetection.setProperty(runtime, "matches", matches);
+        }
+
+        // Add cropped image path if available
+        if (i < croppedImagePaths.size()) {
+          jsDetection.setProperty(
+              runtime, "croppedImagePath",
+              jsi::String::createFromUtf8(runtime, croppedImagePaths[i]));
+        }
 
         detections.setValueAtIndex(runtime, i, jsDetection);
       }

@@ -155,11 +155,24 @@ export { downloadDatabase, useDatabaseManager, DatabaseInfo, listDatabases };
 
 import type { Frame } from 'react-native-vision-camera';
 
+export interface VCDetection {
+  box: {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    conf: number;
+  };
+  matches?: CardSearchResult[];
+  croppedImagePath?: string;
+}
+
 export interface SegmentationResult {
   inferenceTimeMs: number;
   cardCount: number;
-  detections: Detection[];
+  detections: VCDetection[];
   frameExtractionMs: number;
+  recognitionTimeMs: number;
   totalMs: number;
   frameWidth: number;
   frameHeight: number;
@@ -169,8 +182,18 @@ export interface SegmentationResult {
 /**
  * Vision Camera frame processor plugin for YOLO segmentation.
  * Calls the native myCppPlugin JSI function directly.
+ *
+ * @param frame - Vision Camera frame
+ * @param yoloModelPath - Path to the YOLO segmentation model
+ * @param embeddingModelPath - Optional: Path to the embedding model for card recognition
+ * @param gameName - Optional: Game name for database lookup (required if embeddingModelPath is provided)
  */
-export function scanFaces(frame: Frame, modelPath: string): SegmentationResult {
+export function startScanning(
+  frame: Frame,
+  yoloModelPath: string,
+  embeddingModelPath?: string,
+  gameName?: string,
+): SegmentationResult {
   'worklet';
 
   // @ts-expect-error - myCppPlugin is a global JSI function
@@ -179,5 +202,5 @@ export function scanFaces(frame: Frame, modelPath: string): SegmentationResult {
   }
 
   // @ts-expect-error - myCppPlugin is a global JSI function
-  return myCppPlugin(frame, modelPath);
+  return myCppPlugin(frame, yoloModelPath, embeddingModelPath, gameName);
 }

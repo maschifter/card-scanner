@@ -15,7 +15,7 @@ import {
 // JSON embeddings path in cache
 export const EMBEDDINGS_CACHE_PATH = `${cacheDirectory}lorcana_embeddings.json`;
 
-const DEFAULT_GAME = 'lorocana';
+const DEFAULT_GAME = 'lorcana';
 
 export interface DatabaseStats {
   cardCount: number;

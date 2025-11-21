@@ -76,6 +76,6 @@
     }
   },
   "dependencies": {
-    "react-native-fs": "^2.20.0"
+    "expo-file-system": "^19.0.19"
   }
 }
