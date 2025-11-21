@@ -7,6 +7,7 @@ import SegmentationScreen from './screens/SegmentationScreen';
 import RecognitionScreen from './screens/RecognitionScreen';
 import CameraScanner from './screens/CameraScanner';
 import DatabaseManagerScreen from './screens/DatabaseScreen';
+import VisionCameraScanner from './screens/VisionCameraScanner';
 
 const Tab = createBottomTabNavigator();
 
@@ -28,6 +29,8 @@ export default function App() {
               iconName = focused ? 'camera' : 'camera-outline';
             } else if (route.name === 'Databases') {
               iconName = focused ? 'server' : 'server-outline';
+            } else if (route.name === 'VisionCamera') {
+              iconName = focused ? 'videocam' : 'videocam-outline';
             }
 
             return <Ionicons name={iconName} size={size} color={color} />;
@@ -67,6 +70,11 @@ export default function App() {
           name="Databases"
           component={DatabaseManagerScreen}
           options={{ title: 'Databases' }}
+        />
+        <Tab.Screen
+          name="VisionCamera"
+          component={VisionCameraScanner}
+          options={{ title: 'Vision Camera' }}
         />
       </Tab.Navigator>
     </NavigationContainer>

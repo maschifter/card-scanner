@@ -151,3 +151,33 @@ export const swapDatabase = global.swapDatabase;
 export const listAvailableGames = global.listAvailableGames;
 export const closeGameStore = global.closeGameStore;
 export { downloadDatabase, useDatabaseManager, DatabaseInfo, listDatabases };
+// Vision Camera Frame Processor
+
+import type { Frame } from 'react-native-vision-camera';
+
+export interface SegmentationResult {
+  inferenceTimeMs: number;
+  cardCount: number;
+  detections: Detection[];
+  frameExtractionMs: number;
+  totalMs: number;
+  frameWidth: number;
+  frameHeight: number;
+  debug?: string;
+}
+
+/**
+ * Vision Camera frame processor plugin for YOLO segmentation.
+ * Calls the native myCppPlugin JSI function directly.
+ */
+export function scanFaces(frame: Frame, modelPath: string): SegmentationResult {
+  'worklet';
+
+  // @ts-expect-error - myCppPlugin is a global JSI function
+  if (typeof myCppPlugin !== 'function') {
+    throw new Error('myCppPlugin is not available in worklet runtime');
+  }
+
+  // @ts-expect-error - myCppPlugin is a global JSI function
+  return myCppPlugin(frame, modelPath);
+}

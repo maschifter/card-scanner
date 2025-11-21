@@ -616,6 +616,170 @@ void CardScannerInstaller::injectJSIBindings(
   jsiRuntime->global().setProperty(*jsiRuntime, "getCardCount",
                                    std::move(getCardCountFunc));
 
+  auto myPlugin = [=](jsi::Runtime &runtime, const jsi::Value &thisArg,
+                      const jsi::Value *args, size_t count) -> jsi::Value {
+    if (count < 2) {
+      throw jsi::JSError(runtime,
+                         "myCppPlugin expects 2 arguments: (frame, modelPath)");
+    }
+
+    try {
+      auto startTotal = std::chrono::high_resolution_clock::now();
+
+      // Get the Frame HostObject (first argument)
+      auto frameObj = args[0].asObject(runtime);
+
+      // Get model path (second argument)
+      if (!args[1].isString()) {
+        throw jsi::JSError(runtime, "modelPath must be a string");
+      }
+      std::string modelPath = args[1].asString(runtime).utf8(runtime);
+
+      // Disable OpenCV threading to prevent interference with ExecutorTorch
+      cv::setNumThreads(0);
+
+      auto startFrameExtraction = std::chrono::high_resolution_clock::now();
+
+      // Extract frame dimensions
+      int width = 0;
+      int height = 0;
+
+      if (frameObj.hasProperty(runtime, "width")) {
+        width =
+            static_cast<int>(frameObj.getProperty(runtime, "width").asNumber());
+      }
+      if (frameObj.hasProperty(runtime, "height")) {
+        height = static_cast<int>(
+            frameObj.getProperty(runtime, "height").asNumber());
+      }
+
+      // Extract frame buffer
+      cv::Mat frameImage;
+      std::string frameDebug = "";
+
+      // Get pixel format
+      std::string pixelFormat = "unknown";
+      if (frameObj.hasProperty(runtime, "pixelFormat")) {
+        auto pixelFormatValue = frameObj.getProperty(runtime, "pixelFormat");
+        if (pixelFormatValue.isString()) {
+          pixelFormat = pixelFormatValue.asString(runtime).utf8(runtime);
+        }
+      }
+
+      // Try to extract actual frame data using toArrayBuffer
+      if (frameObj.hasProperty(runtime, "toArrayBuffer")) {
+        try {
+          // Call toArrayBuffer() method
+          auto toArrayBufferFunc =
+              frameObj.getPropertyAsFunction(runtime, "toArrayBuffer");
+          auto arrayBuffer =
+              toArrayBufferFunc.call(runtime).asObject(runtime).getArrayBuffer(
+                  runtime);
+
+          // Get buffer data
+          uint8_t *data = arrayBuffer.data(runtime);
+          size_t size = arrayBuffer.size(runtime);
+
+          frameDebug = "Buffer: " + std::to_string(size) +
+                       " bytes, format: " + pixelFormat;
+
+          // YUV format: Extract Y plane (grayscale) and convert to BGR
+          // Y plane is first width*height bytes
+          frameImage = cv::Mat(height, width, CV_8UC1, data).clone();
+          cv::cvtColor(frameImage, frameImage, cv::COLOR_GRAY2BGR);
+
+          frameDebug += " (YUV Y-plane)";
+
+        } catch (const std::exception &e) {
+          frameDebug = "Error: " + std::string(e.what());
+          frameImage = cv::Mat(height, width, CV_8UC3, cv::Scalar(0, 0, 0));
+        }
+      } else {
+        frameDebug = "toArrayBuffer N/A";
+        frameImage = cv::Mat(height, width, CV_8UC3, cv::Scalar(0, 0, 0));
+      }
+
+      auto endFrameExtraction = std::chrono::high_resolution_clock::now();
+      double frameExtractionMs = std::chrono::duration<double, std::milli>(
+                                     endFrameExtraction - startFrameExtraction)
+                                     .count();
+
+      // Run YOLO segmentation
+      auto startYolo = std::chrono::high_resolution_clock::now();
+      cardscanner::YoloSegmentation yolo(modelPath, 0.5f, 0.0f, 384);
+      auto segResult = yolo.segment(frameImage);
+      auto endYolo = std::chrono::high_resolution_clock::now();
+
+      auto endTotal = std::chrono::high_resolution_clock::now();
+      double totalMs =
+          std::chrono::duration<double, std::milli>(endTotal - startTotal)
+              .count();
+
+      // Convert result to JSI Object
+      jsi::Object result(runtime);
+      result.setProperty(runtime, "inferenceTimeMs",
+                         jsi::Value(segResult.inferenceTimeMs));
+      result.setProperty(
+          runtime, "cardCount",
+          jsi::Value(static_cast<int>(segResult.detections.size())));
+      result.setProperty(runtime, "frameExtractionMs",
+                         jsi::Value(frameExtractionMs));
+      result.setProperty(runtime, "totalMs", jsi::Value(totalMs));
+      result.setProperty(runtime, "frameWidth", jsi::Value(width));
+      result.setProperty(runtime, "frameHeight", jsi::Value(height));
+      result.setProperty(runtime, "debug",
+                         jsi::String::createFromUtf8(runtime, frameDebug));
+
+      // Save visualization to temp directory for debugging
+      if (!segResult.detections.empty()) {
+        std::string tempPath = "/tmp/card_detection_viz.jpg";
+        // cv::imwrite(tempPath, segResult.visualized);
+        std::cout << "📸 Saved visualization to: " << tempPath << std::endl;
+        std::cout << "   Frame size: " << frameImage.cols << "x"
+                  << frameImage.rows << std::endl;
+        for (size_t i = 0; i < segResult.detections.size(); i++) {
+          const auto &det = segResult.detections[i];
+          std::cout << "   Box " << i << ": [" << det.box.x1 << ", "
+                    << det.box.y1 << ", " << det.box.x2 << ", " << det.box.y2
+                    << "]" << std::endl;
+        }
+      }
+
+      // Convert detections array
+      jsi::Array detections(runtime, segResult.detections.size());
+      for (size_t i = 0; i < segResult.detections.size(); i++) {
+        const auto &det = segResult.detections[i];
+
+        jsi::Object jsDetection(runtime);
+
+        // Bounding box
+        jsi::Object box(runtime);
+        box.setProperty(runtime, "x1", jsi::Value(det.box.x1));
+        box.setProperty(runtime, "y1", jsi::Value(det.box.y1));
+        box.setProperty(runtime, "x2", jsi::Value(det.box.x2));
+        box.setProperty(runtime, "y2", jsi::Value(det.box.y2));
+        box.setProperty(runtime, "conf", jsi::Value(det.box.conf));
+        jsDetection.setProperty(runtime, "box", box);
+
+        detections.setValueAtIndex(runtime, i, jsDetection);
+      }
+      result.setProperty(runtime, "detections", detections);
+
+      return result;
+
+    } catch (const std::exception &e) {
+      throw jsi::JSError(runtime,
+                         std::string("Frame processing failed: ") + e.what());
+    }
+  };
+  // 3. Wrap C++ func in jsi::Function
+  auto jsiFunc = jsi::Function::createFromHostFunction(
+      *jsiRuntime, jsi::PropNameID::forUtf8(*jsiRuntime, "myCppPlugin"), 1,
+      myPlugin);
+  // 4. Add it to global so it can be called from JS
+  jsiRuntime->global().setProperty(*jsiRuntime, "myCppPlugin",
+                                   std::move(jsiFunc));
+
   threads::utils::unsafeSetupThreadPool();
   threads::GlobalThreadPool::initialize();
 }

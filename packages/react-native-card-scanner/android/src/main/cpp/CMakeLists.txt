@@ -106,10 +106,10 @@ target_link_libraries(
   cardscanner_cpp
   ${LINK_LIBRARIES}
   ${RN_VERSION_LINK_LIBRARIES}
-  ${log-lib}       
+  ${log-lib}
   objectbox-jni
   executorch
   ${EXECUTORCH_LIBS}
   ${OPENCV_LIBS}
   ${OPENCV_THIRD_PARTY_LIBS}
-)
+  )
