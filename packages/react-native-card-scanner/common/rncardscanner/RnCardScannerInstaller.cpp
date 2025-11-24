@@ -659,7 +659,7 @@ void CardScannerInstaller::injectJSIBindings(
       bool doRecognition = !embeddingModelPath.empty() && !gameName.empty();
 
       // Disable OpenCV threading to prevent interference with ExecutorTorch
-      // cv::setNumThreads(0);
+      cv::setNumThreads(0);
 
       auto startFrameExtraction = std::chrono::high_resolution_clock::now();
 
@@ -784,7 +784,8 @@ void CardScannerInstaller::injectJSIBindings(
                         embeddingModelPath, cardImg);
                 auto endEmbedding = std::chrono::high_resolution_clock::now();
 
-                // Accumulate embedding timing (preprocess + inference only, no postprocess)
+                // Accumulate embedding timing (preprocess + inference only, no
+                // postprocess)
                 embeddingPreprocessMs += inferenceResult.preprocessingTimeMs;
                 embeddingInferenceMs += inferenceResult.inferenceTimeMs;
 
