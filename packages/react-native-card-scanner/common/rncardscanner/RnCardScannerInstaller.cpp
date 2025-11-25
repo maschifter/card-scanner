@@ -248,15 +248,19 @@ void CardScannerInstaller::injectJSIBindings(
   // Create the 'runSegmentationDebug' host function
   auto runSegmentationDebugFunc = jsi::Function::createFromHostFunction(
       *jsiRuntime,
-      jsi::PropNameID::forAscii(*jsiRuntime, "runSegmentationDebug"), 1,
+      jsi::PropNameID::forAscii(*jsiRuntime, "runSegmentationDebug"), 2,
       [](jsi::Runtime &runtime, const jsi::Value &thisValue,
          const jsi::Value *args, size_t count) -> jsi::Value {
         if (count < 1 || !args[0].isString()) {
-          throw jsi::JSError(
-              runtime, "runSegmentationDebug expects (imagePath: string)");
+          throw jsi::JSError(runtime, "runSegmentationDebug expects "
+                                      "(imagePath: string, outputDir: string)");
         }
-
+        if (count < 2 || !args[1].isString()) {
+          throw jsi::JSError(runtime, "runSegmentationDebug expects "
+                                      "(imagePath: string, outputDir: string)");
+        }
         std::string imagePath = args[0].asString(runtime).utf8(runtime);
+        std::string outputDir = args[1].asString(runtime).utf8(runtime);
 
         try {
           // Strip file:// prefix if present
@@ -283,6 +287,39 @@ void CardScannerInstaller::injectJSIBindings(
           // Run segmentation
           auto segResult = yoloModel->segment(image);
 
+          std::string tempDir = outputDir;
+          if (tempDir.find(filePrefix) == 0) {
+            tempDir = tempDir.substr(filePrefix.length());
+          }
+
+          // Ensure output directory ends with /
+          if (!tempDir.empty() && tempDir.back() != '/') {
+            tempDir += '/';
+          }
+
+          std::string outputPath = tempDir + "yolo_result.jpg";
+          bool vizSaved = cv::imwrite(outputPath, segResult.visualizedImage);
+
+          // Add file:// prefix for React Native Image component
+          std::string outputUri = "file://" + outputPath;
+
+          jsi::Array dewarpedPaths(runtime, segResult.detections.size());
+          for (size_t i = 0; i < segResult.detections.size(); i++) {
+            if (!segResult.detections[i].dewarpedCard.empty()) {
+              std::string dewarpPath =
+                  tempDir + "card_" + std::to_string(i) + ".jpg";
+              bool saved =
+                  cv::imwrite(dewarpPath, segResult.detections[i].dewarpedCard);
+
+              // Add file:// prefix for React Native
+              std::string dewarpUri = "file://" + dewarpPath;
+              dewarpedPaths.setValueAtIndex(
+                  runtime, i, jsi::String::createFromUtf8(runtime, dewarpUri));
+            } else {
+              dewarpedPaths.setValueAtIndex(runtime, i, jsi::Value::null());
+            }
+          }
+
           // Build result object
           jsi::Object result(runtime);
           result.setProperty(
@@ -293,11 +330,14 @@ void CardScannerInstaller::injectJSIBindings(
           result.setProperty(
               runtime, "preprocessingMs",
               jsi::Value(segResult.performance.preprocessingTimeMs));
+          result.setProperty(runtime, "dewarpedCardPaths", dewarpedPaths);
           result.setProperty(runtime, "inferenceMs",
                              jsi::Value(segResult.performance.inferenceTimeMs));
           result.setProperty(
               runtime, "postprocessingMs",
               jsi::Value(segResult.performance.postprocessingTimeMs));
+          result.setProperty(runtime, "visualizedImagePath",
+                             jsi::String::createFromUtf8(runtime, outputUri));
 
           // Convert detections
           jsi::Array detections(runtime, segResult.detections.size());

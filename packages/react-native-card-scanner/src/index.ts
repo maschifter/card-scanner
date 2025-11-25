@@ -145,7 +145,10 @@ declare global {
   var closeGameStore: (gameName: string) => void;
 
   // Debug functions (for testing with image files)
-  var runSegmentationDebug: (imagePath: string) => SegmentationDebugResult;
+  var runSegmentationDebug: (
+    imagePath: string,
+    outputDir: string,
+  ) => SegmentationDebugResult;
 }
 
 if (global.initializeScanner == null) {

@@ -129,7 +129,7 @@ export default function SegmentationScreen() {
 
     try {
       console.log('Running segmentation debug on image:', selectedImage);
-      const result = runSegmentationDebug(selectedImage);
+      const result = runSegmentationDebug(selectedImage, cacheDirectory);
 
       console.log('Segmentation result:', result);
       console.log('Detected cards:', result.cardCount);
@@ -232,17 +232,45 @@ export default function SegmentationScreen() {
           </View>
 
           <View style={styles.imageCard}>
-            <Text style={styles.cardTitle}>Detected Bounding Boxes</Text>
-            {yoloResult.detections.map((det, index) => (
-              <View key={index} style={styles.detectionBox}>
-                <Text style={styles.detectionText}>
-                  Card {index + 1}: conf={det.box.conf.toFixed(3)}, bbox=[
-                  {det.box.x1.toFixed(0)}, {det.box.y1.toFixed(0)},{' '}
-                  {det.box.x2.toFixed(0)}, {det.box.y2.toFixed(0)}]
-                </Text>
-              </View>
-            ))}
+            <Text style={styles.cardTitle}>Visualized Result</Text>
+            <Image
+              source={{
+                uri: yoloResult.visualizedImagePath + '?t=' + Date.now(),
+              }}
+              style={styles.image}
+              resizeMode="contain"
+              onError={(e) =>
+                console.error(
+                  'Failed to load visualized image:',
+                  e.nativeEvent.error,
+                )
+              }
+              onLoad={() => console.log('Visualized image loaded')}
+            />
           </View>
+
+          {yoloResult.dewarpedCardPaths.length > 0 && (
+            <View style={styles.imageCard}>
+              <Text style={styles.cardTitle}>Dewarped Cards</Text>
+              {yoloResult.dewarpedCardPaths.map((path, index) =>
+                path ? (
+                  <View key={index} style={styles.dewarpedCard}>
+                    <Text style={styles.dewarpedTitle}>Card {index + 1}</Text>
+                    <Image
+                      source={{ uri: path }}
+                      style={styles.dewarpedImage}
+                      resizeMode="contain"
+                    />
+                  </View>
+                ) : (
+                  <View key={index} style={styles.dewarpedCard}>
+                    <Text style={styles.dewarpedTitle}>Card {index + 1}</Text>
+                    <Text style={styles.dewarpedError}>Failed to dewarp</Text>
+                  </View>
+                ),
+              )}
+            </View>
+          )}
         </>
       )}
     </ScrollView>
