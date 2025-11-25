@@ -42,7 +42,7 @@ add_library(
 
 add_obx_schema(
     TARGET cardscanner_cpp
-    SCHEMA_FILES "${COMMON_DIR}/schema.fbs"
+    SCHEMA_FILES "${COMMON_DIR}/database/schema.fbs"
     INSOURCE
     CXX_STANDARD 14
 )

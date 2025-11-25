@@ -1,6 +1,43 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as FileSystem from 'expo-file-system/legacy';
-import { swapDatabase, DatabaseInfo } from './index';
+import { Asset } from 'expo-asset';
+import { populateDatabase, swapDatabase, DatabaseInfo } from './index';
+
+/**
+ * Load a database from a bundled React Native asset
+ * @param assetModule - The require() result, e.g., require('./assets/data.mdb')
+ * @param gameName - Game identifier (e.g., 'lorcana', 'mtg', 'pokemon')
+ * @returns Promise<boolean> - true on success
+ */
+export const loadDatabaseFromAsset = async (
+  assetModule: any,
+  gameName: string,
+): Promise<boolean> => {
+  console.log(`[loadDatabaseFromAsset] Loading database for game: ${gameName}`);
+
+  const asset = Asset.fromModule(assetModule);
+  await asset.downloadAsync();
+
+  if (!asset.localUri) {
+    throw new Error(`Failed to load database asset for ${gameName}`);
+  }
+
+  console.log(
+    `[loadDatabaseFromAsset] Asset downloaded to: ${asset.localUri}`,
+  );
+
+  const success = populateDatabase(asset.localUri, gameName);
+
+  if (success) {
+    console.log(
+      `[loadDatabaseFromAsset] Successfully populated database for ${gameName}`,
+    );
+  } else {
+    throw new Error(`Failed to populate database for ${gameName}`);
+  }
+
+  return success;
+};
 
 export const downloadDatabase = async (
   url: string,

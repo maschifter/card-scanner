@@ -3,11 +3,9 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { autoLoadEmbeddings } from './utils/database';
+import { autoLoadDatabase } from './utils/database';
 import HomeScreen from './screens/HomeScreen';
 import SegmentationScreen from './screens/SegmentationScreen';
-import RecognitionScreen from './screens/RecognitionScreen';
-import CameraScanner from './screens/CameraScanner';
 import DatabaseManagerScreen from './screens/DatabaseScreen';
 import VisionCameraScanner from './screens/VisionCameraScanner';
 
@@ -23,7 +21,7 @@ export default function App() {
 
   const initializeDatabase = async () => {
     console.log('🚀 App starting - initializing database...');
-    const result = await autoLoadEmbeddings();
+    const result = await autoLoadDatabase();
 
     if (result.error) {
       console.error('❌ Failed to initialize database:', result.error);
@@ -64,10 +62,6 @@ export default function App() {
               iconName = focused ? 'home' : 'home-outline';
             } else if (route.name === 'Segmentation') {
               iconName = focused ? 'scan' : 'scan-outline';
-            } else if (route.name === 'Recognition') {
-              iconName = focused ? 'search' : 'search-outline';
-            } else if (route.name === 'Camera') {
-              iconName = focused ? 'camera' : 'camera-outline';
             } else if (route.name === 'Databases') {
               iconName = focused ? 'server' : 'server-outline';
             } else if (route.name === 'VisionCamera') {
@@ -96,16 +90,6 @@ export default function App() {
           name="Segmentation"
           component={SegmentationScreen}
           options={{ title: 'Segmentation' }}
-        />
-        <Tab.Screen
-          name="Recognition"
-          component={RecognitionScreen}
-          options={{ title: 'Recognition' }}
-        />
-        <Tab.Screen
-          name="Camera"
-          component={CameraScanner}
-          options={{ title: 'Live Camera' }}
         />
         <Tab.Screen
           name="Databases"

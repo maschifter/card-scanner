@@ -4,9 +4,7 @@
   "newArchEnabled": true,
   "version": "1.0.0",
   "orientation": "portrait",
-  "assetBundlePatterns": [
-    "assets/**/*"
-  ],
+  "assetBundlePatterns": ["assets/**/*"],
   "ios": {
     "supportsTablet": true,
     "bundleIdentifier": "com.swmansion.cardscannerexample",
@@ -17,18 +15,16 @@
   },
   "android": {
     "package": "com.swmansion.cardscannerexample",
-    "permissions": [
-      "CAMERA"
-    ]
+    "permissions": ["CAMERA"]
   },
- "plugins": [
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "minSdkVersion": 26
-          }
+  "plugins": [
+    [
+      "expo-build-properties",
+      {
+        "android": {
+          "minSdkVersion": 29
         }
-      ]
+      }
     ]
+  ]
 }

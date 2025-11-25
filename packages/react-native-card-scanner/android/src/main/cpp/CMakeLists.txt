@@ -28,6 +28,8 @@ target_include_directories(
   "${COMMON_CPP_DIR}/rncardscanner/jsi"
   "${COMMON_CPP_DIR}/rncardscanner/runners"
   "${COMMON_CPP_DIR}/rncardscanner/threads"
+  "${COMMON_CPP_DIR}/rncardscanner/models"
+  "${COMMON_CPP_DIR}/rncardscanner/utils"
   "${ANDROID_CPP_DIR}"
   "${INCLUDE_DIR}"
   "${REACT_NATIVE_DIR}/ReactCommon"

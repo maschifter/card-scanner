@@ -15,7 +15,9 @@ export async function loadModels(): Promise<ModelPaths> {
 
   // Load assets
   const yoloAsset = await Asset.loadAsync(require('../assets/yolo11n-seg.pte'));
-  const embeddingAsset = await Asset.loadAsync(require('../assets/embedding_model.pte'));
+  const embeddingAsset = await Asset.loadAsync(
+    require('../assets/embedding_model.pte'),
+  );
 
   let yoloModelPath: string;
   let embeddingModelPath: string;

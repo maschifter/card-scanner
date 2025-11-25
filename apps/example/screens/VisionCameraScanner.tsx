@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,6 @@ import {
   ActivityIndicator,
   Dimensions,
   Image,
-  Platform,
-  StatusBar,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -19,12 +17,16 @@ import {
   useCameraPermission,
   useFrameProcessor,
 } from 'react-native-vision-camera';
-import { startScanning, type VCDetection } from 'react-native-card-scanner';
+import {
+  startScanning,
+  initializeScanner,
+  releaseScanner,
+  type VCDetection,
+} from 'react-native-card-scanner';
 import { Asset } from 'expo-asset';
 import { cacheDirectory, copyAsync } from 'expo-file-system/legacy';
 import Svg, { Rect } from 'react-native-svg';
 import { useRunOnJS } from 'react-native-worklets-core';
-import { useSharedValue } from 'react-native-reanimated';
 
 const screenWidth = Dimensions.get('window').width;
 const screenHeight = Dimensions.get('window').height;
@@ -37,7 +39,7 @@ export default function VisionCameraScanner() {
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
   const format = useCameraFormat(device, [
-    { videoResolution: { width: 1920, height: 1080 } },
+    { videoResolution: { width: 1080, height: 1920 } },
   ]);
   const [isScanning, setIsScanning] = useState(false);
   const [isLoadingModels, setIsLoadingModels] = useState(true);
@@ -55,18 +57,22 @@ export default function VisionCameraScanner() {
   );
   const [croppedImagePath, setCroppedImagePath] = useState<string | null>(null);
   const [timingStats, setTimingStats] = useState<any>(null);
-  const lastProcessedTime = useSharedValue(0);
 
   // Load models on mount
   useEffect(() => {
     loadModels();
+
+    return () => {
+      releaseScanner();
+    };
   }, []);
 
   const loadModels = async () => {
     try {
       setIsLoadingModels(true);
 
-      // Load the YOLO segmentation model
+      // 1. Load ML models
+      console.log('📦 Loading ML models...');
       const yoloAsset = Asset.fromModule(require('../assets/yolo11n-seg.pte'));
       await yoloAsset.downloadAsync();
 
@@ -74,42 +80,39 @@ export default function VisionCameraScanner() {
         throw new Error('Failed to load YOLO model');
       }
 
-      // Copy YOLO model to cache directory
       const yoloLocalPath = `${cacheDirectory}yolo11n-seg.pte`;
       await copyAsync({
         from: yoloAsset.localUri,
         to: yoloLocalPath,
       });
-
       setModelPath(yoloLocalPath);
-      console.log('✅ YOLO model loaded:', yoloLocalPath);
+      console.log('✅ YOLO model loaded');
 
-      // Load the embedding model for card recognition
-      try {
-        const embeddingAsset = Asset.fromModule(
-          require('../assets/embedding_model.pte'),
-        );
-        await embeddingAsset.downloadAsync();
+      const embeddingAsset = Asset.fromModule(
+        require('../assets/embedding_model.pte'),
+      );
+      await embeddingAsset.downloadAsync();
 
-        if (embeddingAsset.localUri) {
-          const embeddingLocalPath = `${cacheDirectory}embedding_model.pte`;
-          await copyAsync({
-            from: embeddingAsset.localUri,
-            to: embeddingLocalPath,
-          });
-          setEmbeddingModelPath(embeddingLocalPath);
-          console.log('✅ Embedding model loaded:', embeddingLocalPath);
-        }
-      } catch (embErr) {
-        console.warn(
-          '⚠️ Embedding model not found, card recognition will be disabled:',
-          embErr,
-        );
+      if (!embeddingAsset.localUri) {
+        throw new Error('Failed to load embedding model');
       }
+
+      const embeddingLocalPath = `${cacheDirectory}embedding_model.pte`;
+      await copyAsync({
+        from: embeddingAsset.localUri,
+        to: embeddingLocalPath,
+      });
+      setEmbeddingModelPath(embeddingLocalPath);
+      console.log('✅ Embedding model loaded');
+
+      // 3. Initialize scanner with ML models and default game
+      console.log('🚀 Initializing scanner...');
+      initializeScanner(yoloLocalPath, embeddingLocalPath, GAME_NAME);
+      console.log('✅ Scanner initialized successfully');
 
       setIsLoadingModels(false);
     } catch (error) {
-      console.error('Failed to load models:', error);
+      console.error('❌ Failed to initialize:', error);
       setModelError(error instanceof Error ? error.message : String(error));
       setIsLoadingModels(false);
     }
@@ -178,12 +181,7 @@ export default function VisionCameraScanner() {
         }
 
         // Call startScanning with optional embedding model and game name for recognition
-        const result = startScanning(
-          frame,
-          modelPath,
-          embeddingModelPath ?? undefined,
-          embeddingModelPath ? GAME_NAME : undefined,
-        );
+        const result = startScanning(frame, GAME_NAME);
 
         // Extract detection data into separate arrays
         if (result.cardCount > 0) {
@@ -338,7 +336,7 @@ export default function VisionCameraScanner() {
         format={format}
         isActive={true}
         frameProcessor={frameProcessor}
-        pixelFormat={Platform.OS === 'ios' ? 'rgb' : 'yuv'}
+        pixelFormat="rgb"
       />
 
       {/* Bounding box overlay */}

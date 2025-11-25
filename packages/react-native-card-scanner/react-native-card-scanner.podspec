@@ -50,7 +50,7 @@ Pod::Spec.new do |s|
   s.script_phase = {
     :name => 'Run CMake to Fetch C++ Headers',
     :script => <<-SCRIPT,
-      echo "⚙️ Running CMake to configure and generate ObjectBox schema..."
+      echo "Running CMake to configure and generate ObjectBox schema..."
       cd "${PODS_TARGET_SRCROOT}"
       # 1. Configure
       mkdir -p ios/build && cd ios/build

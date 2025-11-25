@@ -1,19 +1,8 @@
+import { Asset } from 'expo-asset';
 import {
-  documentDirectory,
-  cacheDirectory,
-  writeAsStringAsync,
-} from 'expo-file-system/legacy';
-import {
-  loadCardEmbeddings,
   getCardCount,
-  LoadEmbeddingsResult,
+  populateDatabase,
 } from 'react-native-card-scanner';
-
-// WARNING: Do not use path - specify only game name - CPP handles pathing!
-// export const DATABASE_PATH = `${documentDirectory}objectbox-cards`;
-
-// JSON embeddings path in cache
-export const EMBEDDINGS_CACHE_PATH = `${cacheDirectory}lorcana_embeddings.json`;
 
 const DEFAULT_GAME = 'lorcana';
 
@@ -44,36 +33,39 @@ export async function checkDatabaseStatus(
 }
 
 /**
- * Load embeddings from bundled assets into database
+ * Load database from bundled .mdb asset
  */
-export async function loadEmbeddingsFromAssets(): Promise<LoadEmbeddingsResult> {
-  console.log('Loading embeddings from bundled assets...');
+export async function loadDatabaseFromAssets(): Promise<boolean> {
+  console.log('📦 Loading database from bundled assets...');
 
-  // Load embeddings data from bundled JSON
-  const embeddingsData = require('../assets/lorcana_embeddings.json');
+  // Load the .mdb database file from assets
+  const dbAsset = Asset.fromModule(require('../assets/data.mdb'));
+  await dbAsset.downloadAsync();
 
-  // Write to cache directory
-  console.log('Writing embeddings to:', EMBEDDINGS_CACHE_PATH);
-  await writeAsStringAsync(
-    EMBEDDINGS_CACHE_PATH,
-    JSON.stringify(embeddingsData),
-  );
-  console.log('Embeddings written to cache');
+  if (!dbAsset.localUri) {
+    throw new Error('Failed to load database asset');
+  }
 
-  // Load into ObjectBox database
-  const loadResult = loadCardEmbeddings(DEFAULT_GAME, EMBEDDINGS_CACHE_PATH);
-  console.log('Load result:', loadResult);
+  console.log('📦 Database asset downloaded to:', dbAsset.localUri);
 
-  return loadResult;
+  // Populate the database
+  const success = populateDatabase(dbAsset.localUri, DEFAULT_GAME);
+
+  if (success) {
+    console.log('✅ Database populated successfully');
+  } else {
+    throw new Error('Failed to populate database');
+  }
+
+  return success;
 }
 
 /**
- * Auto-load embeddings if database is empty
+ * Auto-load database if empty
  */
-export async function autoLoadEmbeddings(): Promise<{
+export async function autoLoadDatabase(): Promise<{
   loaded: boolean;
   stats: DatabaseStats;
-  result?: LoadEmbeddingsResult;
   error?: string;
 }> {
   try {
@@ -81,21 +73,21 @@ export async function autoLoadEmbeddings(): Promise<{
 
     // If already loaded, skip
     if (stats.isLoaded) {
-      console.log('Database already loaded with', stats.cardCount, 'cards');
+      console.log('✅ Database already loaded with', stats.cardCount, 'cards');
       return { loaded: false, stats };
     }
 
-    // Load embeddings
-    console.log('Database empty, auto-loading embeddings...');
-    const result = await loadEmbeddingsFromAssets();
+    // Load database
+    console.log('📦 Database empty, auto-loading from assets...');
+    await loadDatabaseFromAssets();
 
     // Get updated stats
     const newStats = await checkDatabaseStatus(DEFAULT_GAME);
 
-    return { loaded: true, stats: newStats, result };
+    return { loaded: true, stats: newStats };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error('Failed to auto-load embeddings:', errorMsg);
+    console.error('❌ Failed to auto-load database:', errorMsg);
     return {
       loaded: false,
       stats: { cardCount: 0, isLoaded: false },
