@@ -45,6 +45,10 @@ public:
   // Release models and free resources
   static void releaseModels();
 
+  // Thread-safe accessors for current game
+  static std::string getCurrentGame();
+  static void setCurrentGame(const std::string &gameName);
+
 private:
   static std::shared_ptr<cardscanner::YoloSegmentationModel> yoloModel_;
   static std::shared_ptr<cardscanner::CardEmbeddingModel> embeddingModel_;

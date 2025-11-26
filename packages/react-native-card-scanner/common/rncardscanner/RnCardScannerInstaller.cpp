@@ -79,6 +79,16 @@ CardScannerInstaller::getEmbeddingModel() {
   return embeddingModel_;
 }
 
+std::string CardScannerInstaller::getCurrentGame() {
+  std::lock_guard<std::mutex> lock(modelMutex_);
+  return currentGame_;
+}
+
+void CardScannerInstaller::setCurrentGame(const std::string &gameName) {
+  std::lock_guard<std::mutex> lock(modelMutex_);
+  currentGame_ = gameName;
+}
+
 void CardScannerInstaller::injectJSIBindings(
     jsi::Runtime *jsiRuntime, std::shared_ptr<react::CallInvoker> callInvoker) {
 
@@ -196,8 +206,8 @@ void CardScannerInstaller::injectJSIBindings(
         std::string gameName = args[0].asString(runtime).utf8(runtime);
 
         try {
-          // Update current game
-          CardScannerInstaller::currentGame_ = gameName;
+          // Update current game (thread-safe)
+          CardScannerInstaller::setCurrentGame(gameName);
 
           // Open/get database for this game
           ObjectBoxDB *db = dbManager.getOrCreateStore(gameName);
@@ -419,9 +429,9 @@ void CardScannerInstaller::injectJSIBindings(
             gameName = args[1].asString(runtime).utf8(runtime);
           }
 
-          // Fall back to current game if not provided
+          // Fall back to current game if not provided (thread-safe)
           if (gameName.empty()) {
-            gameName = CardScannerInstaller::currentGame_;
+            gameName = CardScannerInstaller::getCurrentGame();
           }
 
           // Disable OpenCV threading to prevent interference with ExecutorTorch
