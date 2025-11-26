@@ -1,0 +1,105 @@
+diff --git a/node_modules/react-native-vision-camera/android/src/main/cpp/frameprocessors/FrameHostObject.cpp b/node_modules/react-native-vision-camera/android/src/main/cpp/frameprocessors/FrameHostObject.cpp
+index 09970a9..08f63cf 100644
+--- a/node_modules/react-native-vision-camera/android/src/main/cpp/frameprocessors/FrameHostObject.cpp
++++ b/node_modules/react-native-vision-camera/android/src/main/cpp/frameprocessors/FrameHostObject.cpp
+@@ -144,9 +144,37 @@ jsi::Value FrameHostObject::get(jsi::Runtime& runtime, const jsi::PropNameID& pr
+ 
+       AHardwareBuffer_Desc bufferDescription;
+       AHardwareBuffer_describe(hardwareBuffer, &bufferDescription);
+-      __android_log_print(ANDROID_LOG_INFO, "Frame", "Converting %i x %i @ %i HardwareBuffer...", bufferDescription.width,
+-                          bufferDescription.height, bufferDescription.stride);
+-      size_t size = bufferDescription.height * bufferDescription.stride;
++
++      // Calculate buffer size based on format
++      // Format 35 = AHARDWAREBUFFER_FORMAT_YCbCr_420_888 (YUV420)
++      size_t size;
++      int bytesPerPixel = 1;
++
++      switch (bufferDescription.format) {
++        case AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM:
++        case AHARDWAREBUFFER_FORMAT_R8G8B8X8_UNORM:
++        case AHARDWAREBUFFER_FORMAT_R10G10B10A2_UNORM:
++          bytesPerPixel = 4;
++          size = bufferDescription.height * bufferDescription.stride * bytesPerPixel;
++          break;
++        case AHARDWAREBUFFER_FORMAT_R8G8B8_UNORM:
++        case AHARDWAREBUFFER_FORMAT_R5G6B5_UNORM:
++        case AHARDWAREBUFFER_FORMAT_R16G16_UINT:
++        case AHARDWAREBUFFER_FORMAT_D16_UNORM:
++          bytesPerPixel = 2;
++          size = bufferDescription.height * bufferDescription.stride * bytesPerPixel;
++          break;
++        case 35: // AHARDWAREBUFFER_FORMAT_YCbCr_420_888 (YUV420)
++          // YUV420: Y plane (width*height) + UV planes (width*height/2)
++          bytesPerPixel = 0; // special case
++          size = bufferDescription.width * bufferDescription.height * 3 / 2;
++          break;
++        default:
++          // Fallback
++          bytesPerPixel = 1;
++          size = bufferDescription.height * bufferDescription.stride;
++          break;
++      }
+ 
+       static constexpr auto ARRAYBUFFER_CACHE_PROP_NAME = "__frameArrayBufferCache";
+       if (!runtime.global().hasProperty(runtime, ARRAYBUFFER_CACHE_PROP_NAME)) {
+@@ -166,18 +194,49 @@ jsi::Value FrameHostObject::get(jsi::Runtime& runtime, const jsi::PropNameID& pr
+       }
+ 
+       // Get CPU access to the HardwareBuffer (&buffer is a virtual temporary address)
+-      void* buffer;
+-      int result = AHardwareBuffer_lock(hardwareBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_MASK, -1, nullptr, &buffer);
+-      if (result != 0) {
+-        throw jsi::JSError(runtime, "Failed to lock HardwareBuffer for reading!");
+-      }
+-
+-      // directly write to C++ JSI ArrayBuffer
+       auto destinationBuffer = arrayBuffer.data(runtime);
+-      memcpy(destinationBuffer, buffer, sizeof(uint8_t) * size);
+ 
+-      // unlock read lock
+-      AHardwareBuffer_unlock(hardwareBuffer, nullptr);
++      if (bufferDescription.format == 35) {
++        // YUV format - use lockPlanes for proper plane access
++#if __ANDROID_API__ >= 29
++        AHardwareBuffer_Planes planes;
++        int result = AHardwareBuffer_lockPlanes(hardwareBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_MASK, -1, nullptr, &planes);
++        if (result != 0) {
++          throw jsi::JSError(runtime, "Failed to lock YUV HardwareBuffer for reading!");
++        }
++
++        // Copy Y plane
++        uint8_t* yPlane = static_cast<uint8_t*>(planes.planes[0].data);
++        size_t ySize = bufferDescription.width * bufferDescription.height;
++        memcpy(destinationBuffer, yPlane, ySize);
++
++        // Copy UV planes (interleaved)
++        if (planes.planeCount > 1) {
++          uint8_t* uvPlane = static_cast<uint8_t*>(planes.planes[1].data);
++          size_t uvSize = (bufferDescription.width * bufferDescription.height) / 2;
++          memcpy(destinationBuffer + ySize, uvPlane, uvSize);
++        }
++
++        AHardwareBuffer_unlock(hardwareBuffer, nullptr);
++#else
++        // API < 29: lockPlanes not available, throw error
++        AHardwareBuffer_release(hardwareBuffer);
++        throw jsi::JSError(runtime, "YUV format (toArrayBuffer) requires Android API 29+. Current device is API 26-28. Use pixelFormat='rgb' instead.");
++#endif
++      } else {
++        // RGB formats - use regular lock
++        void* buffer;
++        int result = AHardwareBuffer_lock(hardwareBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_MASK, -1, nullptr, &buffer);
++        if (result != 0) {
++          throw jsi::JSError(runtime, "Failed to lock HardwareBuffer for reading!");
++        }
++
++        // directly write to C++ JSI ArrayBuffer
++        memcpy(destinationBuffer, buffer, sizeof(uint8_t) * size);
++
++        // unlock read lock
++        AHardwareBuffer_unlock(hardwareBuffer, nullptr);
++      }
+ 
+       // release JNI reference
+       AHardwareBuffer_release(hardwareBuffer);

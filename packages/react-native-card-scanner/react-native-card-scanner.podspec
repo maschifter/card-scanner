@@ -14,6 +14,8 @@ Pod::Spec.new do |s|
   s.source       = { :git => package["repository"]["url"], :tag => "#{s.version}" }
 
   s.dependency "ObjectBox"
+  s.dependency "opencv-rne", "~> 4.11.0"
+  s.dependency "VisionCamera"
 
   et_binaries_path = File.expand_path('$(PODS_TARGET_SRCROOT)/third-party/ios/libs/executorch', __dir__)
   pthreadpool_binaries_path = File.expand_path('$(PODS_TARGET_SRCROOT)/third-party/ios/libs/pthreadpool', __dir__)
@@ -48,27 +50,26 @@ Pod::Spec.new do |s|
   s.script_phase = {
     :name => 'Run CMake to Fetch C++ Headers',
     :script => <<-SCRIPT,
-      echo "⚙️ Running CMake to configure and generate ObjectBox schema..."
+      echo "Running CMake to configure and generate ObjectBox schema..."
       cd "${PODS_TARGET_SRCROOT}"
       # 1. Configure
-      mkdir -p build/ios && cd build/ios
+      mkdir -p ios/build && cd ios/build
       cmake ../..
       
       # 2. Build (this runs add_obx_schema)
       cmake --build .  
 
       # 3. Create the stamp file to signal completion
-      touch "${PODS_TARGET_SRCROOT}/build/ios/cmake_build_complete.stamp"
+      touch "${PODS_TARGET_SRCROOT}/ios/build/cmake_build_complete.stamp"
     SCRIPT
     :execution_position => :before_compile,
     
     # This tells Xcode to wait for the *entire script* to finish.
-    :output_files => ["${PODS_TARGET_SRCROOT}/build/ios/cmake_build_complete.stamp"]
+    :output_files => ["${PODS_TARGET_SRCROOT}/ios/build/cmake_build_complete.stamp"]
   }
 
   s.source_files = [
     "ios/CardScanner/**/*.{m,mm,h}",
-    "cpp/**/*.{cpp,c,h,hpp}",
     "common/**/*.{cpp,c,h,hpp}",
   ]
 
@@ -77,10 +78,9 @@ Pod::Spec.new do |s|
     "HEADER_SEARCH_PATHS" =>
       '"$(PODS_TARGET_SRCROOT)/ios" '+
       '"$(PODS_TARGET_SRCROOT)/common" '+
-      '"$(PODS_TARGET_SRCROOT)/cpp" '+
       '"$(PODS_TARGET_SRCROOT)/third-party/include" '+
-      '"$(PODS_TARGET_SRCROOT)/build/ios/_deps/objectbox-c-src/include" '+
-      '"$(PODS_TARGET_SRCROOT)/build/ios/_deps/objectbox-c-src/external/" '+
+      '"$(PODS_TARGET_SRCROOT)/ios/build/_deps/objectbox-c-src/include" '+
+      '"$(PODS_TARGET_SRCROOT)/ios/build/_deps/objectbox-c-src/external/" '+
       # Path to the ObjectBox.framework headers (from the pod)
       '"$(PODS_ROOT)/ObjectBox/ObjectBox.xcframework/ios-arm64/ObjectBox.framework/Headers" ',
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++20",

@@ -74,5 +74,8 @@
     "android": {
       "javaPackageName": "com.cardscanner"
     }
+  },
+  "dependencies": {
+    "expo-file-system": "^19.0.19"
   }
 }

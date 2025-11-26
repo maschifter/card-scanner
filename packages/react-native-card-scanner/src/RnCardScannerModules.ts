@@ -16,7 +16,7 @@ function returnSpecOrThrowLinkingError(spec: any) {
           get() {
             throw new Error(LINKING_ERROR);
           },
-        }
+        },
       );
 }
 

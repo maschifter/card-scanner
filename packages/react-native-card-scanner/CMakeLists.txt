@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 project(rncardscanner)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
 
 # --- Fetch ObjectBox C-API and C++ headers ---
@@ -29,32 +30,30 @@ set(CMAKE_SYSTEM_NAME ${ORIGINAL_CMAKE_SYSTEM_NAME})
 find_package(ObjectBoxGenerator 4.0.0 REQUIRED)
 
 # --- Source Directories ---
-set(CPP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cpp")
+set(COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/common/rncardscanner")
 
 # --- Core C++ library with ObjectBox ---
+file(GLOB PACKAGE_SOURCES "${CPP_DIR}/*.cpp")
 add_library(
     cardscanner_cpp
     STATIC
-    "${CPP_DIR}/CardScanner.cpp"
-    "${CPP_DIR}/ObjectBoxDB.cpp"
-    "${CPP_DIR}/ObjectBoxTest.cpp"
-    "${CPP_DIR}/PathProvider.cpp"
+    ${PACKAGE_SOURCES}
 )
 
 add_obx_schema(
     TARGET cardscanner_cpp
-    SCHEMA_FILES "${CPP_DIR}/schema.fbs"
+    SCHEMA_FILES "${COMMON_DIR}/database/schema.fbs"
     INSOURCE
     CXX_STANDARD 14
 )
 
 # Manually add the include directory from the fetched objectbox-c source.
 # We cannot link against the 'objectbox' target because it's a binary compiled for the HOST architecture.
-# Binaries for target architectures are provided idependently by iOS and Android build systems. 
+# Binaries for target architectures are provided idependently by iOS and Android build systems.
 target_include_directories(
     cardscanner_cpp
     PUBLIC
-    "${CPP_DIR}"
+    "${COMMON_DIR}"
     "${CMAKE_CURRENT_BINARY_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/third-party/include"
     "${objectbox-c_SOURCE_DIR}/include"
