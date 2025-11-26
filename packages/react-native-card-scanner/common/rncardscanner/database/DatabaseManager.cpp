@@ -11,7 +11,7 @@ std::unique_ptr<DatabaseManager> DatabaseManager::instance_ = nullptr;
 
 DatabaseManager::DatabaseManager() : baseDbPath_(pathprovider::get_db_path()) {
 
-  // Constructor should scan for exisitng stores, and attach them
+  // Constructor should scan for existing stores, and attach them
   scanForExistingStores();
 }
 

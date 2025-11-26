@@ -9,7 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import {
-  autoLoadEmbeddings,
+  autoLoadDatabase,
   checkDatabaseStatus,
   DatabaseStats,
 } from '../utils/database';
@@ -21,7 +21,7 @@ import * as FileSystem from 'expo-file-system';
 import { Asset } from 'expo-asset';
 import { loadModels } from '../utils/models';
 
-const DEFAULT_GAME_NAME = 'lorocana';
+const DEFAULT_GAME_NAME = 'lorcana';
 
 export default function HomeScreen() {
   const [isLoading, setIsLoading] = useState(true);
@@ -90,10 +90,10 @@ export default function HomeScreen() {
     setAutoLoadMessage(null);
 
     try {
-      const result = await autoLoadEmbeddings();
+      const result = await autoLoadDatabase();
 
       if (result.error) {
-        // setError(result.error);
+        setError(result.error);
       } else if (result.loaded) {
         setAutoLoadMessage(
           `Database initialized with ${result.stats.cardCount} cards`,

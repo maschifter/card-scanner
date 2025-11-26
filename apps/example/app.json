@@ -4,18 +4,27 @@
   "newArchEnabled": true,
   "version": "1.0.0",
   "orientation": "portrait",
-  "assetBundlePatterns": [
-    "assets/**/*"
-  ],
+  "assetBundlePatterns": ["assets/**/*"],
   "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.swmansion.cardscannerexample",
-      "infoPlist": {
-        "NSCameraUsageDescription": "Camera access is required to scan trading cards in real-time"
-      }
+    "supportsTablet": true,
+    "bundleIdentifier": "com.swmansion.cardscannerexample",
+    "infoPlist": {
+      "NSCameraUsageDescription": "Camera access is required to scan trading cards in real-time"
+    },
+    "appleTeamId": "B357MU264T"
   },
   "android": {
-      "package": "com.swmansion.cardscannerexample",
-      "permissions": ["CAMERA"]
-  }
+    "package": "com.swmansion.cardscannerexample",
+    "permissions": ["CAMERA"]
+  },
+  "plugins": [
+    [
+      "expo-build-properties",
+      {
+        "android": {
+          "minSdkVersion": 29
+        }
+      }
+    ]
+  ]
 }

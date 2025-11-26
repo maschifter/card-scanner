@@ -77,6 +77,42 @@ export interface TimingBreakdown {
   totalPipelineMs: number;
 }
 
+// Debug function result types
+export interface SegmentationDebugResult {
+  cardCount: number;
+  totalMs: number;
+  preprocessingMs: number;
+  inferenceMs: number;
+  postprocessingMs: number;
+  detections: Array<{
+    box: {
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      conf: number;
+    };
+  }>;
+}
+
+export interface RecognitionDebugResult {
+  cardCount: number;
+  totalMs: number;
+  preprocessingMs: number;
+  inferenceMs: number;
+  postprocessingMs: number;
+  detections: Array<{
+    box: {
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      conf: number;
+    };
+    matches?: CardSearchResult[];
+  }>;
+}
+
 export interface CardRecognitionResult {
   cards: RecognizedCard[];
   yoloTimeMs: number; // YOLO inference time only (deprecated - use timingBreakdown)
@@ -89,43 +125,32 @@ export interface CardRecognitionResult {
 
 // eslint-disable-next-line no-var
 declare global {
-  var runInference: (modelPath: string) => InferenceResult;
-  var runInferenceOnImage: (
-    modelPath: string,
-    imagePath: string,
-  ) => InferenceResult;
-  var loadCardEmbeddings: (
-    gameName: string,
-    jsonPath: string,
-  ) => LoadEmbeddingsResult;
-  var searchSimilarCards: (
-    gameName: string,
-    embedding: number[],
-    limit: number,
-  ) => CardSearchResult[];
-  var runYoloSegmentation: (
-    modelPath: string,
-    imagePath: string,
-    conf: number,
-    iou: number,
-    outputDir: string,
-  ) => YoloSegmentationResult;
-  var recognizeCards: (
-    imagePath: string,
-    yoloModelPath: string,
-    embeddingModelPath: string,
-    gameName: string,
-    yoloConf?: number,
-    yoloIou?: number,
-    topK?: number,
-  ) => CardRecognitionResult;
-  var getCardCount: (gameName: string) => number;
+  // Initialize scanner with ML models and optional default game
+  var initializeScanner: {
+    (yoloModelPath: string, embeddingModelPath: string): boolean;
+    (
+      yoloModelPath: string,
+      embeddingModelPath: string,
+      defaultGame: string,
+    ): boolean;
+  };
+  var releaseScanner: () => boolean;
+
+  // Database management
+  var switchGame: (gameName: string) => void;
   var swapDatabase: (sourcePath: string, gameName: string) => boolean;
+  var getCardCount: (gameName: string) => number;
   var listAvailableGames: () => DatabaseInfo[];
   var closeGameStore: (gameName: string) => void;
+
+  // Debug functions (for testing with image files)
+  var runSegmentationDebug: (
+    imagePath: string,
+    outputDir: string,
+  ) => SegmentationDebugResult;
 }
 
-if (global.runInference == null) {
+if (global.initializeScanner == null) {
   if (!CardScannerInstallerNativeModule) {
     throw new Error(
       `Failed to install react-native-card-scanner: The native module could not be found.`,
@@ -133,21 +158,83 @@ if (global.runInference == null) {
   }
   CardScannerInstallerNativeModule.install();
 
-  if (global.runInference == null) {
+  if (global.initializeScanner == null) {
     throw new Error(
-      `Failed to install react-native-card-scanner: The global 'runInference' function was not found after installation.`,
+      `Failed to install react-native-card-scanner: The global 'initializeScanner' function was not found after installation.`,
     );
   }
 }
 
-export { runInference } from './CardScanner';
-export const runInferenceOnImage = global.runInferenceOnImage;
-export const loadCardEmbeddings = global.loadCardEmbeddings;
-export const searchSimilarCards = global.searchSimilarCards;
-export const runYoloSegmentation = global.runYoloSegmentation;
-export const recognizeCards = global.recognizeCards;
-export const getCardCount = global.getCardCount;
+// Export scanner functions
+export const initializeScanner = global.initializeScanner;
+export const releaseScanner = global.releaseScanner;
+
+// Export database management functions
+export const switchGame = global.switchGame;
 export const swapDatabase = global.swapDatabase;
+export const getCardCount = global.getCardCount;
 export const listAvailableGames = global.listAvailableGames;
 export const closeGameStore = global.closeGameStore;
-export { downloadDatabase, useDatabaseManager, DatabaseInfo, listDatabases };
+
+// Export debug functions
+export const runSegmentationDebug = global.runSegmentationDebug;
+
+// Export database utilities
+export {
+  downloadDatabase,
+  loadDatabaseFromAsset,
+  useDatabaseManager,
+  DatabaseInfo,
+  listDatabases,
+} from './DatabaseDownloader';
+// Vision Camera Frame Processor
+
+import type { Frame } from 'react-native-vision-camera';
+
+export interface VCDetection {
+  box: {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    conf: number;
+  };
+  matches?: CardSearchResult[];
+  croppedImagePath?: string;
+}
+
+export interface SegmentationResult {
+  inferenceTimeMs: number;
+  cardCount: number;
+  detections: VCDetection[];
+  frameExtractionMs: number;
+  recognitionTimeMs: number;
+  totalMs: number;
+  frameWidth: number;
+  frameHeight: number;
+  debug?: string;
+}
+
+/**
+ * Vision Camera frame processor plugin for YOLO segmentation.
+ * Calls the native myCppPlugin JSI function directly.
+ *
+ * @param frame - Vision Camera frame
+ * @param yoloModelPath - Path to the YOLO segmentation model
+ * @param embeddingModelPath - Optional: Path to the embedding model for card recognition
+ * @param gameName - Optional: Game name for database lookup (required if embeddingModelPath is provided)
+ */
+export function startScanning(
+  frame: Frame,
+  gameName?: string,
+): SegmentationResult {
+  'worklet';
+
+  // @ts-expect-error - startScanningPlugin is a global JSI function
+  if (typeof startScanningPlugin !== 'function') {
+    throw new Error('startScanningPlugin is not available in worklet runtime');
+  }
+
+  // @ts-expect-error - startScanningPlugin is a global JSI function
+  return startScanningPlugin(frame, gameName);
+}

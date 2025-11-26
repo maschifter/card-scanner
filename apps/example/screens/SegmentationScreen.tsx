@@ -1,25 +1,38 @@
-import React, { useState } from 'react';
-import { View, Text, Button, StyleSheet, ScrollView, Image, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { runYoloSegmentation, YoloSegmentationResult } from 'react-native-card-scanner';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Image,
+  ActivityIndicator,
+  TouchableOpacity,
+} from 'react-native';
+import {
+  runSegmentationDebug,
+  SegmentationDebugResult,
+  initializeScanner,
+  releaseScanner,
+} from 'react-native-card-scanner';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { cacheDirectory } from 'expo-file-system/legacy';
-import { loadModels } from '../utils/models';
+import { Asset } from 'expo-asset';
+import { cacheDirectory, copyAsync } from 'expo-file-system/legacy';
 
 // Helper to convert HEIC to JPEG
 async function ensureJPEG(uri: string): Promise<string> {
-  const isHEIC = uri.toLowerCase().endsWith('.heic') ||
-                 uri.toLowerCase().endsWith('.heif') ||
-                 uri.includes('.heic') ||
-                 uri.includes('.heif');
+  const isHEIC =
+    uri.toLowerCase().endsWith('.heic') ||
+    uri.toLowerCase().endsWith('.heif') ||
+    uri.includes('.heic') ||
+    uri.includes('.heif');
 
   if (isHEIC) {
     console.log('HEIC image detected, converting to JPEG...');
-    const manipResult = await ImageManipulator.manipulateAsync(
-      uri,
-      [],
-      { compress: 1, format: ImageManipulator.SaveFormat.JPEG }
-    );
+    const manipResult = await ImageManipulator.manipulateAsync(uri, [], {
+      compress: 1,
+      format: ImageManipulator.SaveFormat.JPEG,
+    });
     console.log('Converted to JPEG:', manipResult.uri);
     return manipResult.uri;
   }
@@ -29,9 +42,70 @@ async function ensureJPEG(uri: string): Promise<string> {
 
 export default function SegmentationScreen() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [yoloResult, setYoloResult] = useState<YoloSegmentationResult | null>(null);
+  const [yoloResult, setYoloResult] = useState<SegmentationDebugResult | null>(
+    null,
+  );
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoadingModels, setIsLoadingModels] = useState(true);
+  const [modelError, setModelError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadModels();
+
+    return () => {
+      releaseScanner();
+    };
+  }, []);
+
+  const loadModels = async () => {
+    try {
+      setIsLoadingModels(true);
+
+      // 1. Load ML models
+      console.log('📦 Loading ML models...');
+      const yoloAsset = Asset.fromModule(require('../assets/yolo11n-seg.pte'));
+      await yoloAsset.downloadAsync();
+
+      if (!yoloAsset.localUri) {
+        throw new Error('Failed to load YOLO model');
+      }
+
+      const yoloLocalPath = `${cacheDirectory}yolo11n-seg.pte`;
+      await copyAsync({
+        from: yoloAsset.localUri,
+        to: yoloLocalPath,
+      });
+      console.log('✅ YOLO model loaded');
+
+      const embeddingAsset = Asset.fromModule(
+        require('../assets/embedding_model.pte'),
+      );
+      await embeddingAsset.downloadAsync();
+
+      if (!embeddingAsset.localUri) {
+        throw new Error('Failed to load embedding model');
+      }
+
+      const embeddingLocalPath = `${cacheDirectory}embedding_model.pte`;
+      await copyAsync({
+        from: embeddingAsset.localUri,
+        to: embeddingLocalPath,
+      });
+      console.log('✅ Embedding model loaded');
+
+      // 3. Initialize scanner with ML models and default game
+      console.log('🚀 Initializing scanner...');
+      initializeScanner(yoloLocalPath, embeddingLocalPath, 'lorcana');
+      console.log('✅ Scanner initialized successfully');
+
+      setIsLoadingModels(false);
+    } catch (error) {
+      console.error('❌ Failed to initialize:', error);
+      setModelError(error instanceof Error ? error.message : String(error));
+      setIsLoadingModels(false);
+    }
+  };
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -59,23 +133,12 @@ export default function SegmentationScreen() {
     setYoloResult(null);
 
     try {
-      console.log('Loading YOLO model...');
-      const models = await loadModels();
-      console.log('Model loaded:', models.yolo);
+      console.log('Running segmentation debug on image:', selectedImage);
+      const result = runSegmentationDebug(selectedImage, cacheDirectory);
 
-      console.log('Running YOLO segmentation...');
-      console.log('Output directory:', cacheDirectory);
-      const result = runYoloSegmentation(
-        models.yolo,
-        selectedImage,
-        0.25, // confidence threshold
-        0.7,  // IOU threshold
-        cacheDirectory || '' // output directory for visualized results
-      );
-
-      console.log('YOLO result:', result);
-      console.log('Visualized image path:', result.visualizedImagePath);
-      console.log('Dewarped card paths:', result.dewarpedCardPaths);
+      console.log('Segmentation result:', result);
+      console.log('Detected cards:', result.cardCount);
+      console.log('Inference time:', result.inferenceMs, 'ms');
       setYoloResult(result);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -87,7 +150,10 @@ export default function SegmentationScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+    >
       <View style={styles.header}>
         <Text style={styles.title}>Segmentation Demo</Text>
         <Text style={styles.subtitle}>YOLO11 Card Detection</Text>
@@ -114,7 +180,11 @@ export default function SegmentationScreen() {
       {selectedImage && (
         <View style={styles.imageCard}>
           <Text style={styles.cardTitle}>Selected Image</Text>
-          <Image source={{ uri: selectedImage }} style={styles.image} resizeMode="contain" />
+          <Image
+            source={{ uri: selectedImage }}
+            style={styles.image}
+            resizeMode="contain"
+          />
         </View>
       )}
 
@@ -138,21 +208,48 @@ export default function SegmentationScreen() {
             <Text style={styles.cardTitle}>Results</Text>
             <View style={styles.statRow}>
               <Text style={styles.statLabel}>Cards Detected:</Text>
-              <Text style={styles.statValue}>{yoloResult.detections.length}</Text>
+              <Text style={styles.statValue}>{yoloResult.cardCount}</Text>
+            </View>
+            <View style={styles.statRow}>
+              <Text style={styles.statLabel}>Total Time:</Text>
+              <Text style={styles.statValue}>
+                {yoloResult.totalMs.toFixed(1)} ms
+              </Text>
             </View>
             <View style={styles.statRow}>
               <Text style={styles.statLabel}>Inference Time:</Text>
-              <Text style={styles.statValue}>{yoloResult.inferenceTimeMs.toFixed(1)} ms</Text>
+              <Text style={styles.statValue}>
+                {yoloResult.inferenceMs.toFixed(1)} ms
+              </Text>
+            </View>
+            <View style={styles.statRow}>
+              <Text style={styles.statLabel}>Preprocessing Time:</Text>
+              <Text style={styles.statValue}>
+                {yoloResult.preprocessingMs.toFixed(1)} ms
+              </Text>
+            </View>
+            <View style={styles.statRow}>
+              <Text style={styles.statLabel}>Postprocessing Time:</Text>
+              <Text style={styles.statValue}>
+                {yoloResult.postprocessingMs.toFixed(1)} ms
+              </Text>
             </View>
           </View>
 
           <View style={styles.imageCard}>
             <Text style={styles.cardTitle}>Visualized Result</Text>
             <Image
-              source={{ uri: yoloResult.visualizedImagePath + '?t=' + Date.now() }}
+              source={{
+                uri: yoloResult.visualizedImagePath + '?t=' + Date.now(),
+              }}
               style={styles.image}
               resizeMode="contain"
-              onError={(e) => console.error('Failed to load visualized image:', e.nativeEvent.error)}
+              onError={(e) =>
+                console.error(
+                  'Failed to load visualized image:',
+                  e.nativeEvent.error,
+                )
+              }
               onLoad={() => console.log('Visualized image loaded')}
             />
           </View>
@@ -160,7 +257,7 @@ export default function SegmentationScreen() {
           {yoloResult.dewarpedCardPaths.length > 0 && (
             <View style={styles.imageCard}>
               <Text style={styles.cardTitle}>Dewarped Cards</Text>
-              {yoloResult.dewarpedCardPaths.map((path, index) => (
+              {yoloResult.dewarpedCardPaths.map((path, index) =>
                 path ? (
                   <View key={index} style={styles.dewarpedCard}>
                     <Text style={styles.dewarpedTitle}>Card {index + 1}</Text>
@@ -175,29 +272,8 @@ export default function SegmentationScreen() {
                     <Text style={styles.dewarpedTitle}>Card {index + 1}</Text>
                     <Text style={styles.dewarpedError}>Failed to dewarp</Text>
                   </View>
-                )
-              ))}
-            </View>
-          )}
-
-          {yoloResult.detections.length > 0 && (
-            <View style={styles.resultCard}>
-              <Text style={styles.cardTitle}>Detection Details</Text>
-              {yoloResult.detections.map((detection, index) => (
-                <View key={index} style={styles.detectionItem}>
-                  <Text style={styles.detectionTitle}>Card {index + 1}</Text>
-                  <Text style={styles.detectionText}>
-                    Confidence: {(detection.box.conf * 100).toFixed(1)}%
-                  </Text>
-                  <Text style={styles.detectionText}>
-                    Box: [{detection.box.x1.toFixed(0)}, {detection.box.y1.toFixed(0)}] →{' '}
-                    [{detection.box.x2.toFixed(0)}, {detection.box.y2.toFixed(0)}]
-                  </Text>
-                  <Text style={styles.detectionText}>
-                    Mask Points: {detection.mask.reduce((sum, contour) => sum + contour.length, 0)}
-                  </Text>
-                </View>
-              ))}
+                ),
+              )}
             </View>
           )}
         </>

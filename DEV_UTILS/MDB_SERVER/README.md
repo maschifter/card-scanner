@@ -20,15 +20,17 @@ The `MDB_SERVER` provides a convenient way to make the `data.mdb` files, created
 1.  **Place your `.mdb` files**:
     Ensure your generated `data.mdb` file (from the `MDB_CREATOR`) is located within the `public/*game_name*/` directory.
 
-    Example: `DEV_UTILS/MDB_SERVER/public/lorocana/data.mdb`
+    Example: `DEV_UTILS/MDB_SERVER/public/lorcana/data.mdb`
 
 2.  **Start the server**:
     From the `DEV_UTILS/MDB_SERVER` directory, run:
+
     ```bash
     node server.js
     ```
+
     The server will start on `http://localhost:3000` (or the port specified in `server.js`).
 
 3.  **Access files**:
     You can access the `data.mdb` file in your mobile app (or any web browser) at:
-    `http://localhost:3000/lorocana/data.mdb`
+    `http://localhost:3000/lorcana/data.mdb`

@@ -15,6 +15,7 @@ Pod::Spec.new do |s|
 
   s.dependency "ObjectBox"
   s.dependency "opencv-rne", "~> 4.11.0"
+  s.dependency "VisionCamera"
 
   et_binaries_path = File.expand_path('$(PODS_TARGET_SRCROOT)/third-party/ios/libs/executorch', __dir__)
   pthreadpool_binaries_path = File.expand_path('$(PODS_TARGET_SRCROOT)/third-party/ios/libs/pthreadpool', __dir__)
@@ -49,7 +50,7 @@ Pod::Spec.new do |s|
   s.script_phase = {
     :name => 'Run CMake to Fetch C++ Headers',
     :script => <<-SCRIPT,
-      echo "⚙️ Running CMake to configure and generate ObjectBox schema..."
+      echo "Running CMake to configure and generate ObjectBox schema..."
       cd "${PODS_TARGET_SRCROOT}"
       # 1. Configure
       mkdir -p ios/build && cd ios/build

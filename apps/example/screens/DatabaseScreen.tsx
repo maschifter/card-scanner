@@ -27,9 +27,9 @@ export default function DatabaseManagerScreen() {
     refreshDatabases,
   } = useDatabaseManager();
 
-  const [localGameName, setLocalGameName] = useState('lorocana');
+  const [localGameName, setLocalGameName] = useState('lorcana');
   const [downloadUrlSuffix, setDownloadUrlSuffix] =
-    useState('lorocana/data.mdb');
+    useState('lorcana/data.mdb');
   const [loadResult, setLoadResult] = useState<LoadEmbeddingsResult | null>(
     null,
   );
@@ -128,7 +128,7 @@ export default function DatabaseManagerScreen() {
           style={styles.input}
           value={localGameName}
           onChangeText={setLocalGameName}
-          placeholder="e.g., mtg, lorocana"
+          placeholder="e.g., mtg, lorcana"
         />
         <Text style={styles.inputLabel}>Download URL Suffix (File Name):</Text>
         <TextInput
