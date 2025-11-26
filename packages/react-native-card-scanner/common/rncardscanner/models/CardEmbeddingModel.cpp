@@ -1,4 +1,5 @@
 #include "CardEmbeddingModel.h"
+#include "../Constants.h"
 #include "DatabaseManager.h"
 #include <chrono>
 #include <iostream>
@@ -9,6 +10,7 @@ namespace cardscanner {
 using namespace executorch::extension;
 using ::executorch::extension::module::Module;
 using ::executorch::runtime::Error;
+using namespace constants;
 
 std::vector<float>
 CardEmbeddingModel::normalizeImage(const cv::Mat &img) const {
@@ -16,20 +18,20 @@ CardEmbeddingModel::normalizeImage(const cv::Mat &img) const {
   cv::Mat floatImg;
   img.convertTo(floatImg, CV_32FC3);
 
-  // ImageNet normalization values (RGB order)
-  const float mean[3] = {0.485f, 0.456f, 0.406f};
-  const float std[3] = {0.229f, 0.224f, 0.225f};
+  // Prepare input tensor data in NCHW format
+  const int inputSize = model::EMBEDDING_INPUT_SIZE;
+  const int channels = model::EMBEDDING_CHANNELS;
+  std::vector<float> normalizedImageData(1 * channels * inputSize * inputSize);
 
-  // Prepare input tensor data in NCHW format [1, 3, 224, 224]
-  std::vector<float> normalizedImageData(1 * 3 * 224 * 224);
-
-  for (int c = 0; c < 3; c++) {
-    for (int h = 0; h < 224; h++) {
-      for (int w = 0; w < 224; w++) {
-        int chw_idx = c * 224 * 224 + h * 224 + w;
+  for (int c = 0; c < channels; c++) {
+    for (int h = 0; h < inputSize; h++) {
+      for (int w = 0; w < inputSize; w++) {
+        int chw_idx = c * inputSize * inputSize + h * inputSize + w;
         float pixel = floatImg.at<cv::Vec3f>(h, w)[c];
-        // Apply ImageNet normalization directly: (pixel/255 - mean) / std
-        normalizedImageData[chw_idx] = (pixel / 255.0f - mean[c]) / std[c];
+        // Apply ImageNet normalization: (pixel/scale - mean) / std
+        normalizedImageData[chw_idx] =
+            (pixel / imagenet::PIXEL_SCALE - imagenet::MEAN[c]) /
+            imagenet::STD[c];
       }
     }
   }
@@ -62,9 +64,11 @@ CardEmbeddingModel::computeEmbedding(const cv::Mat &cardImg) {
     throw std::runtime_error("Input image is empty");
   }
   auto prepStart = std::chrono::high_resolution_clock::now();
-  // Resize to 224x224 (MobileNet input size)
+  // Resize to model input size (MobileNet)
   cv::Mat resized;
-  cv::resize(cardImg, resized, cv::Size(224, 224));
+  cv::resize(
+      cardImg, resized,
+      cv::Size(model::EMBEDDING_INPUT_SIZE, model::EMBEDDING_INPUT_SIZE));
 
   std::vector<float> inputData = normalizeImage(resized);
 
@@ -73,11 +77,13 @@ CardEmbeddingModel::computeEmbedding(const cv::Mat &cardImg) {
   double embeddingPreprocessingTimeMs =
       std::chrono::duration_cast<std::chrono::microseconds>(prepEnd - prepStart)
           .count() /
-      1000.0;
+      perf::MICROSECONDS_TO_MILLISECONDS;
   try {
     // Extract embedding from card (directly from cv::Mat, no disk I/O!)
     auto embeddingStart = std::chrono::high_resolution_clock::now();
-    std::vector<int> inputShape = {1, 3, 224, 224};
+    std::vector<int> inputShape = {1, model::EMBEDDING_CHANNELS,
+                                   model::EMBEDDING_INPUT_SIZE,
+                                   model::EMBEDDING_INPUT_SIZE};
     auto inputTensor = from_blob(inputData.data(), inputShape);
     auto inferenceResult = module_->forward(inputTensor);
     if (!inferenceResult.ok()) {
@@ -95,8 +101,9 @@ CardEmbeddingModel::computeEmbedding(const cv::Mat &cardImg) {
       outputSize *= dim;
     }
 
-    size_t embeddingSize = std::min(outputSize, static_cast<size_t>(256));
-    std::vector<float> embedding(256, 0.0f);
+    size_t embeddingSize =
+        std::min(outputSize, static_cast<size_t>(model::EMBEDDING_DIMENSION));
+    std::vector<float> embedding(model::EMBEDDING_DIMENSION, 0.0f);
     for (size_t i = 0; i < embeddingSize; i++) {
       embedding[i] = outputData[i];
     }
@@ -107,7 +114,7 @@ CardEmbeddingModel::computeEmbedding(const cv::Mat &cardImg) {
         std::chrono::duration_cast<std::chrono::microseconds>(embeddingEnd -
                                                               embeddingStart)
             .count() /
-        1000.0;
+        perf::MICROSECONDS_TO_MILLISECONDS;
 
     CardEmbeddingResult result;
     result.embedding = embedding;
@@ -120,7 +127,7 @@ CardEmbeddingModel::computeEmbedding(const cv::Mat &cardImg) {
     double totalTimeMs = std::chrono::duration_cast<std::chrono::microseconds>(
                              totalEnd - totalStart)
                              .count() /
-                         1000.0;
+                         perf::MICROSECONDS_TO_MILLISECONDS;
     performance.totalTimeMs = totalTimeMs;
     result.performance = performance;
 

@@ -137,7 +137,6 @@ declare global {
   var releaseScanner: () => boolean;
 
   // Database management
-  var populateDatabase: (assetPath: string, gameName: string) => boolean;
   var switchGame: (gameName: string) => void;
   var swapDatabase: (sourcePath: string, gameName: string) => boolean;
   var getCardCount: (gameName: string) => number;
@@ -171,7 +170,6 @@ export const initializeScanner = global.initializeScanner;
 export const releaseScanner = global.releaseScanner;
 
 // Export database management functions
-export const populateDatabase = global.populateDatabase;
 export const switchGame = global.switchGame;
 export const swapDatabase = global.swapDatabase;
 export const getCardCount = global.getCardCount;

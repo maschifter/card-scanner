@@ -1,7 +1,7 @@
 import { Asset } from 'expo-asset';
 import {
   getCardCount,
-  populateDatabase,
+  swapDatabase,
 } from 'react-native-card-scanner';
 
 const DEFAULT_GAME = 'lorcana';
@@ -48,13 +48,13 @@ export async function loadDatabaseFromAssets(): Promise<boolean> {
 
   console.log('📦 Database asset downloaded to:', dbAsset.localUri);
 
-  // Populate the database
-  const success = populateDatabase(dbAsset.localUri, DEFAULT_GAME);
+  // Swap the database
+  const success = swapDatabase(dbAsset.localUri, DEFAULT_GAME);
 
   if (success) {
-    console.log('✅ Database populated successfully');
+    console.log('✅ Database swapped successfully');
   } else {
-    throw new Error('Failed to populate database');
+    throw new Error('Failed to swap database');
   }
 
   return success;

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Asset } from 'expo-asset';
-import { populateDatabase, swapDatabase, DatabaseInfo } from './index';
+import { swapDatabase, DatabaseInfo } from './index';
 
 /**
  * Load a database from a bundled React Native asset
@@ -26,14 +26,14 @@ export const loadDatabaseFromAsset = async (
     `[loadDatabaseFromAsset] Asset downloaded to: ${asset.localUri}`,
   );
 
-  const success = populateDatabase(asset.localUri, gameName);
+  const success = swapDatabase(asset.localUri, gameName);
 
   if (success) {
     console.log(
-      `[loadDatabaseFromAsset] Successfully populated database for ${gameName}`,
+      `[loadDatabaseFromAsset] Successfully swapped database for ${gameName}`,
     );
   } else {
-    throw new Error(`Failed to populate database for ${gameName}`);
+    throw new Error(`Failed to swap database for ${gameName}`);
   }
 
   return success;

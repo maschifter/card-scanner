@@ -88,6 +88,11 @@ export default function SegmentationScreen() {
       }
 
       const embeddingLocalPath = `${cacheDirectory}embedding_model.pte`;
+      await copyAsync({
+        from: embeddingAsset.localUri,
+        to: embeddingLocalPath,
+      });
+      console.log('✅ Embedding model loaded');
 
       // 3. Initialize scanner with ML models and default game
       console.log('🚀 Initializing scanner...');

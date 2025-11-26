@@ -1,6 +1,7 @@
 #define OBX_CPP_FILE
 
 #include "ObjectBoxDB.h"
+#include "../Constants.h"
 #include "PathProvider.h"
 #include "objectbox-model.h" // Include the generated model header
 #include "objectbox.hpp"
@@ -12,6 +13,8 @@
 #include <iostream>
 #include <sstream>
 #include <sys/stat.h>
+
+using namespace cardscanner::constants;
 
 ObjectBoxDB::ObjectBoxDB(const std::string &db_path) : db_path_(db_path) {
   // Create directory if it doesn't exist
@@ -51,8 +54,9 @@ ObjectBoxDB::search_similar_cards(const std::vector<float> &query_embedding,
 
   std::vector<CardSearchResult> results;
 
-  if (query_embedding.size() != 256) {
-    std::cerr << "Error: Query embedding must have 256 dimensions, got "
+  if (query_embedding.size() != database::EMBEDDING_VECTOR_SIZE) {
+    std::cerr << "Error: Query embedding must have "
+              << database::EMBEDDING_VECTOR_SIZE << " dimensions, got "
               << query_embedding.size() << std::endl;
     return results;
   }
@@ -66,7 +70,7 @@ ObjectBoxDB::search_similar_cards(const std::vector<float> &query_embedding,
   auto query = box.query()
                    .nearestNeighborsFloat32(
                        Card_::embedding, query_embedding.data(),
-                       100) // Fetch more candidates for better accuracy
+                       limit) // Fetch more candidates for better accuracy
                    .build();
 
   auto cards = query.find();
@@ -80,7 +84,7 @@ ObjectBoxDB::search_similar_cards(const std::vector<float> &query_embedding,
     // Calculate similarity score using dot product (cosine similarity for
     // normalized embeddings)
     float dot_product = 0.0f;
-    for (size_t i = 0; i < 256; i++) {
+    for (size_t i = 0; i < database::EMBEDDING_VECTOR_SIZE; i++) {
       dot_product += query_embedding[i] * card.embedding[i];
     }
     result.score = dot_product;
@@ -106,4 +110,3 @@ uint64_t ObjectBoxDB::get_card_count() {
   obx::Box<Card> box(*store);
   return box.count();
 }
-

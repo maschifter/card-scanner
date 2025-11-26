@@ -25,7 +25,7 @@ public:
   // Similarity search: returns top N most similar cards
   std::vector<CardSearchResult>
   search_similar_cards(const std::vector<float> &query_embedding,
-                       int limit = 10);
+                       int limit = 100);
 
   // Get total card count
   uint64_t get_card_count();

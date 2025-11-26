@@ -1,4 +1,5 @@
 #include "FrameExtractor.h"
+#include "../Constants.h"
 #include <algorithm>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
@@ -6,6 +7,7 @@
 
 using namespace facebook;
 using namespace cardscanner;
+using namespace cardscanner::constants;
 
 cv::Mat FrameExtractor::extractFrame(jsi::Runtime &runtime,
                                      const jsi::Object &frameObj) {
@@ -56,27 +58,27 @@ cv::Mat FrameExtractor::extractFrame(jsi::Runtime &runtime,
     uint8_t *data = arrayBuffer.data(runtime);
 
     if (pixelFormat == "rgb") {
-      // Assume 4 bytes per pixel (RGBA or BGRA)
+      // RGBA/BGRA format has 4 channels
       cv::Mat sourceFrame(height, width, CV_8UC4, data);
 #ifdef __ANDROID__
-      // Android: Typically RGBA format -> Convert to BGR (required for
-      // detection models)
+      // Android: Typically RGBA format -> Convert to RGB
       cv::cvtColor(sourceFrame, frameImage, cv::COLOR_RGBA2RGB);
 #else
-      // iOS: Typically BGRA format -> Convert to BGR
+      // iOS: Typically BGRA format -> Convert to RGB
       cv::cvtColor(sourceFrame, frameImage, cv::COLOR_BGRA2RGB);
 #endif
     } else if (pixelFormat == "yuv") {
-      // Typically Android YUV420 format (NV21), 1.5 bytes per pixel
-      cv::Mat yuvMat(height + height / 2, width, CV_8UC1, data);
+      // YUV420 format (NV21) - YUV420_SIZE_MULTIPLIER bytes per pixel
+      cv::Mat yuvMat(static_cast<int>(height * frame::YUV420_SIZE_MULTIPLIER),
+                     width, CV_8UC1, data);
       cv::cvtColor(yuvMat, frameImage, cv::COLOR_YUV2RGB_NV21);
     } else {
       throw std::runtime_error("Unsupported pixel format: " + pixelFormat);
     }
 
-    // 4. Rotate the frame 90 degrees clockwise (as per original logic)
+    // Rotate the frame 90 degrees clockwise
     if (!frameImage.empty()) {
-      cv::rotate(frameImage, frameImage, cv::ROTATE_90_CLOCKWISE);
+      cv::rotate(frameImage, frameImage, frame::ROTATION_90_CLOCKWISE);
     } else {
       throw std::runtime_error("OpenCV Mat conversion resulted in an empty "
                                "image. Check dimensions and format.");

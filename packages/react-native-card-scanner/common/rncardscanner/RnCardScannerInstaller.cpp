@@ -1,4 +1,5 @@
 #include "RnCardScannerInstaller.h"
+#include "Constants.h"
 #include "DatabaseManager.h"
 #include "ObjectBoxDB.h"
 #include "PathProvider.h"
@@ -15,6 +16,8 @@
 
 #include "threads/GlobalThreadPool.h"
 #include "threads/utils/ThreadUtils.h"
+
+using namespace cardscanner::constants;
 
 #ifdef __ANDROID__
 #include <sys/resource.h>
@@ -37,7 +40,8 @@ void CardScannerInstaller::initializeModels(const std::string &yoloPath,
 
   if (!yoloPath.empty()) {
     yoloModel_ = std::make_shared<cardscanner::YoloSegmentationModel>(
-        yoloPath, 0.7f, 0.7f, 384);
+        yoloPath, model::DEFAULT_YOLO_CONF_THRESHOLD,
+        model::DEFAULT_YOLO_IOU_THRESHOLD, model::DEFAULT_YOLO_IMAGE_SIZE);
   }
 
   if (!embeddingPath.empty()) {
@@ -80,7 +84,6 @@ void CardScannerInstaller::injectJSIBindings(
 
   cardscanner::DatabaseManager &dbManager =
       cardscanner::DatabaseManager::getInstance();
-  std::cout << "Injecting JSI bindings for CardScanner" << std::endl;
 
   // Create the 'initializeScanner' host function
   auto initializeScannerFunc = jsi::Function::createFromHostFunction(
@@ -134,46 +137,14 @@ void CardScannerInstaller::injectJSIBindings(
   jsiRuntime->global().setProperty(*jsiRuntime, "releaseScanner",
                                    std::move(releaseScannerFunc));
 
-  // Create the 'populateDatabase' host function
-  auto populateDatabaseFunc = jsi::Function::createFromHostFunction(
-      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "populateDatabase"),
-      2,
-      [&dbManager](jsi::Runtime &runtime, const jsi::Value &thisValue,
-                   const jsi::Value *args, size_t count) -> jsi::Value {
-        if (count != 2 || !args[0].isString() || !args[1].isString()) {
-          throw jsi::JSError(
-              runtime,
-              "populateDatabase expects (assetPath: string, gameName: string)");
-        }
-
-        std::string assetPath = args[0].asString(runtime).utf8(runtime);
-        std::string gameName = args[1].asString(runtime).utf8(runtime);
-
-        try {
-          bool success = dbManager.swapDatabaseFile(gameName, assetPath);
-
-          if (success) {
-            dbManager.scanForExistingStores();
-          }
-
-          return jsi::Value(success);
-        } catch (const std::exception &e) {
-          throw jsi::JSError(
-              runtime, std::string("Failed to populate database: ") + e.what());
-        }
-      });
-
-  jsiRuntime->global().setProperty(*jsiRuntime, "populateDatabase",
-                                   std::move(populateDatabaseFunc));
-
   // Create the 'swapDatabase' host function
   auto swapDatabaseFunc = jsi::Function::createFromHostFunction(
       *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "swapDatabase"), 2,
       [&dbManager](jsi::Runtime &runtime, const jsi::Value &thisValue,
                    const jsi::Value *args, size_t count) -> jsi::Value {
         if (count != 2 || !args[0].isString() || !args[1].isString()) {
-          throw jsi::JSError(runtime, "swapDatabase expects two string "
-                                      "arguments (sourcePath, gameName)");
+          throw jsi::JSError(runtime, "swapDatabase expects (sourcePath: "
+                                      "string, gameName: string)");
         }
 
         std::string sourcePath = args[0].asString(runtime).utf8(runtime);
@@ -251,11 +222,7 @@ void CardScannerInstaller::injectJSIBindings(
       jsi::PropNameID::forAscii(*jsiRuntime, "runSegmentationDebug"), 2,
       [](jsi::Runtime &runtime, const jsi::Value &thisValue,
          const jsi::Value *args, size_t count) -> jsi::Value {
-        if (count < 1 || !args[0].isString()) {
-          throw jsi::JSError(runtime, "runSegmentationDebug expects "
-                                      "(imagePath: string, outputDir: string)");
-        }
-        if (count < 2 || !args[1].isString()) {
+        if (count < 2 || !args[0].isString() || !args[1].isString()) {
           throw jsi::JSError(runtime, "runSegmentationDebug expects "
                                       "(imagePath: string, outputDir: string)");
         }
@@ -549,18 +516,19 @@ void CardScannerInstaller::injectJSIBindings(
                     auto startDbSearch =
                         std::chrono::high_resolution_clock::now();
                     auto matches = db->search_similar_cards(
-                        embeddingResult.embedding, 100);
+                        embeddingResult.embedding,
+                        database::MAX_SEARCH_RESULTS);
                     auto endDbSearch =
                         std::chrono::high_resolution_clock::now();
                     dbSearchMs += std::chrono::duration<double, std::milli>(
                                       endDbSearch - startDbSearch)
                                       .count();
 
-                    // Filter matches to only include scores > 0.6 (60%
-                    // similarity)
+                    // Filter matches to only include scores above minimum
+                    // similarity threshold
                     std::vector<CardSearchResult> filteredMatches;
                     for (const auto &match : matches) {
-                      if (match.score > 0.6) {
+                      if (match.score > database::MIN_SIMILARITY_SCORE) {
                         filteredMatches.push_back(match);
                       }
                     }
