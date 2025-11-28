@@ -10,7 +10,7 @@
 namespace cardscanner {
 class YoloSegmentationModel;
 class CardEmbeddingModel;
-}
+} // namespace cardscanner
 
 namespace rncardscanner {
 
@@ -37,23 +37,37 @@ public:
   static std::shared_ptr<cardscanner::YoloSegmentationModel> getYoloModel();
   static std::shared_ptr<cardscanner::CardEmbeddingModel> getEmbeddingModel();
 
-  // Initialize models with optional default game
-  static void initializeModels(const std::string &yoloPath,
-                               const std::string &embeddingPath,
-                               const std::string &defaultGame = "");
+  // Scanner configuration struct
+  struct ScannerConfig {
+    std::string yoloPath;
+    std::string embeddingPath;
+    std::string gameName;
+    std::string scanMode; // "single" or "multiple"
+    float segmentationThreshold;
+    float iouThreshold;
+    float confidenceThreshold;
+    int maxMatches;
+    int searchCandidates;
+    bool captureImage;
+  };
+
+  // Initialize models with configuration
+  static void initializeModels(const ScannerConfig &config);
 
   // Release models and free resources
   static void releaseModels();
 
-  // Thread-safe accessors for current game
+  // Thread-safe accessors for current game and config
   static std::string getCurrentGame();
   static void setCurrentGame(const std::string &gameName);
+  static ScannerConfig getConfig();
 
 private:
   static std::shared_ptr<cardscanner::YoloSegmentationModel> yoloModel_;
   static std::shared_ptr<cardscanner::CardEmbeddingModel> embeddingModel_;
   static std::mutex modelMutex_;
   static std::string currentGame_;
+  static ScannerConfig config_;
 };
 
 } // namespace rncardscanner

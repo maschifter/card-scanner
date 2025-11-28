@@ -3,7 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { autoLoadDatabase } from './utils/database';
+import { loadAllDatabases, type GameDatabaseStatus } from './utils/database';
 import HomeScreen from './screens/HomeScreen';
 import SegmentationScreen from './screens/SegmentationScreen';
 import DatabaseManagerScreen from './screens/DatabaseScreen';
@@ -14,21 +14,41 @@ const Tab = createBottomTabNavigator();
 export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [databaseResults, setDatabaseResults] = useState<GameDatabaseStatus[]>(
+    [],
+  );
 
   useEffect(() => {
-    initializeDatabase();
+    initializeDatabases();
   }, []);
 
-  const initializeDatabase = async () => {
-    console.log('🚀 App starting - initializing database...');
-    const result = await autoLoadDatabase();
+  const initializeDatabases = async () => {
+    console.log('🚀 App starting - initializing all game databases...');
+    const results = await loadAllDatabases();
 
-    if (result.error) {
-      console.error('❌ Failed to initialize database:', result.error);
-      setLoadError(result.error);
-    } else {
-      console.log(`✅ Database ready with ${result.stats.cardCount} cards`);
+    setDatabaseResults(results);
+
+    // Check if any databases failed to load
+    const failedDatabases = results.filter((r) => !r.stats.isLoaded);
+    if (failedDatabases.length === results.length) {
+      // All databases failed
+      setLoadError(
+        'Failed to load any game databases. Please check the logs.',
+      );
+    } else if (failedDatabases.length > 0) {
+      // Some databases failed
+      console.warn(
+        `⚠️ ${failedDatabases.length} database(s) failed to load:`,
+        failedDatabases.map((d) => d.gameName).join(', '),
+      );
     }
+
+    // Log summary
+    const totalCards = results.reduce((sum, r) => sum + r.stats.cardCount, 0);
+    const loadedGames = results.filter((r) => r.stats.isLoaded).length;
+    console.log(
+      `✅ Databases ready: ${loadedGames}/${results.length} games loaded, ${totalCards} total cards`,
+    );
 
     setIsLoading(false);
   };
@@ -37,7 +57,10 @@ export default function App() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#4CAF50" />
-        <Text style={styles.loadingText}>Loading card database...</Text>
+        <Text style={styles.loadingText}>Loading game databases...</Text>
+        <Text style={styles.subText}>
+          Lorcana, MTG, Pokémon, One Piece, and more
+        </Text>
       </View>
     );
   }
@@ -117,6 +140,13 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginTop: 16,
     fontSize: 16,
+    fontWeight: 'bold',
+  },
+  subText: {
+    color: '#aaa',
+    marginTop: 8,
+    fontSize: 14,
+    textAlign: 'center',
   },
   errorText: {
     color: '#F44336',
