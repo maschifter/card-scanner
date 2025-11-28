@@ -76,7 +76,9 @@ export default function VisionCameraScanner() {
 
       // 1. Load ML models
       console.log('📦 Loading ML models...');
-      const yoloAsset = Asset.fromModule(require('../assets/yolo11n-seg.pte'));
+      const yoloAsset = Asset.fromModule(
+        require('../assets/yolo11n-seg-cls.pte'),
+      );
       await yoloAsset.downloadAsync();
 
       if (!yoloAsset.localUri) {
@@ -160,7 +162,7 @@ export default function VisionCameraScanner() {
       if (detection.success && detection.cards.length > 0) {
         const firstCard = detection.cards[0];
         setCardWithConfidence(
-          `${firstCard.cardId} (${(firstCard.confidenceScore * 100).toFixed(1)}%)`,
+          `${firstCard.name} [${firstCard.gameName}] (${(firstCard.confidenceScore * 100).toFixed(1)}%)`,
         );
 
         // Set cropped image if available
@@ -339,6 +341,20 @@ export default function VisionCameraScanner() {
                   {'\n\n'}
                 </>
               )}
+              {/* YOLO game predictions */}
+              {detection?.cards[0]?.predictedGame && (
+                <>
+                  🎮 YOLO: {detection.cards[0].predictedGame.toUpperCase()}
+                  {'\n'}
+                  {detection.cards[0].topGamePredictions
+                    ?.map(
+                      (pred, idx) =>
+                        `  ${idx + 1}. ${pred.game}: ${(pred.confidence * 100).toFixed(1)}%\n`,
+                    )
+                    .join('')}
+                  {'\n'}
+                </>
+              )}
               {/* Timing breakdown */}
               {detection?.timings && (
                 <>
@@ -392,36 +408,6 @@ export default function VisionCameraScanner() {
                 resizeMode="contain"
               />
             )}
-          </View>
-        </View>
-      )}
-
-      {/* Game Switcher */}
-      {availableGames.length > 0 && (
-        <View style={[styles.gameSwitcher, { top: 10 }]}>
-          <Text style={styles.gameSwitcherLabel}>
-            Game: {currentGame.toUpperCase()}
-          </Text>
-          <View style={styles.gameButtons}>
-            {availableGames.map((game) => (
-              <TouchableOpacity
-                key={game.name}
-                style={[
-                  styles.gameButton,
-                  currentGame === game.name && styles.gameButtonActive,
-                ]}
-                onPress={() => handleGameSwitch(game.name)}
-              >
-                <Text
-                  style={[
-                    styles.gameButtonText,
-                    currentGame === game.name && styles.gameButtonTextActive,
-                  ]}
-                >
-                  {game.name.toUpperCase()}
-                </Text>
-              </TouchableOpacity>
-            ))}
           </View>
         </View>
       )}
