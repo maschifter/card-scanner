@@ -18,6 +18,7 @@ struct BBox {
   float x1, y1, x2, y2;
   float conf;
   int cls;
+  std::vector<std::pair<float, int>> class_confs; // All class predictions sorted by confidence
 };
 
 // Segmentation result for a single detection
@@ -28,6 +29,8 @@ struct Detection {
       maskContours;              // mask contours for visualization
   std::vector<cv::Point2f> quad; // 4-point quadrilateral (TL, TR, BR, BL)
   cv::Mat dewarpedCard;          // perspective-corrected card image
+  std::string predictedGame;     // Top predicted game from YOLO classification
+  std::vector<std::pair<std::string, float>> topGamePredictions; // Top 3 games with confidences
 };
 
 struct SegmentationPerformance {
@@ -73,7 +76,8 @@ private:
   std::vector<Detection> postprocess(const cv::Mat &originalImg,
                                      const cv::Mat &letterboxed,
                                      const std::vector<float> &preds,
-                                     const std::vector<float> &protos);
+                                     const std::vector<float> &protos,
+                                     const std::map<int, std::string> &classNames);
 
   // Process masks from proto coefficients - returns binary mask
   cv::Mat processMask(const std::vector<float> &protos, int protoH, int protoW,

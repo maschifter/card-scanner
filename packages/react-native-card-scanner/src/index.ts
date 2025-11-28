@@ -65,10 +65,18 @@ export interface RawDetection {
   box: BoundingBox;
   matches: RawMatch[];
   croppedImagePath?: string;
+  predictedGame?: string;                    // YOLO's top game prediction
+  topGamePredictions?: GamePrediction[];     // Top 3 game predictions from YOLO
+}
+
+export interface GamePrediction {
+  game: string;
+  confidence: number;
 }
 
 export interface RawMatch {
   cardId: string;
+  name: string;
   gameName: string;
   score: number;
 }
@@ -96,11 +104,13 @@ export interface Detection {
 export interface DetectedCard {
   cardId: string;
   name: string;
-  gameName: string;
+  gameName: string;                         // From best match (multi-game search)
   confidenceScore: number;
   boundingBox: BoundingBox;
-  capturedImage?: string;
+  capturedImage?: CapturedImage;
   alternativeCards: AlternativeMatch[];
+  predictedGame?: string;                    // YOLO's prediction
+  topGamePredictions?: GamePrediction[];     // YOLO's top 3
   language?: {
     code: string;
     confidence: number;
@@ -246,24 +256,36 @@ export function createDetectionResult(raw: RawScanResult): Detection {
     };
   }
 
-  const cards: DetectedCard[] = raw.detections.map((det) => {
-    const primaryMatch = det.matches[0];
-    const alternativeCards = det.matches.slice(1).map((match) => ({
-      cardId: match.cardId,
-      name: '', // Name will be fetched separately or from card data service
-      confidence: match.score,
-    }));
+  const cards: DetectedCard[] = raw.detections
+    .filter(det => det.matches && det.matches.length > 0)
+    .map((det) => {
+      const primaryMatch = det.matches[0];
+      const alternativeCards = det.matches.slice(1).map((match) => ({
+        cardId: match.cardId,
+        name: match.name,
+        confidence: match.score,
+      }));
 
-    return {
-      cardId: primaryMatch?.cardId || '',
-      name: '', // Name will be fetched separately or from card data service
-      gameName: primaryMatch?.gameName || '',
-      confidenceScore: primaryMatch?.score || 0,
-      boundingBox: det.box,
-      capturedImage: det.croppedImagePath ? det.croppedImagePath : undefined,
-      alternativeCards,
-    };
-  });
+      return {
+        cardId: primaryMatch.cardId,
+        name: primaryMatch.name,
+        gameName: primaryMatch.gameName,
+        confidenceScore: primaryMatch.score,
+        boundingBox: det.box,
+        capturedImage: det.croppedImagePath
+          ? {
+              uri: det.croppedImagePath,
+              width: 0, // TODO: Add actual dimensions if available
+              height: 0,
+              format: 'jpeg' as const,
+              size: 0,
+            }
+          : undefined,
+        alternativeCards,
+        predictedGame: det.predictedGame,
+        topGamePredictions: det.topGamePredictions,
+      };
+    });
 
   return {
     success: true,

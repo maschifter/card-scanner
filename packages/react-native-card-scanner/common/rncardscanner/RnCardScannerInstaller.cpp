@@ -586,117 +586,153 @@ void CardScannerInstaller::injectJSIBindings(
           if (!segResult.detections.empty()) {
             auto startRecognition = std::chrono::high_resolution_clock::now();
 
-            // Get database handle (only if game name is set)
-            ObjectBoxDB *db = nullptr;
-            if (!gameName.empty()) {
-              db = dbManager.getOrCreateStore(gameName);
-            }
-            if (db) {
-              for (const auto &det : segResult.detections) {
-                try {
-                  cv::Mat cardImg;
+            // Process each detection
+            for (const auto &det : segResult.detections) {
+              try {
+                cv::Mat cardImg;
 
-                  // Use dewarped card if available, otherwise crop from bbox
-                  if (!det.dewarpedCard.empty()) {
-                    cardImg = det.dewarpedCard;
-                  } else {
-                    // Crop card from frame using bounding box
-                    int ix1 = std::max(0, static_cast<int>(det.box.x1));
-                    int iy1 = std::max(0, static_cast<int>(det.box.y1));
-                    int ix2 =
-                        std::min(frameImage.cols, static_cast<int>(det.box.x2));
-                    int iy2 =
-                        std::min(frameImage.rows, static_cast<int>(det.box.y2));
+                // Use dewarped card if available, otherwise crop from bbox
+                if (!det.dewarpedCard.empty()) {
+                  cardImg = det.dewarpedCard;
+                } else {
+                  // Crop card from frame using bounding box
+                  int ix1 = std::max(0, static_cast<int>(det.box.x1));
+                  int iy1 = std::max(0, static_cast<int>(det.box.y1));
+                  int ix2 =
+                      std::min(frameImage.cols, static_cast<int>(det.box.x2));
+                  int iy2 =
+                      std::min(frameImage.rows, static_cast<int>(det.box.y2));
 
-                    if (ix2 > ix1 && iy2 > iy1) {
-                      cv::Rect roi(ix1, iy1, ix2 - ix1, iy2 - iy1);
-                      cardImg = frameImage(roi).clone();
+                  if (ix2 > ix1 && iy2 > iy1) {
+                    cv::Rect roi(ix1, iy1, ix2 - ix1, iy2 - iy1);
+                    cardImg = frameImage(roi).clone();
+                  }
+                }
+
+                if (!cardImg.empty()) {
+                  // Save cropped image if captureImage is enabled
+                  std::string imagePath = "";
+                  if (config.captureImage) {
+                    try {
+                      // Generate unique filename with timestamp
+                      auto now = std::chrono::system_clock::now();
+                      auto timestamp = std::chrono::duration_cast<
+                                           std::chrono::milliseconds>(
+                                           now.time_since_epoch())
+                                           .count();
+
+                      std::string filename =
+                          "card_" + std::to_string(timestamp) + "_" +
+                          std::to_string(cardMatches.size()) + ".jpg";
+
+                      // Get cache directory path (use db path as base)
+                      std::string cacheDir = pathprovider::get_db_path();
+                      imagePath = cacheDir + "/" + filename;
+
+                      // Convert RGB to BGR for correct color display
+                      cv::Mat cardImgBGR;
+                      cv::cvtColor(cardImg, cardImgBGR, cv::COLOR_RGB2BGR);
+
+                      // Save image as JPEG
+                      std::vector<int> compression_params;
+                      compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
+                      compression_params.push_back(90); // Quality 90%
+
+                      bool success =
+                          cv::imwrite(imagePath, cardImgBGR, compression_params);
+                      if (!success) {
+                        imagePath = ""; // Failed to save
+                      }
+                    } catch (const std::exception &e) {
+                      // Failed to save image, continue without it
+                      imagePath = "";
+                    }
+                  }
+                  croppedImagePaths.push_back(imagePath);
+
+                  // Get singleton embedding model
+                  auto embeddingModel =
+                      CardScannerInstaller::getEmbeddingModel();
+                  if (!embeddingModel) {
+                    throw jsi::JSError(
+                        runtime, "Embedding model not initialized. Call "
+                                 "initializeScanner() first.");
+                  }
+
+                  // Compute embedding once for this card
+                  embeddingResult = embeddingModel->computeEmbedding(cardImg);
+
+                  // Multi-game search: Get top 3 predicted games from YOLO
+                  std::vector<std::string> topGames;
+                  for (const auto &[gameName, conf] : det.topGamePredictions) {
+                    topGames.push_back(gameName);
+                    if (topGames.size() >= 3)
+                      break;
+                  }
+
+                  // If no YOLO predictions, fall back to config game
+                  if (topGames.empty() && !gameName.empty()) {
+                    topGames.push_back(gameName);
+                  }
+
+                  // Search across all top games and combine results
+                  std::vector<CardSearchResult> allResults;
+
+                  for (const auto &gameToSearch : topGames) {
+                    try {
+                      ObjectBoxDB *gameDb =
+                          dbManager.getOrCreateStore(gameToSearch);
+                      if (!gameDb)
+                        continue;
+
+                      // Search in this game's database
+                      auto startDbSearch =
+                          std::chrono::high_resolution_clock::now();
+                      auto gameResults = gameDb->search_similar_cards(
+                          embeddingResult.embedding, config.searchCandidates);
+                      auto endDbSearch =
+                          std::chrono::high_resolution_clock::now();
+                      dbSearchMs += std::chrono::duration<double, std::milli>(
+                                        endDbSearch - startDbSearch)
+                                        .count();
+
+                      // Tag results with game name
+                      for (auto &result : gameResults) {
+                        result.gameName = gameToSearch;
+                        allResults.push_back(result);
+                      }
+
+                    } catch (const std::exception &e) {
+                      // Skip failed game database
+                      continue;
                     }
                   }
 
-                  if (!cardImg.empty()) {
-                    // Save cropped image if captureImage is enabled
-                    std::string imagePath = "";
-                    if (config.captureImage) {
-                      try {
-                        // Generate unique filename with timestamp
-                        auto now = std::chrono::system_clock::now();
-                        auto timestamp = std::chrono::duration_cast<
-                                             std::chrono::milliseconds>(
-                                             now.time_since_epoch())
-                                             .count();
+                  // Sort all results by score (descending)
+                  std::sort(allResults.begin(), allResults.end(),
+                            [](const CardSearchResult &a,
+                               const CardSearchResult &b) {
+                              return a.score > b.score;
+                            });
 
-                        std::string filename =
-                            "card_" + std::to_string(timestamp) + "_" +
-                            std::to_string(cardMatches.size()) + ".jpg";
-
-                        // Get cache directory path (use db path as base)
-                        std::string cacheDir = pathprovider::get_db_path();
-                        imagePath = cacheDir + "/" + filename;
-
-                        // Convert RGB to BGR for correct color display
-                        cv::Mat cardImgBGR;
-                        cv::cvtColor(cardImg, cardImgBGR, cv::COLOR_BGR2RGB);
-
-                        // Save image as JPEG
-                        std::vector<int> compression_params;
-                        compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
-                        compression_params.push_back(90); // Quality 90%
-
-                        bool success = cv::imwrite(imagePath, cardImgBGR,
-                                                   compression_params);
-                        if (!success) {
-                          imagePath = ""; // Failed to save
-                        }
-                      } catch (const std::exception &e) {
-                        // Failed to save image, continue without it
-                        imagePath = "";
+                  // Filter by confidence threshold and limit to maxMatches
+                  std::vector<CardSearchResult> filteredMatches;
+                  for (const auto &match : allResults) {
+                    if (match.score >= config.confidenceThreshold) {
+                      filteredMatches.push_back(match);
+                      if (filteredMatches.size() >=
+                          static_cast<size_t>(config.maxMatches)) {
+                        break;
                       }
                     }
-                    croppedImagePaths.push_back(imagePath);
-
-                    // Get singleton embedding model
-                    auto embeddingModel =
-                        CardScannerInstaller::getEmbeddingModel();
-                    if (!embeddingModel) {
-                      throw jsi::JSError(
-                          runtime, "Embedding model not initialized. Call "
-                                   "initializeScanner() first.");
-                    }
-
-                    embeddingResult = embeddingModel->computeEmbedding(cardImg);
-
-                    // Search database using config.searchCandidates
-                    auto startDbSearch =
-                        std::chrono::high_resolution_clock::now();
-                    auto matches = db->search_similar_cards(
-                        embeddingResult.embedding, config.searchCandidates);
-                    auto endDbSearch =
-                        std::chrono::high_resolution_clock::now();
-                    dbSearchMs += std::chrono::duration<double, std::milli>(
-                                      endDbSearch - startDbSearch)
-                                      .count();
-
-                    // Filter matches above confidence threshold
-                    // and limit to maxMatches
-                    std::vector<CardSearchResult> filteredMatches;
-                    for (const auto &match : matches) {
-                      if (match.score >= config.confidenceThreshold) {
-                        filteredMatches.push_back(match);
-                        if (filteredMatches.size() >=
-                            static_cast<size_t>(config.maxMatches)) {
-                          break;
-                        }
-                      }
-                    }
-
-                    cardMatches.push_back(filteredMatches);
-                  } else {
-                    cardMatches.push_back({});
                   }
-                } catch (const std::exception &e) {
+
+                  cardMatches.push_back(filteredMatches);
+                } else {
                   cardMatches.push_back({});
                 }
+              } catch (const std::exception &e) {
+                cardMatches.push_back({});
               }
             }
 
@@ -759,7 +795,7 @@ void CardScannerInstaller::injectJSIBindings(
             box.setProperty(runtime, "conf", jsi::Value(det.box.conf));
             jsDetection.setProperty(runtime, "box", box);
 
-            // Recognition matches (RawMatch format: cardId, gameName, score)
+            // Recognition matches (RawMatch format: cardId, name, gameName, score)
             if (i < cardMatches.size() && !cardMatches[i].empty()) {
               jsi::Array matches(runtime, cardMatches[i].size());
               for (size_t j = 0; j < cardMatches[i].size(); j++) {
@@ -767,10 +803,13 @@ void CardScannerInstaller::injectJSIBindings(
                 jsi::Object matchObj(runtime);
                 matchObj.setProperty(
                     runtime, "cardId",
+                    jsi::String::createFromUtf8(runtime, match.card_id));
+                matchObj.setProperty(
+                    runtime, "name",
                     jsi::String::createFromUtf8(runtime, match.name));
                 matchObj.setProperty(
                     runtime, "gameName",
-                    jsi::String::createFromUtf8(runtime, gameName));
+                    jsi::String::createFromUtf8(runtime, match.gameName));
                 matchObj.setProperty(runtime, "score", jsi::Value(match.score));
                 matches.setValueAtIndex(runtime, j, matchObj);
               }
@@ -783,6 +822,25 @@ void CardScannerInstaller::injectJSIBindings(
                   runtime, "croppedImagePath",
                   jsi::String::createFromUtf8(runtime, croppedImagePaths[i]));
             }
+
+            // YOLO game predictions
+            jsDetection.setProperty(
+                runtime, "predictedGame",
+                jsi::String::createFromUtf8(runtime, det.predictedGame));
+
+            jsi::Array topGames(runtime, det.topGamePredictions.size());
+            for (size_t k = 0; k < det.topGamePredictions.size(); k++) {
+              jsi::Object gamePred(runtime);
+              gamePred.setProperty(
+                  runtime, "game",
+                  jsi::String::createFromUtf8(runtime,
+                                              det.topGamePredictions[k].first));
+              gamePred.setProperty(
+                  runtime, "confidence",
+                  jsi::Value(det.topGamePredictions[k].second));
+              topGames.setValueAtIndex(runtime, k, gamePred);
+            }
+            jsDetection.setProperty(runtime, "topGamePredictions", topGames);
 
             detections.setValueAtIndex(runtime, i, jsDetection);
           }

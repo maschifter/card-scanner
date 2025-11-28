@@ -12,6 +12,7 @@ class ObjectBoxTest;
 struct CardSearchResult {
   std::string card_id;
   std::string name;
+  std::string gameName; // Which game database this result is from
   double score;
 };
 

@@ -261,14 +261,15 @@ cv::Mat YoloSegmentationModel::processMask(const std::vector<float> &protos,
 
 std::vector<Detection> YoloSegmentationModel::postprocess(
     const cv::Mat &originalImg, const cv::Mat &letterboxed,
-    const std::vector<float> &preds, const std::vector<float> &protos) {
+    const std::vector<float> &preds, const std::vector<float> &protos,
+    const std::map<int, std::string> &classNames) {
 
   auto postStart = std::chrono::high_resolution_clock::now();
 
   // Parse predictions tensor
-  // Actual YOLO11 output shape: [1, 37, 3024] which is [batch, features,
-  // predictions] Format: features = [x, y, w, h] (4) + [class_conf] (1) +
-  // [mask_coeffs] (32) = 37 predictions = 3024 anchor points
+  // New YOLO output shape: [1, 44, 3024] which is [batch, features,
+  // predictions] Format: features = [x, y, w, h] (4) + [class_conf] (8) +
+  // [mask_coeffs] (32) = 44 predictions = 3024 anchor points
 
   std::vector<BBox> boxes;
   std::vector<std::vector<float>> maskCoeffs;
@@ -278,28 +279,35 @@ std::vector<Detection> YoloSegmentationModel::postprocess(
     return {};
   }
 
-  // YOLO output is [1, 37, 3024] -> flattened to [37 * 3024]
-  // 37 = 4 (box) + 1 (conf) + 32 (mask coeffs)
-  int numFeatures = yolo::YOLO11_FEATURES;
-  int numPredictions = yolo::YOLO11_PREDICTIONS;
-
-  // Verify size matches
-  if (preds.size() != numFeatures * numPredictions) {
-    numPredictions = preds.size() / numFeatures;
-  }
+  // YOLO output is [1, 44, 3024] -> flattened to [44 * 3024]
+  // 44 = 4 (box) + 8 (classes) + 32 (mask coeffs)
+  const int numClasses = 8;
+  const int numMaskCoeffs = 32;
+  const int boxCoords = 4;
+  const int numFeatures = boxCoords + numClasses + numMaskCoeffs;
+  int numPredictions = preds.size() / numFeatures;
 
   // Data is stored as [feature][prediction] not [prediction][feature]
   // So we need to access it transposed
   for (int i = 0; i < numPredictions; i++) {
+    // Find class with max confidence
+    std::vector<std::pair<float, int>> class_confs;
+    for (int j = 0; j < numClasses; j++) {
+      class_confs.push_back({preds[(boxCoords + j) * numPredictions + i], j});
+    }
+    std::sort(class_confs.rbegin(), class_confs.rend());
+
+    float maxConf = class_confs[0].first;
+    int classId = class_confs[0].second;
+
+    if (maxConf < conf_)
+      continue;
+
     // Access transposed: feature_idx * numPredictions + prediction_idx
     float x = preds[0 * numPredictions + i];
     float y = preds[1 * numPredictions + i];
     float w = preds[2 * numPredictions + i];
     float h = preds[3 * numPredictions + i];
-    float conf = preds[4 * numPredictions + i];
-
-    if (conf < conf_)
-      continue;
 
     // Convert xywh to xyxy
     float x1 = x - w / letterbox::PADDING_DIVISOR;
@@ -324,17 +332,18 @@ std::vector<Detection> YoloSegmentationModel::postprocess(
     box.y1 = (y1 - dh) / r;
     box.x2 = (x2 - dw) / r;
     box.y2 = (y2 - dh) / r;
-    box.conf = conf;
-    box.cls = 0; // single class
+    box.conf = maxConf;
+    box.cls = classId;
+    box.class_confs = class_confs;
 
     boxes.push_back(box);
 
-    // Extract mask coefficients (features 5-36, which is 32 coefficients)
-    // Remember data is transposed: [feature][prediction]
+    // Extract mask coefficients
     std::vector<float> coeffs;
-    for (int j = yolo::YOLO11_MASK_COEFF_START; j < yolo::YOLO11_MASK_COEFF_END;
-         j++) {
-      coeffs.push_back(preds[j * numPredictions + i]);
+    coeffs.reserve(numMaskCoeffs);
+    const int maskCoeffStart = boxCoords + numClasses;
+    for (int j = 0; j < numMaskCoeffs; j++) {
+      coeffs.push_back(preds[(maskCoeffStart + j) * numPredictions + i]);
     }
     maskCoeffs.push_back(coeffs);
   }
@@ -354,6 +363,21 @@ std::vector<Detection> YoloSegmentationModel::postprocess(
   for (int idx : keep) {
     Detection det;
     det.box = boxes[idx];
+
+    // Populate topGamePredictions
+    for (int i = 0; i < std::min((int)det.box.class_confs.size(), 3); ++i) {
+      float conf = det.box.class_confs[i].first;
+      int class_id = det.box.class_confs[i].second;
+      if (classNames.count(class_id)) {
+        det.topGamePredictions.push_back({classNames.at(class_id), conf});
+      }
+    }
+
+    if (classNames.count(det.box.cls)) {
+      det.predictedGame = classNames.at(det.box.cls);
+    } else {
+      det.predictedGame = "unknown";
+    }
 
     det.maskBinary = processMask(protos, protoH, protoW, maskCoeffs[idx],
                                  boxes[idx], originalImg.size());
@@ -416,7 +440,8 @@ cv::Mat YoloSegmentationModel::visualize(
 
     // Draw confidence
     std::string label =
-        "card " + std::to_string(static_cast<int>(det.box.conf * 100)) + "%";
+        det.predictedGame + " " +
+        std::to_string(static_cast<int>(det.box.conf * 100)) + "%";
     cv::putText(result, label, cv::Point(det.box.x1, det.box.y1 - 5),
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 255), 1);
   }
@@ -636,6 +661,10 @@ SegmentationResult YoloSegmentationModel::segment(const cv::Mat &image) {
     throw std::runtime_error("Empty image provided to segment()");
   }
 
+  const std::map<int, std::string> CLASS_NAMES = {
+      {0, "fab"},     {1, "lorcana"},   {2, "mtg"},  {3, "onepiece"},
+      {4, "pokemon"}, {5, "riftbound"}, {6, "rise"}, {7, "sorcery"}};
+
   // Disable OpenCV threading to prevent interference with ExecutorTorch
   cv::setNumThreads(0);
 
@@ -695,7 +724,7 @@ SegmentationResult YoloSegmentationModel::segment(const cv::Mat &image) {
 
   // Postprocess
   std::vector<Detection> detections =
-      postprocess(image, letterboxed, preds, protos);
+      postprocess(image, letterboxed, preds, protos, CLASS_NAMES);
   auto postEnd = std::chrono::high_resolution_clock::now();
   double postMs =
       std::chrono::duration_cast<std::chrono::microseconds>(postEnd - postStart)
