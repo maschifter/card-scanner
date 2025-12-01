@@ -64,14 +64,16 @@ export default function SegmentationScreen() {
 
       // 1. Load ML models
       console.log('📦 Loading ML models...');
-      const yoloAsset = Asset.fromModule(require('../assets/yolo11n-seg.pte'));
+      const yoloAsset = Asset.fromModule(
+        require('../assets/yolo11n-seg-cls.pte'),
+      );
       await yoloAsset.downloadAsync();
 
       if (!yoloAsset.localUri) {
         throw new Error('Failed to load YOLO model');
       }
 
-      const yoloLocalPath = `${cacheDirectory}yolo11n-seg.pte`;
+      const yoloLocalPath = `${cacheDirectory}yolo11n-seg-cls.pte`;
       await copyAsync({
         from: yoloAsset.localUri,
         to: yoloLocalPath,
@@ -96,7 +98,23 @@ export default function SegmentationScreen() {
 
       // 3. Initialize scanner with ML models and default game
       console.log('🚀 Initializing scanner...');
-      initializeScanner(yoloLocalPath, embeddingLocalPath, 'lorcana');
+      const result = await initializeScanner({
+        segmentationModelPath: yoloLocalPath,
+        embeddingModelPath: embeddingLocalPath,
+        gameName: 'lorcana',
+        scanMode: 'single',
+        segmentationThreshold: 0.7,
+        iouThreshold: 0.7,
+        confidenceThreshold: 0.6,
+        maxMatches: 5,
+        searchCandidates: 100,
+        captureImage: false,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to initialize scanner');
+      }
+
       console.log('✅ Scanner initialized successfully');
 
       setIsLoadingModels(false);
@@ -125,6 +143,11 @@ export default function SegmentationScreen() {
   const runSegmentation = async () => {
     if (!selectedImage) {
       setError('Please select an image first');
+      return;
+    }
+
+    if (isLoadingModels) {
+      setError('Models are still loading. Please wait...');
       return;
     }
 
@@ -168,10 +191,10 @@ export default function SegmentationScreen() {
           <TouchableOpacity
             style={[styles.primaryButton, styles.secondaryButton]}
             onPress={runSegmentation}
-            disabled={isProcessing}
+            disabled={isProcessing || isLoadingModels}
           >
             <Text style={styles.primaryButtonText}>
-              {isProcessing ? 'Processing...' : 'Run Segmentation'}
+              {isProcessing ? 'Processing...' : isLoadingModels ? 'Loading Models...' : 'Run Segmentation'}
             </Text>
           </TouchableOpacity>
         )}
