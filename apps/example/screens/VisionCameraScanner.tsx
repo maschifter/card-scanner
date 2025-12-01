@@ -60,6 +60,8 @@ export default function VisionCameraScanner() {
     null,
   );
   const [croppedImagePath, setCroppedImagePath] = useState<string | null>(null);
+  const [timingStats, setTimingStats] = useState<any>(null);
+  const [cameraLayout, setCameraLayout] = useState({ width: 0, height: 0 });
 
   // Load models on mount
   useEffect(() => {
@@ -289,6 +291,10 @@ export default function VisionCameraScanner() {
         isActive={true}
         frameProcessor={frameProcessor}
         pixelFormat="rgb"
+        onLayout={(event) => {
+          const { width, height } = event.nativeEvent.layout;
+          setCameraLayout({ width, height });
+        }}
       />
 
       {/* Bounding box overlay */}
@@ -298,13 +304,37 @@ export default function VisionCameraScanner() {
             {detection.cards.map((card, index) => {
               const box = card.boundingBox;
 
-              // Use uniform X scaling (works on iOS)
-              const scale = screenWidth / frameSize.width;
+              // Use actual measured camera layout dimensions
+              const cameraWidth = cameraLayout.width || screenWidth;
+              const cameraHeight = cameraLayout.height || screenHeight;
 
-              const x = box.x1 * scale;
-              const y = box.y1 * scale;
-              const width = (box.x2 - box.x1) * scale;
-              const height = (box.y2 - box.y1) * scale;
+              // Calculate camera preview dimensions with proper aspect ratio
+              const frameAspectRatio = frameSize.width / frameSize.height;
+              const cameraAspectRatio = cameraWidth / cameraHeight;
+
+              let previewWidth, previewHeight, offsetX, offsetY;
+
+              if (cameraAspectRatio > frameAspectRatio) {
+                // Camera view is wider - pillarboxed (black bars on sides)
+                previewHeight = cameraHeight;
+                previewWidth = cameraHeight * frameAspectRatio;
+                offsetX = (cameraWidth - previewWidth) / 2;
+                offsetY = 0;
+              } else {
+                // Camera view is taller - letterboxed (black bars on top/bottom)
+                previewWidth = cameraWidth;
+                previewHeight = cameraWidth / frameAspectRatio;
+                offsetX = 0;
+                offsetY = (cameraHeight - previewHeight) / 2;
+              }
+
+              const scaleX = previewWidth / frameSize.width;
+              const scaleY = previewHeight / frameSize.height;
+
+              const x = box.x1 * scaleX + offsetX;
+              const y = box.y1 * scaleY + offsetY;
+              const width = (box.x2 - box.x1) * scaleX;
+              const height = (box.y2 - box.y1) * scaleY;
 
               return (
                 <Rect
@@ -445,6 +475,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+    overflow: 'hidden',
   },
   message: {
     textAlign: 'center',
