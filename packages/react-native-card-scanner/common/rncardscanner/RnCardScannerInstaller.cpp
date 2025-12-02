@@ -4,10 +4,12 @@
 #include "ObjectBoxDB.h"
 #include "PathProvider.h"
 #include "host_objects/JsiConversions.h"
+#include "jsi/Promise.h"
 #include "models/CardEmbeddingModel.h"
 #include "models/YoloSegmentationModel.h"
 #include "utils/FrameExtractor.h"
 
+#include <chrono>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -18,6 +20,7 @@
 #include "threads/utils/ThreadUtils.h"
 
 using namespace cardscanner::constants;
+using ScannerConfig = rncardscanner::CardScannerInstaller::ScannerConfig;
 
 #ifdef __ANDROID__
 #include <sys/resource.h>
@@ -32,26 +35,27 @@ std::shared_ptr<cardscanner::CardEmbeddingModel>
     CardScannerInstaller::embeddingModel_ = nullptr;
 std::mutex CardScannerInstaller::modelMutex_;
 std::string CardScannerInstaller::currentGame_ = "";
+CardScannerInstaller::ScannerConfig CardScannerInstaller::config_ = {};
 
-void CardScannerInstaller::initializeModels(const std::string &yoloPath,
-                                            const std::string &embeddingPath,
-                                            const std::string &defaultGame) {
+void CardScannerInstaller::initializeModels(const ScannerConfig &config) {
   std::lock_guard<std::mutex> lock(modelMutex_);
 
-  if (!yoloPath.empty()) {
+  // Store config
+  config_ = config;
+
+  if (!config.yoloPath.empty()) {
     yoloModel_ = std::make_shared<cardscanner::YoloSegmentationModel>(
-        yoloPath, model::DEFAULT_YOLO_CONF_THRESHOLD,
-        model::DEFAULT_YOLO_IOU_THRESHOLD, model::DEFAULT_YOLO_IMAGE_SIZE);
+        config.yoloPath, config.segmentationThreshold, config.iouThreshold);
   }
 
-  if (!embeddingPath.empty()) {
+  if (!config.embeddingPath.empty()) {
     embeddingModel_ =
-        std::make_shared<cardscanner::CardEmbeddingModel>(embeddingPath);
+        std::make_shared<cardscanner::CardEmbeddingModel>(config.embeddingPath);
   }
 
-  // Set default game if provided
-  if (!defaultGame.empty()) {
-    currentGame_ = defaultGame;
+  // Set current game
+  if (!config.gameName.empty()) {
+    currentGame_ = config.gameName;
   }
 }
 
@@ -89,50 +93,105 @@ void CardScannerInstaller::setCurrentGame(const std::string &gameName) {
   currentGame_ = gameName;
 }
 
+CardScannerInstaller::ScannerConfig CardScannerInstaller::getConfig() {
+  std::lock_guard<std::mutex> lock(modelMutex_);
+  return config_;
+}
+
 void CardScannerInstaller::injectJSIBindings(
     jsi::Runtime *jsiRuntime, std::shared_ptr<react::CallInvoker> callInvoker) {
 
   cardscanner::DatabaseManager &dbManager =
       cardscanner::DatabaseManager::getInstance();
 
-  // Create the 'initializeScanner' host function
+  // Create the 'initializeScannerNative' host function (returns Promise)
   auto initializeScannerFunc = jsi::Function::createFromHostFunction(
-      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "initializeScanner"),
-      3,
-      [&dbManager](jsi::Runtime &runtime, const jsi::Value &thisValue,
-                   const jsi::Value *args, size_t count) -> jsi::Value {
-        if (count < 2 || !args[0].isString() || !args[1].isString()) {
-          throw jsi::JSError(
-              runtime, "initializeScanner expects (yoloModelPath: string, "
-                       "embeddingModelPath: string, defaultGame?: string)");
-        }
-
-        std::string yoloPath = args[0].asString(runtime).utf8(runtime);
-        std::string embeddingPath = args[1].asString(runtime).utf8(runtime);
-        std::string defaultGame = "";
-
-        if (count >= 3 && args[2].isString()) {
-          defaultGame = args[2].asString(runtime).utf8(runtime);
-        }
-
-        try {
-          CardScannerInstaller::initializeModels(yoloPath, embeddingPath,
-                                                 defaultGame);
-
-          // Open default game database if provided
-          if (!defaultGame.empty()) {
-            ObjectBoxDB *db = dbManager.getOrCreateStore(defaultGame);
-          }
-
-          return jsi::Value(true);
-        } catch (const std::exception &e) {
+      *jsiRuntime,
+      jsi::PropNameID::forAscii(*jsiRuntime, "initializeScannerNative"), 1,
+      [&dbManager,
+       callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
+                    const jsi::Value *args, size_t count) -> jsi::Value {
+        if (count < 1 || !args[0].isObject()) {
           throw jsi::JSError(runtime,
-                             std::string("Failed to initialize scanner: ") +
-                                 e.what());
+                             "initializeScannerNative expects a config object");
         }
+
+        // Parse config object on JS thread
+        jsi::Object configObj = args[0].asObject(runtime);
+
+        ScannerConfig config;
+        config.yoloPath =
+            configObj.getProperty(runtime, "segmentationModelPath")
+                .asString(runtime)
+                .utf8(runtime);
+        config.embeddingPath =
+            configObj.getProperty(runtime, "embeddingModelPath")
+                .asString(runtime)
+                .utf8(runtime);
+        config.gameName = configObj.getProperty(runtime, "gameName")
+                              .asString(runtime)
+                              .utf8(runtime);
+        config.scanMode = configObj.getProperty(runtime, "scanMode")
+                              .asString(runtime)
+                              .utf8(runtime);
+        config.segmentationThreshold =
+            configObj.getProperty(runtime, "segmentationThreshold").asNumber();
+        config.iouThreshold =
+            configObj.getProperty(runtime, "iouThreshold").asNumber();
+        config.confidenceThreshold =
+            configObj.getProperty(runtime, "confidenceThreshold").asNumber();
+        config.maxMatches = static_cast<int>(
+            configObj.getProperty(runtime, "maxMatches").asNumber());
+        config.searchCandidates = static_cast<int>(
+            configObj.getProperty(runtime, "searchCandidates").asNumber());
+
+        // Optional: captureImage
+        auto captureImageProp = configObj.getProperty(runtime, "captureImage");
+        config.captureImage =
+            captureImageProp.isBool() ? captureImageProp.asBool() : false;
+
+        // Return a Promise that runs initialization on background thread
+        return Promise::createPromise(
+            runtime, callInvoker,
+            [config, &dbManager](std::shared_ptr<Promise> promise) {
+              // Run initialization on background thread
+              std::thread([config, &dbManager, promise]() {
+                try {
+                  // Initialize models with config (this may take time)
+                  CardScannerInstaller::initializeModels(config);
+
+                  // Open game database
+                  if (!config.gameName.empty()) {
+                    ObjectBoxDB *db =
+                        dbManager.getOrCreateStore(config.gameName);
+                  }
+
+                  // Resolve promise on JS thread
+                  promise->getCallInvoker()->invokeAsync([promise]() {
+                    jsi::Object result(promise->getRuntime());
+                    result.setProperty(promise->getRuntime(), "success",
+                                       jsi::Value(true));
+                    promise->resolve(std::move(result));
+                  });
+                } catch (const std::exception &e) {
+                  // Reject promise on JS thread
+                  promise->getCallInvoker()->invokeAsync(
+                      [promise, errorMsg = std::string(e.what())]() {
+                        jsi::Object result(promise->getRuntime());
+                        result.setProperty(promise->getRuntime(), "success",
+                                           jsi::Value(false));
+                        result.setProperty(
+                            promise->getRuntime(), "error",
+                            jsi::String::createFromUtf8(promise->getRuntime(),
+                                                        errorMsg));
+                        promise->resolve(std::move(result));
+                      });
+                }
+              }).detach();
+            });
       });
 
-  jsiRuntime->global().setProperty(*jsiRuntime, "initializeScanner",
+  jsiRuntime->global().setProperty(*jsiRuntime, "initializeScannerNative",
                                    std::move(initializeScannerFunc));
 
   // Create the 'releaseScanner' host function
@@ -147,34 +206,69 @@ void CardScannerInstaller::injectJSIBindings(
   jsiRuntime->global().setProperty(*jsiRuntime, "releaseScanner",
                                    std::move(releaseScannerFunc));
 
-  // Create the 'swapDatabase' host function
+  // Create the 'swapDatabaseNative' host function (returns Promise)
   auto swapDatabaseFunc = jsi::Function::createFromHostFunction(
-      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "swapDatabase"), 2,
-      [&dbManager](jsi::Runtime &runtime, const jsi::Value &thisValue,
-                   const jsi::Value *args, size_t count) -> jsi::Value {
+      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "swapDatabaseNative"),
+      2,
+      [&dbManager,
+       callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
+                    const jsi::Value *args, size_t count) -> jsi::Value {
         if (count != 2 || !args[0].isString() || !args[1].isString()) {
-          throw jsi::JSError(runtime, "swapDatabase expects (sourcePath: "
-                                      "string, gameName: string)");
+          throw jsi::JSError(
+              runtime,
+              "swapDatabase expects (sourcePath: string, gameName: string)");
         }
 
         std::string sourcePath = args[0].asString(runtime).utf8(runtime);
         std::string gameName = args[1].asString(runtime).utf8(runtime);
 
-        try {
-          bool success = dbManager.swapDatabaseFile(gameName, sourcePath);
+        // Return a Promise that runs database swap on background thread
+        return Promise::createPromise(
+            runtime, callInvoker,
+            [sourcePath, gameName,
+             &dbManager](std::shared_ptr<Promise> promise) {
+              // Run database swap on background thread
+              std::thread([sourcePath, gameName, &dbManager, promise]() {
+                try {
+                  bool success =
+                      dbManager.swapDatabaseFile(gameName, sourcePath);
 
-          if (success) {
-            dbManager.scanForExistingStores();
-          }
+                  if (success) {
+                    dbManager.scanForExistingStores();
+                  }
 
-          return jsi::Value(success);
-        } catch (const std::exception &e) {
-          throw jsi::JSError(runtime,
-                             std::string("Database swap failed: ") + e.what());
-        }
+                  // Resolve promise on JS thread
+                  promise->getCallInvoker()->invokeAsync([promise, success]() {
+                    jsi::Object result(promise->getRuntime());
+                    result.setProperty(promise->getRuntime(), "success",
+                                       jsi::Value(success));
+                    if (!success) {
+                      result.setProperty(promise->getRuntime(), "error",
+                                         jsi::String::createFromUtf8(
+                                             promise->getRuntime(),
+                                             "Failed to swap database file"));
+                    }
+                    promise->resolve(std::move(result));
+                  });
+                } catch (const std::exception &e) {
+                  // Reject promise on JS thread
+                  promise->getCallInvoker()->invokeAsync(
+                      [promise, errorMsg = std::string(e.what())]() {
+                        jsi::Object result(promise->getRuntime());
+                        result.setProperty(promise->getRuntime(), "success",
+                                           jsi::Value(false));
+                        result.setProperty(
+                            promise->getRuntime(), "error",
+                            jsi::String::createFromUtf8(promise->getRuntime(),
+                                                        errorMsg));
+                        promise->resolve(std::move(result));
+                      });
+                }
+              }).detach();
+            });
       });
 
-  jsiRuntime->global().setProperty(*jsiRuntime, "swapDatabase",
+  jsiRuntime->global().setProperty(*jsiRuntime, "swapDatabaseNative",
                                    std::move(swapDatabaseFunc));
 
   auto closeStoreFunc = jsi::Function::createFromHostFunction(
@@ -347,29 +441,49 @@ void CardScannerInstaller::injectJSIBindings(
   auto listGamesFunc = jsi::Function::createFromHostFunction(
       *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "listAvailableGames"),
       0,
-      [&dbManager](jsi::Runtime &runtime, const jsi::Value &thisValue,
-                   const jsi::Value *args, size_t count) -> jsi::Value {
-        dbManager.scanForExistingStores();
-        std::set<std::string> games = dbManager.getKnownGames();
+      [&dbManager,
+       callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
+                    const jsi::Value *args, size_t count) -> jsi::Value {
+        // Return a Promise that scans for games on background thread
+        return Promise::createPromise(
+            runtime, callInvoker,
+            [&dbManager](std::shared_ptr<Promise> promise) {
+              std::thread([&dbManager, promise]() {
+                try {
+                  dbManager.scanForExistingStores();
+                  std::set<std::string> games = dbManager.getKnownGames();
 
-        jsi::Array result(runtime, games.size());
-        size_t i = 0;
+                  // Resolve promise on JS thread
+                  promise->getCallInvoker()->invokeAsync([promise, games,
+                                                          &dbManager]() {
+                    jsi::Array result(promise->getRuntime(), games.size());
+                    size_t i = 0;
 
-        for (const auto &gameName : games) {
+                    for (const auto &gameName : games) {
+                      std::string dirPath = dbManager.getStorePath(gameName);
 
-          std::string dirPath = dbManager.getStorePath(gameName);
+                      jsi::Object gameObj(promise->getRuntime());
+                      gameObj.setProperty(promise->getRuntime(), "gameName",
+                                          jsi::String::createFromUtf8(
+                                              promise->getRuntime(), gameName));
+                      gameObj.setProperty(promise->getRuntime(), "path",
+                                          jsi::String::createFromUtf8(
+                                              promise->getRuntime(), dirPath));
 
-          jsi::Object gameObj(runtime);
+                      result.setValueAtIndex(promise->getRuntime(), i++,
+                                             std::move(gameObj));
+                    }
 
-          gameObj.setProperty(runtime, "gameName",
-                              jsi::String::createFromUtf8(runtime, gameName));
-          gameObj.setProperty(runtime, "path",
-                              jsi::String::createFromUtf8(runtime, dirPath));
-
-          result.setValueAtIndex(runtime, i++, std::move(gameObj));
-        }
-
-        return result;
+                    promise->resolve(std::move(result));
+                  });
+                } catch (const std::exception &e) {
+                  promise->getCallInvoker()->invokeAsync(
+                      [promise, errorMsg = std::string(e.what())]() {
+                        promise->reject(errorMsg);
+                      });
+                }
+              }).detach();
+            });
       });
 
   jsiRuntime->global().setProperty(*jsiRuntime, "listAvailableGames",
@@ -410,29 +524,23 @@ void CardScannerInstaller::injectJSIBindings(
 
   auto startScanningFunc = jsi::Function::createFromHostFunction(
       *jsiRuntime, jsi::PropNameID::forUtf8(*jsiRuntime, "startScanningPlugin"),
-      2,
+      1,
       [&dbManager](jsi::Runtime &runtime, const jsi::Value &thisArg,
                    const jsi::Value *args, size_t count) -> jsi::Value {
-        if (count < 2) {
-          throw jsi::JSError(runtime, "startScanningPlugin expects at least 2 "
-                                      "arguments: (frame, gameName)");
+        if (count < 1) {
+          throw jsi::JSError(runtime, "startScanningPlugin expects at least 1 "
+                                      "argument: (frame)");
         }
 
         try {
           auto startTotal = std::chrono::high_resolution_clock::now();
+
+          // Get config (thread-safe)
+          auto config = CardScannerInstaller::getConfig();
+          std::string gameName = CardScannerInstaller::getCurrentGame();
+
           // Get the Frame HostObject (first argument)
           auto frameObj = args[0].asObject(runtime);
-
-          // Optional: game name for database lookup (second argument)
-          std::string gameName = "";
-          if (count > 1 && args[1].isString()) {
-            gameName = args[1].asString(runtime).utf8(runtime);
-          }
-
-          // Fall back to current game if not provided (thread-safe)
-          if (gameName.empty()) {
-            gameName = CardScannerInstaller::getCurrentGame();
-          }
 
           // Disable OpenCV threading to prevent interference with ExecutorTorch
           cv::setNumThreads(0);
@@ -458,8 +566,8 @@ void CardScannerInstaller::injectJSIBindings(
 
           auto segResult = yoloModel->segment(frameImage);
 
-          // Keep only the detection with highest confidence
-          if (!segResult.detections.empty()) {
+          // Apply scanMode: keep only highest confidence if "single"
+          if (config.scanMode == "single" && !segResult.detections.empty()) {
             auto maxConfDet = std::max_element(
                 segResult.detections.begin(), segResult.detections.end(),
                 [](const auto &a, const auto &b) {
@@ -507,9 +615,45 @@ void CardScannerInstaller::injectJSIBindings(
                   }
 
                   if (!cardImg.empty()) {
-                    // Note: Image display removed for performance
-                    // To re-enable: encode to base64 or save to disk here
-                    croppedImagePaths.push_back("");
+                    // Save cropped image if captureImage is enabled
+                    std::string imagePath = "";
+                    if (config.captureImage) {
+                      try {
+                        // Generate unique filename with timestamp
+                        auto now = std::chrono::system_clock::now();
+                        auto timestamp = std::chrono::duration_cast<
+                                             std::chrono::milliseconds>(
+                                             now.time_since_epoch())
+                                             .count();
+
+                        std::string filename =
+                            "card_" + std::to_string(timestamp) + "_" +
+                            std::to_string(cardMatches.size()) + ".jpg";
+
+                        // Get cache directory path (use db path as base)
+                        std::string cacheDir = pathprovider::get_db_path();
+                        imagePath = cacheDir + "/" + filename;
+
+                        // Convert RGB to BGR for correct color display
+                        cv::Mat cardImgBGR;
+                        cv::cvtColor(cardImg, cardImgBGR, cv::COLOR_BGR2RGB);
+
+                        // Save image as JPEG
+                        std::vector<int> compression_params;
+                        compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
+                        compression_params.push_back(90); // Quality 90%
+
+                        bool success = cv::imwrite(imagePath, cardImgBGR,
+                                                   compression_params);
+                        if (!success) {
+                          imagePath = ""; // Failed to save
+                        }
+                      } catch (const std::exception &e) {
+                        // Failed to save image, continue without it
+                        imagePath = "";
+                      }
+                    }
+                    croppedImagePaths.push_back(imagePath);
 
                     // Get singleton embedding model
                     auto embeddingModel =
@@ -522,24 +666,27 @@ void CardScannerInstaller::injectJSIBindings(
 
                     embeddingResult = embeddingModel->computeEmbedding(cardImg);
 
-                    // Search database
+                    // Search database using config.searchCandidates
                     auto startDbSearch =
                         std::chrono::high_resolution_clock::now();
                     auto matches = db->search_similar_cards(
-                        embeddingResult.embedding,
-                        database::MAX_SEARCH_RESULTS);
+                        embeddingResult.embedding, config.searchCandidates);
                     auto endDbSearch =
                         std::chrono::high_resolution_clock::now();
                     dbSearchMs += std::chrono::duration<double, std::milli>(
                                       endDbSearch - startDbSearch)
                                       .count();
 
-                    // Filter matches to only include scores above minimum
-                    // similarity threshold
+                    // Filter matches above confidence threshold
+                    // and limit to maxMatches
                     std::vector<CardSearchResult> filteredMatches;
                     for (const auto &match : matches) {
-                      if (match.score > database::MIN_SIMILARITY_SCORE) {
+                      if (match.score >= config.confidenceThreshold) {
                         filteredMatches.push_back(match);
+                        if (filteredMatches.size() >=
+                            static_cast<size_t>(config.maxMatches)) {
+                          break;
+                        }
                       }
                     }
 
@@ -564,14 +711,20 @@ void CardScannerInstaller::injectJSIBindings(
               std::chrono::duration<double, std::milli>(endTotal - startTotal)
                   .count();
 
-          // Build result using helper functions
+          // Build result matching RawScanResult interface
           using namespace jsiconversion;
 
           jsi::Object result(runtime);
           result.setProperty(
               runtime, "cardCount",
               jsi::Value(static_cast<int>(segResult.detections.size())));
-          result.setProperty(runtime, "totalMs", jsi::Value(totalMs));
+          result.setProperty(runtime, "frameWidth",
+                             jsi::Value(frameImage.cols));
+          result.setProperty(runtime, "frameHeight",
+                             jsi::Value(frameImage.rows));
+          result.setProperty(runtime, "processingTime", jsi::Value(totalMs));
+
+          // Timing breakdown
           result.setProperty(runtime, "frameExtractionMs",
                              jsi::Value(frameExtractionMs));
           result.setProperty(
@@ -589,13 +742,6 @@ void CardScannerInstaller::injectJSIBindings(
               runtime, "embeddingInferenceMs",
               jsi::Value(embeddingResult.performance.inferenceTimeMs));
           result.setProperty(runtime, "dbSearchMs", jsi::Value(dbSearchMs));
-          result.setProperty(
-              runtime, "recognitionTotalMs",
-              jsi::Value(embeddingResult.performance.totalTimeMs));
-          result.setProperty(runtime, "frameWidth",
-                             jsi::Value(frameImage.cols));
-          result.setProperty(runtime, "frameHeight",
-                             jsi::Value(frameImage.rows));
 
           // Convert detections array
           jsi::Array detections(runtime, segResult.detections.size());
@@ -613,7 +759,7 @@ void CardScannerInstaller::injectJSIBindings(
             box.setProperty(runtime, "conf", jsi::Value(det.box.conf));
             jsDetection.setProperty(runtime, "box", box);
 
-            // Recognition matches
+            // Recognition matches (RawMatch format: cardId, gameName, score)
             if (i < cardMatches.size() && !cardMatches[i].empty()) {
               jsi::Array matches(runtime, cardMatches[i].size());
               for (size_t j = 0; j < cardMatches[i].size(); j++) {
@@ -621,10 +767,10 @@ void CardScannerInstaller::injectJSIBindings(
                 jsi::Object matchObj(runtime);
                 matchObj.setProperty(
                     runtime, "cardId",
-                    jsi::String::createFromUtf8(runtime, match.card_id));
-                matchObj.setProperty(
-                    runtime, "name",
                     jsi::String::createFromUtf8(runtime, match.name));
+                matchObj.setProperty(
+                    runtime, "gameName",
+                    jsi::String::createFromUtf8(runtime, gameName));
                 matchObj.setProperty(runtime, "score", jsi::Value(match.score));
                 matches.setValueAtIndex(runtime, j, matchObj);
               }

@@ -29,6 +29,10 @@ public:
   void resolve(jsi::Value &&result);
   void reject(std::string error);
 
+  // Public accessors for runtime and callInvoker
+  jsi::Runtime &getRuntime() { return runtime; }
+  std::shared_ptr<react::CallInvoker> getCallInvoker() { return callInvoker; }
+
   /**
     Creates a new promise and runs the supplied "run" function that takes this
     promise. We use a template for the function type to not use std::function

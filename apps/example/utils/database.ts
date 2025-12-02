@@ -1,14 +1,27 @@
 import { Asset } from 'expo-asset';
-import {
-  getCardCount,
-  swapDatabase,
-} from 'react-native-card-scanner';
+import { getCardCount, swapDatabase } from 'react-native-card-scanner';
 
-const DEFAULT_GAME = 'lorcana';
+// Game database configurations
+const GAME_DATABASES = [
+  { name: 'lorcana', asset: require('../assets/lorcana.mdb') },
+  { name: 'mtg', asset: require('../assets/mtg.mdb') },
+  { name: 'pokemon', asset: require('../assets/pokemon.mdb') },
+  { name: 'onepiece', asset: require('../assets/onepiece.mdb') },
+  { name: 'riftbound', asset: require('../assets/riftbound.mdb') },
+  { name: 'rise', asset: require('../assets/rise.mdb') },
+  { name: 'sorcery', asset: require('../assets/sorcery.mdb') },
+  { name: 'fab', asset: require('../assets/fab.mdb') },
+];
 
 export interface DatabaseStats {
   cardCount: number;
   isLoaded: boolean;
+}
+
+export interface GameDatabaseStatus {
+  gameName: string;
+  stats: DatabaseStats;
+  error?: string;
 }
 
 /**
@@ -24,7 +37,7 @@ export async function checkDatabaseStatus(
       isLoaded: cardCount > 0,
     };
   } catch (error) {
-    console.log('Database not initialized yet:', error);
+    console.log(`Database ${gameName} not initialized yet:`, error);
     return {
       cardCount: 0,
       isLoaded: false,
@@ -33,61 +46,131 @@ export async function checkDatabaseStatus(
 }
 
 /**
- * Load database from bundled .mdb asset
+ * Load a single database from bundled .mdb asset
  */
-export async function loadDatabaseFromAssets(): Promise<boolean> {
-  console.log('📦 Loading database from bundled assets...');
+export async function loadDatabaseFromAsset(
+  gameName: string,
+  assetModule: any,
+): Promise<boolean> {
+  console.log(`📦 Loading ${gameName} database from bundled assets...`);
 
   // Load the .mdb database file from assets
-  const dbAsset = Asset.fromModule(require('../assets/data.mdb'));
+  const dbAsset = Asset.fromModule(assetModule);
   await dbAsset.downloadAsync();
 
   if (!dbAsset.localUri) {
-    throw new Error('Failed to load database asset');
+    throw new Error(`Failed to load ${gameName} database asset`);
   }
 
-  console.log('📦 Database asset downloaded to:', dbAsset.localUri);
+  console.log(`📦 ${gameName} database asset downloaded to:`, dbAsset.localUri);
 
-  // Swap the database
-  const success = swapDatabase(dbAsset.localUri, DEFAULT_GAME);
+  // Swap the database (now returns Promise)
+  const result = await swapDatabase(gameName, dbAsset.localUri);
 
-  if (success) {
-    console.log('✅ Database swapped successfully');
+  if (result.success) {
+    console.log(`✅ ${gameName} database swapped successfully`);
   } else {
-    throw new Error('Failed to swap database');
+    throw new Error(result.error || `Failed to swap ${gameName} database`);
   }
 
-  return success;
+  return result.success;
 }
 
 /**
- * Auto-load database if empty
+ * Load all game databases from assets
  */
-export async function autoLoadDatabase(): Promise<{
+export async function loadAllDatabases(): Promise<GameDatabaseStatus[]> {
+  console.log('📦 Loading all game databases...');
+
+  const results: GameDatabaseStatus[] = [];
+
+  for (const game of GAME_DATABASES) {
+    try {
+      // Check if already loaded
+      const stats = await checkDatabaseStatus(game.name);
+
+      if (stats.isLoaded) {
+        console.log(
+          `✅ ${game.name} database already loaded with ${stats.cardCount} cards`,
+        );
+        results.push({
+          gameName: game.name,
+          stats,
+        });
+        continue;
+      }
+
+      // Load database
+      console.log(`📦 Loading ${game.name} database...`);
+      await loadDatabaseFromAsset(game.name, game.asset);
+
+      // Get updated stats
+      const newStats = await checkDatabaseStatus(game.name);
+      results.push({
+        gameName: game.name,
+        stats: newStats,
+      });
+
+      console.log(
+        `✅ ${game.name} loaded successfully with ${newStats.cardCount} cards`,
+      );
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`❌ Failed to load ${game.name} database:`, errorMsg);
+      results.push({
+        gameName: game.name,
+        stats: { cardCount: 0, isLoaded: false },
+        error: errorMsg,
+      });
+    }
+  }
+
+  // Summary
+  const successCount = results.filter((r) => r.stats.isLoaded).length;
+  const totalCount = results.length;
+  console.log(
+    `📊 Database loading complete: ${successCount}/${totalCount} games loaded`,
+  );
+
+  return results;
+}
+
+/**
+ * Auto-load a single database if empty (legacy function for backwards compatibility)
+ */
+export async function autoLoadDatabase(gameName: string = 'lorcana'): Promise<{
   loaded: boolean;
   stats: DatabaseStats;
   error?: string;
 }> {
   try {
-    const stats = await checkDatabaseStatus(DEFAULT_GAME);
+    const stats = await checkDatabaseStatus(gameName);
 
     // If already loaded, skip
     if (stats.isLoaded) {
-      console.log('✅ Database already loaded with', stats.cardCount, 'cards');
+      console.log(
+        `✅ ${gameName} database already loaded with ${stats.cardCount} cards`,
+      );
       return { loaded: false, stats };
     }
 
+    // Find the game config
+    const gameConfig = GAME_DATABASES.find((g) => g.name === gameName);
+    if (!gameConfig) {
+      throw new Error(`Game ${gameName} not found in database configurations`);
+    }
+
     // Load database
-    console.log('📦 Database empty, auto-loading from assets...');
-    await loadDatabaseFromAssets();
+    console.log(`📦 ${gameName} database empty, auto-loading from assets...`);
+    await loadDatabaseFromAsset(gameName, gameConfig.asset);
 
     // Get updated stats
-    const newStats = await checkDatabaseStatus(DEFAULT_GAME);
+    const newStats = await checkDatabaseStatus(gameName);
 
     return { loaded: true, stats: newStats };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error('❌ Failed to auto-load database:', errorMsg);
+    console.error(`❌ Failed to auto-load ${gameName} database:`, errorMsg);
     return {
       loaded: false,
       stats: { cardCount: 0, isLoaded: false },
