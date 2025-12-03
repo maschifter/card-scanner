@@ -10,6 +10,9 @@
 namespace cardscanner {
 class YoloSegmentationModel;
 class CardEmbeddingModel;
+class SetSymbolYoloModel;
+class SetSymbolEmbedder;
+class SetSymbolDatabase;
 } // namespace cardscanner
 
 namespace rncardscanner {
@@ -36,6 +39,10 @@ public:
   // Singleton model instances
   static std::shared_ptr<cardscanner::YoloSegmentationModel> getYoloModel();
   static std::shared_ptr<cardscanner::CardEmbeddingModel> getEmbeddingModel();
+  static std::shared_ptr<cardscanner::SetSymbolYoloModel>
+  getSetSymbolYoloModel();
+  static std::shared_ptr<cardscanner::SetSymbolEmbedder> getSetSymbolEmbedder();
+  static std::shared_ptr<cardscanner::SetSymbolDatabase> getSetSymbolDatabase();
 
   // Scanner configuration struct
   struct ScannerConfig {
@@ -49,6 +56,15 @@ public:
     int maxMatches;
     int searchCandidates;
     bool captureImage;
+    // Optional: Set symbol detection models (for MTG)
+    std::string setSymbolYoloPath;
+    std::string setSymbolEmbedderPath;
+    std::string setSymbolDatabasePath; // ObjectBox MDB database path
+    bool enableSetSymbolDetection;
+    float
+        setSymbolDetectionThreshold; // YOLO detection threshold for set symbols
+    float setSymbolConfidenceThreshold; // Similarity threshold for set symbol
+                                        // matching
   };
 
   // Initialize models with configuration
@@ -65,6 +81,9 @@ public:
 private:
   static std::shared_ptr<cardscanner::YoloSegmentationModel> yoloModel_;
   static std::shared_ptr<cardscanner::CardEmbeddingModel> embeddingModel_;
+  static std::shared_ptr<cardscanner::SetSymbolYoloModel> setSymbolYoloModel_;
+  static std::shared_ptr<cardscanner::SetSymbolEmbedder> setSymbolEmbedder_;
+  static std::shared_ptr<cardscanner::SetSymbolDatabase> setSymbolDatabase_;
   static std::mutex modelMutex_;
   static std::string currentGame_;
   static ScannerConfig config_;

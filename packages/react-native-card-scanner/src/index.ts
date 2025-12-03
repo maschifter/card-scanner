@@ -16,12 +16,19 @@ export interface ScannerConfig {
   maxMatches: number; // Max matches to return per detection
   searchCandidates: number; // DB fetch size for approximate search
   captureImage?: boolean; // Save cropped card images
-  expansionDetectionConfig?: {
-    segmentationModelPath: string;
-    embeddingModelPath: string;
-    segmentationThreshold: number;
-    confidenceThreshold: number;
+
+  // Game-specific detection configs (extensible per-game features)
+  gameSpecificConfig?: {
+    mtg?: {
+      setSymbolDetection?: {
+        detectionModelPath: string;
+        embeddingModelPath: string;
+        detectionThreshold: number;
+        confidenceThreshold: number;
+      };
+    };
   };
+
   enableLanguageDetection?: boolean;
   enableFoilDetection?: boolean;
 }
@@ -58,6 +65,7 @@ export interface RawScanResult {
   embeddingPreprocessMs?: number;
   embeddingInferenceMs?: number;
   dbSearchMs?: number;
+  setSymbolDetectionMs?: number;
   error?: string;
 }
 
@@ -65,8 +73,16 @@ export interface RawDetection {
   box: BoundingBox;
   matches: RawMatch[];
   croppedImagePath?: string;
-  predictedGame?: string;                    // YOLO's top game prediction
-  topGamePredictions?: GamePrediction[];     // Top 3 game predictions from YOLO
+  predictedGame?: string; // YOLO's top game prediction
+  topGamePredictions?: GamePrediction[]; // Top 3 game predictions from YOLO
+  setSymbol?: {
+    // MTG set symbol info
+    setCode: string;
+    setName: string;
+    variant: string;
+    similarity: number;
+    croppedImagePath?: string;
+  };
 }
 
 export interface GamePrediction {
@@ -97,20 +113,37 @@ export interface Detection {
     embeddingPreprocess?: number;
     embeddingInference?: number;
     dbSearch?: number;
+    setSymbolDetection?: number;
   };
   error?: string;
+}
+
+interface CapturedImage {
+  uri: string;
+  width: number;
+  height: number;
+  format: 'jpeg' | 'png' | 'webp';
+  size: number; // in bytes
 }
 
 export interface DetectedCard {
   cardId: string;
   name: string;
-  gameName: string;                         // From best match (multi-game search)
+  gameName: string; // From best match (multi-game search)
   confidenceScore: number;
   boundingBox: BoundingBox;
   capturedImage?: CapturedImage;
   alternativeCards: AlternativeMatch[];
-  predictedGame?: string;                    // YOLO's prediction
-  topGamePredictions?: GamePrediction[];     // YOLO's top 3
+  predictedGame?: string; // YOLO's prediction
+  topGamePredictions?: GamePrediction[]; // YOLO's top 3
+  setSymbol?: {
+    // MTG set symbol info
+    setCode: string;
+    setName: string;
+    variant: string;
+    similarity: number;
+    croppedImagePath?: string;
+  };
   language?: {
     code: string;
     confidence: number;
@@ -163,7 +196,6 @@ declare global {
   var startScanningPlugin: (frame: Frame) => RawScanResult;
 
   // Database management
-  var switchGame: (gameName: string) => void;
   var swapDatabaseNative: (sourcePath: string, gameName: string) => SwapResult;
   var getCardCount: (gameName: string) => number;
   var listAvailableGames: () => DatabaseInfo[];
@@ -174,6 +206,38 @@ declare global {
     imagePath: string,
     outputDir: string,
   ) => RawScanResult;
+
+  // Set symbol detection
+  var detectSetSymbol: (imagePath: string) => SetSymbolDetectionResult;
+}
+
+// Set symbol detection result type
+export interface SetSymbolDetectionResult {
+  success: boolean;
+  error?: string;
+  setCode?: string;
+  setName?: string;
+  variant?: string;
+  confidence?: number;
+  croppedImagePath?: string;
+  embedding?: number[];
+  bbox?: {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    confidence: number;
+  };
+  topMatches?: Array<{
+    setCode: string;
+    setName: string;
+    variant: string;
+    similarity: number;
+  }>;
+  performance?: {
+    detectionMs: number;
+    embeddingMs: number;
+  };
 }
 
 // ============================================================================
@@ -257,7 +321,7 @@ export function createDetectionResult(raw: RawScanResult): Detection {
   }
 
   const cards: DetectedCard[] = raw.detections
-    .filter(det => det.matches && det.matches.length > 0)
+    .filter((det) => det.matches && det.matches.length > 0)
     .map((det) => {
       const primaryMatch = det.matches[0];
       const alternativeCards = det.matches.slice(1).map((match) => ({
@@ -284,6 +348,7 @@ export function createDetectionResult(raw: RawScanResult): Detection {
         alternativeCards,
         predictedGame: det.predictedGame,
         topGamePredictions: det.topGamePredictions,
+        setSymbol: det.setSymbol,
       };
     });
 
@@ -299,6 +364,7 @@ export function createDetectionResult(raw: RawScanResult): Detection {
       embeddingPreprocess: raw.embeddingPreprocessMs,
       embeddingInference: raw.embeddingInferenceMs,
       dbSearch: raw.dbSearchMs,
+      setSymbolDetection: raw.setSymbolDetectionMs,
     },
   };
 }
@@ -343,14 +409,6 @@ export async function swapDatabase(
       error: error instanceof Error ? error.message : String(error),
     };
   }
-}
-
-/**
- * Switch to a different game database
- * @param gameName - Game identifier to switch to
- */
-export function switchGame(gameName: string): void {
-  global.switchGame(gameName);
 }
 
 /**

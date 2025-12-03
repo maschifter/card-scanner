@@ -39,8 +39,25 @@ static inline OBX_model* create_obx_model() {
     obx_model_property(model, "card_id", OBXPropertyType_String, 6, 4115431560651478346);
     obx_model_entity_last_property_id(model, 6, 4115431560651478346);
     
-    obx_model_last_entity_id(model, 1, 4543021307474494599);
-    obx_model_last_index_id(model, 2, 5350240849271719983);
+    obx_model_entity(model, "SetSymbol", 2, 5156128494464500038);
+    obx_model_property(model, "id", OBXPropertyType_Long, 1, 6008736840270246912);
+    obx_model_property_flags(model, OBXPropertyFlags_ID);
+    obx_model_property(model, "set_code", OBXPropertyType_String, 2, 6051204396100435996);
+    obx_model_property(model, "set_name", OBXPropertyType_String, 3, 7160085781048540081);
+    obx_model_property(model, "variant", OBXPropertyType_String, 4, 4629637272789561220);
+    obx_model_property(model, "date_created", OBXPropertyType_Long, 5, 6980494446865535055);
+    obx_model_property_flags(model, OBXPropertyFlags_UNSIGNED);
+    obx_model_property(model, "embedding", OBXPropertyType_FloatVector, 6, 737399643737410699);
+    obx_model_property_flags(model, OBXPropertyFlags_INDEXED);
+    obx_model_property_index_hnsw_dimensions(model, 128);
+    obx_model_property_index_hnsw_distance_type(model, OBXVectorDistanceType_Cosine);
+    obx_model_property_index_hnsw_neighbors_per_node(model, 16);
+    obx_model_property_index_hnsw_indexing_search_count(model, 100);
+    obx_model_property_index_id(model, 3, 5395475422910594466);
+    obx_model_entity_last_property_id(model, 6, 737399643737410699);
+    
+    obx_model_last_entity_id(model, 2, 5156128494464500038);
+    obx_model_last_index_id(model, 3, 5395475422910594466);
     return model; // NOTE: the returned model will contain error information if an error occurred.
 }
 

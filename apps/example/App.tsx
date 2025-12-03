@@ -8,6 +8,7 @@ import HomeScreen from './screens/HomeScreen';
 import SegmentationScreen from './screens/SegmentationScreen';
 import DatabaseManagerScreen from './screens/DatabaseScreen';
 import VisionCameraScanner from './screens/VisionCameraScanner';
+import SetSymbolDetectionScreen from './screens/SetSymbolDetectionScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -89,6 +90,8 @@ export default function App() {
               iconName = focused ? 'server' : 'server-outline';
             } else if (route.name === 'VisionCamera') {
               iconName = focused ? 'videocam' : 'videocam-outline';
+            } else if (route.name === 'SetSymbol') {
+              iconName = focused ? 'star' : 'star-outline';
             }
 
             return <Ionicons name={iconName} size={size} color={color} />;
@@ -123,6 +126,11 @@ export default function App() {
           name="VisionCamera"
           component={VisionCameraScanner}
           options={{ title: 'Vision Camera' }}
+        />
+        <Tab.Screen
+          name="SetSymbol"
+          component={SetSymbolDetectionScreen}
+          options={{ title: 'Set Symbol' }}
         />
       </Tab.Navigator>
     </NavigationContainer>

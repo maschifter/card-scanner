@@ -44,10 +44,57 @@
           "type": 9
         }
       ]
+    },
+    {
+      "id": "2:5156128494464500038",
+      "lastPropertyId": "6:737399643737410699",
+      "name": "SetSymbol",
+      "properties": [
+        {
+          "id": "1:6008736840270246912",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:6051204396100435996",
+          "name": "set_code",
+          "type": 9
+        },
+        {
+          "id": "3:7160085781048540081",
+          "name": "set_name",
+          "type": 9
+        },
+        {
+          "id": "4:4629637272789561220",
+          "name": "variant",
+          "type": 9
+        },
+        {
+          "id": "5:6980494446865535055",
+          "name": "date_created",
+          "type": 6,
+          "flags": 8192
+        },
+        {
+          "id": "6:737399643737410699",
+          "name": "embedding",
+          "indexId": "3:5395475422910594466",
+          "type": 28,
+          "flags": 8,
+          "hnswParams": {
+            "dimensions": 128,
+            "distance-type": "Cosine",
+            "neighbors-per-node": 16,
+            "indexing-search-count": 100
+          }
+        }
+      ]
     }
   ],
-  "lastEntityId": "1:4543021307474494599",
-  "lastIndexId": "2:5350240849271719983",
+  "lastEntityId": "2:5156128494464500038",
+  "lastIndexId": "3:5395475422910594466",
   "lastRelationId": "",
   "modelVersion": 5,
   "modelVersionParserMinimum": 5,

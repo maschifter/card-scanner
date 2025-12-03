@@ -22,7 +22,6 @@ import {
   initializeScanner,
   releaseScanner,
   createDetectionResult,
-  switchGame,
   getSupportedGames,
   type Detection,
   type DetectedCard,
@@ -60,6 +59,15 @@ export default function VisionCameraScanner() {
     null,
   );
   const [croppedImagePath, setCroppedImagePath] = useState<string | null>(null);
+
+  // Card history tracking
+  const [lastScannedCardId, setLastScannedCardId] = useState<string | null>(
+    null,
+  );
+  const [consecutiveDetections, setConsecutiveDetections] = useState<number>(0);
+  const [scannedCardsHistory, setScannedCardsHistory] = useState<
+    DetectedCard[]
+  >([]);
 
   // Load models on mount
   useEffect(() => {
@@ -110,6 +118,39 @@ export default function VisionCameraScanner() {
       setEmbeddingModelPath(embeddingLocalPath);
       console.log('✅ Embedding model loaded');
 
+      // 2. Load set symbol detection models (MTG)
+      console.log('📦 Loading set symbol detection models...');
+      const setSymbolYoloAsset = Asset.fromModule(
+        require('../assets/mtg/set_symbol_detection.pte'),
+      );
+      await setSymbolYoloAsset.downloadAsync();
+      if (!setSymbolYoloAsset.localUri) {
+        throw new Error('Failed to load set symbol YOLO model');
+      }
+      const setSymbolYoloPath = `${cacheDirectory}set_symbol_detection.pte`;
+      await copyAsync({
+        from: setSymbolYoloAsset.localUri,
+        to: setSymbolYoloPath,
+      });
+      console.log('✅ Set symbol YOLO loaded');
+
+      const setSymbolEmbedderAsset = Asset.fromModule(
+        require('../assets/mtg/set_symbol_embedder.pte'),
+      );
+      await setSymbolEmbedderAsset.downloadAsync();
+      if (!setSymbolEmbedderAsset.localUri) {
+        throw new Error('Failed to load set symbol embedder');
+      }
+      const setSymbolEmbedderPath = `${cacheDirectory}set_symbol_embedder.pte`;
+      await copyAsync({
+        from: setSymbolEmbedderAsset.localUri,
+        to: setSymbolEmbedderPath,
+      });
+      console.log('✅ Set symbol embedder loaded');
+
+      // Note: Set symbol database is loaded at app start via loadAllDatabases()
+      // It's accessible via DatabaseManager at 'set-symbols'
+
       // 3. Initialize scanner with configuration
       console.log('🚀 Initializing scanner...');
       const result = await initializeScanner({
@@ -122,7 +163,17 @@ export default function VisionCameraScanner() {
         confidenceThreshold: 0.6,
         maxMatches: 5,
         searchCandidates: 100,
-        captureImage: false, // Enable image capture
+        captureImage: true,
+        gameSpecificConfig: {
+          mtg: {
+            setSymbolDetection: {
+              detectionModelPath: setSymbolYoloPath,
+              embeddingModelPath: setSymbolEmbedderPath,
+              detectionThreshold: 0.3,
+              confidenceThreshold: 0.6,
+            },
+          },
+        },
       });
 
       if (!result.success) {
@@ -151,23 +202,63 @@ export default function VisionCameraScanner() {
 
   // Process raw scan result and transform to rich Detection type
   const processDetectionCallback = useRunOnJS(
-    (rawResult: any, width: number, height: number) => {
+    (
+      rawResult: any,
+      width: number,
+      height: number,
+      lastCardId: string | null,
+      currentCount: number,
+    ) => {
       // Use createDetectionResult to transform raw → rich types
       const detection = createDetectionResult(rawResult);
 
-      setDetection(detection);
       setFrameSize({ width, height });
 
       // Update UI with first card's info
       if (detection.success && detection.cards.length > 0) {
         const firstCard = detection.cards[0];
-        setCardWithConfidence(
-          `${firstCard.name} [${firstCard.gameName}] (${(firstCard.confidenceScore * 100).toFixed(1)}%)`,
-        );
 
-        // Set cropped image if available
-        if (firstCard.capturedImage) {
-          setCroppedImagePath(firstCard.capturedImage);
+        // Check if this is a new card (different from last scanned)
+        if (firstCard.cardId !== lastCardId) {
+          // Different card - reset counter and start tracking
+          setLastScannedCardId(firstCard.cardId);
+          setConsecutiveDetections(1); // First detection of this card
+
+          // Don't add to history yet - wait for confirmation (2nd detection)
+          setDetection(null); // Hide UI until confirmed
+        } else {
+          // Same card as before - increment counter
+          const newCount = currentCount + 1;
+          setConsecutiveDetections(newCount);
+
+          if (newCount === 2) {
+            // Second consecutive detection - now confirm and add to history!
+            setScannedCardsHistory((prev) => {
+              const newHistory = [firstCard, ...prev];
+              return newHistory.slice(0, 10); // Keep only last 10
+            });
+
+            setCardWithConfidence(
+              `${firstCard.name} [${firstCard.gameName}] (${(firstCard.confidenceScore * 100).toFixed(1)}%)`,
+            );
+
+            // Set cropped image if available
+            console.log(firstCard.capturedImage);
+            if (firstCard.capturedImage) {
+              setCroppedImagePath(firstCard.capturedImage.uri);
+            }
+
+            // Show detection UI now that it's confirmed
+            setDetection(detection);
+
+            // Hide detection overlay after 1 second
+            setTimeout(() => {
+              setDetection(null);
+            }, 1000);
+          } else if (newCount > 2) {
+            // Already confirmed - UI already hidden by timeout
+            // Do nothing
+          }
         }
       }
     },
@@ -192,6 +283,8 @@ export default function VisionCameraScanner() {
             rawResult,
             rawResult.frameWidth,
             rawResult.frameHeight,
+            lastScannedCardId,
+            consecutiveDetections,
           );
         }
 
@@ -213,35 +306,17 @@ export default function VisionCameraScanner() {
         );
       });
     },
-    [isScanning, processDetectionCallback],
+    [
+      isScanning,
+      processDetectionCallback,
+      lastScannedCardId,
+      consecutiveDetections,
+    ],
   );
 
   const toggleScanning = () => {
     setIsScanning(!isScanning);
     if (isScanning) {
-    }
-  };
-
-  const handleGameSwitch = (gameName: string) => {
-    // Stop scanning during switch
-    const wasScanning = isScanning;
-    if (wasScanning) {
-      setIsScanning(false);
-    }
-
-    // Switch game
-    console.log(`🎮 Switching to ${gameName}...`);
-    switchGame(gameName);
-    setCurrentGame(gameName);
-
-    // Clear previous detection
-    setDetection(null);
-    setCardWithConfidence(null);
-    setCroppedImagePath(null);
-
-    // Resume scanning if it was active
-    if (wasScanning) {
-      setTimeout(() => setIsScanning(true), 100);
     }
   };
 
@@ -326,7 +401,7 @@ export default function VisionCameraScanner() {
           <View
             style={{
               position: 'absolute',
-              top: 100,
+              top: 50,
               left: 20,
               backgroundColor: 'rgba(0,0,0,0.7)',
               padding: 10,
@@ -339,6 +414,19 @@ export default function VisionCameraScanner() {
                 <>
                   🎴 {cardWithConfidence}
                   {'\n\n'}
+                </>
+              )}
+              {/* MTG Set Symbol */}
+              {detection?.cards[0]?.setSymbol && (
+                <>
+                  ⚡ Set: {detection.cards[0].setSymbol.setCode.toUpperCase()} -{' '}
+                  {detection.cards[0].setSymbol.setName}
+                  {'\n'}
+                  {'  '}Variant: {detection.cards[0].setSymbol.variant}
+                  {'\n'}
+                  {'  '}Match:{' '}
+                  {(detection.cards[0].setSymbol.similarity * 100).toFixed(1)}%
+                  {'\n'}
                 </>
               )}
               {/* YOLO game predictions */}
@@ -359,7 +447,7 @@ export default function VisionCameraScanner() {
               {detection?.timings && (
                 <>
                   ⏱️ Total: {detection.processingTime.toFixed(1)}ms{'\n'}
-                  {'  '}Extract:{' '}
+                  {/* {'  '}Extract:{' '}
                   {(detection.timings.frameExtraction ?? 0).toFixed(1)}ms
                   {'\n'}
                   {'  '}YOLO:{' '}
@@ -391,7 +479,18 @@ export default function VisionCameraScanner() {
                   {(detection.timings.embeddingInference ?? 0).toFixed(1)}ms
                   {'\n'}
                   {'  '}DB: {(detection.timings.dbSearch ?? 0).toFixed(1)}ms
-                  {'\n\n'}
+                  {'\n'}
+                  {detection.timings.setSymbolDetection &&
+                    detection.timings.setSymbolDetection > 0 && (
+                      <>
+                        {'  '}SetSym:{' '}
+                        {(detection.timings.setSymbolDetection ?? 0).toFixed(1)}
+                        ms
+                        {'\n'}
+                      </>
+                    )}
+                  {'\n'}
+                </> */}
                 </>
               )}
               Detections: {detection?.cards.length ?? 0}
@@ -408,7 +507,48 @@ export default function VisionCameraScanner() {
                 resizeMode="contain"
               />
             )}
+            {/* Set Symbol Image */}
+            {detection?.cards[0]?.setSymbol?.croppedImagePath && (
+              <View style={{ marginTop: 10 }}>
+                <Text style={{ color: 'white', fontSize: 10, marginBottom: 4 }}>
+                  Set Symbol:
+                </Text>
+                <Image
+                  source={{
+                    uri: detection.cards[0].setSymbol.croppedImagePath,
+                  }}
+                  style={{
+                    width: 60,
+                    height: 60,
+                    borderRadius: 4,
+                    backgroundColor: 'rgba(255,255,255,0.1)',
+                  }}
+                  resizeMode="contain"
+                />
+              </View>
+            )}
           </View>
+        </View>
+      )}
+
+      {/* Card History */}
+      {scannedCardsHistory.length > 0 && (
+        <View style={styles.historyContainer}>
+          <Text style={styles.historyTitle}>
+            📜 Scanned Cards ({scannedCardsHistory.length})
+          </Text>
+          {scannedCardsHistory.map((card, index) => (
+            <View key={`${card.cardId}-${index}`} style={styles.historyItem}>
+              <Text style={styles.historyCardName} numberOfLines={1}>
+                {card.name}
+              </Text>
+              <Text style={styles.historyCardInfo}>
+                {card.gameName.toUpperCase()} •{' '}
+                {(card.confidenceScore * 100).toFixed(0)}%
+                {card.setSymbol && ` • ${card.setSymbol.setCode.toUpperCase()}`}
+              </Text>
+            </View>
+          ))}
         </View>
       )}
 
@@ -536,5 +676,36 @@ const styles = StyleSheet.create({
   },
   gameButtonTextActive: {
     color: '#fff',
+  },
+  historyContainer: {
+    position: 'absolute',
+    top: 100,
+    right: 10,
+    maxWidth: 200,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    borderRadius: 8,
+    padding: 10,
+    maxHeight: 300,
+  },
+  historyTitle: {
+    color: '#4CAF50',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  historyItem: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 6,
+  },
+  historyCardName: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  historyCardInfo: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 9,
+    marginTop: 2,
   },
 });
