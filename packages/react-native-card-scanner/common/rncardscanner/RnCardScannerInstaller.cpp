@@ -1230,11 +1230,6 @@ void CardScannerInstaller::injectJSIBindings(
                 setSymbolInfos.push_back({"", "", "", 0.0f, ""});
               }
             }
-
-            // If no matches found, clear detections to hide bounding box
-            if (!cardMatches.empty() && cardMatches[0].empty()) {
-              segResult.detections.clear();
-            }
           }
 
           auto endTotal = std::chrono::high_resolution_clock::now();
@@ -1245,9 +1240,20 @@ void CardScannerInstaller::injectJSIBindings(
           // Build result matching RawScanResult interface
           using namespace jsiconversion;
 
+          // Count how many detections have matches
+          int identifiedCardCount = 0;
+          for (const auto& matches : cardMatches) {
+            if (!matches.empty()) {
+              identifiedCardCount++;
+            }
+          }
+
           jsi::Object result(runtime);
           result.setProperty(
               runtime, "cardCount",
+              jsi::Value(identifiedCardCount));
+          result.setProperty(
+              runtime, "segmentationCount",
               jsi::Value(static_cast<int>(segResult.detections.size())));
           result.setProperty(runtime, "frameWidth",
                              jsi::Value(frameImage.cols));
@@ -1276,9 +1282,15 @@ void CardScannerInstaller::injectJSIBindings(
           result.setProperty(runtime, "setSymbolDetectionMs",
                              jsi::Value(setSymbolDetectionMs));
 
-          // Convert detections array
-          jsi::Array detections(runtime, segResult.detections.size());
+          // Convert detections array (identified cards only)
+          jsi::Array detections(runtime, identifiedCardCount);
+          size_t detectionIndex = 0;
           for (size_t i = 0; i < segResult.detections.size(); i++) {
+            // Skip detections without matches
+            if (i >= cardMatches.size() || cardMatches[i].empty()) {
+              continue;
+            }
+
             const auto &det = segResult.detections[i];
 
             jsi::Object jsDetection(runtime);
@@ -1294,7 +1306,7 @@ void CardScannerInstaller::injectJSIBindings(
 
             // Recognition matches (RawMatch format: cardId, name, gameName,
             // score)
-            if (i < cardMatches.size() && !cardMatches[i].empty()) {
+            if (!cardMatches[i].empty()) {
               jsi::Array matches(runtime, cardMatches[i].size());
               for (size_t j = 0; j < cardMatches[i].size(); j++) {
                 const auto &match = cardMatches[i][j];
@@ -1364,9 +1376,34 @@ void CardScannerInstaller::injectJSIBindings(
               jsDetection.setProperty(runtime, "setSymbol", setSymbol);
             }
 
-            detections.setValueAtIndex(runtime, i, jsDetection);
+            detections.setValueAtIndex(runtime, detectionIndex++, jsDetection);
           }
           result.setProperty(runtime, "detections", detections);
+
+          // Add unidentified segments array
+          jsi::Array unidentifiedSegments(runtime, segResult.detections.size() - identifiedCardCount);
+          size_t unidentifiedIndex = 0;
+          for (size_t i = 0; i < segResult.detections.size(); i++) {
+            // Only include detections without matches
+            if (i < cardMatches.size() && !cardMatches[i].empty()) {
+              continue;
+            }
+
+            const auto &det = segResult.detections[i];
+            jsi::Object jsSegment(runtime);
+
+            // Bounding box
+            jsi::Object box(runtime);
+            box.setProperty(runtime, "x1", jsi::Value(det.box.x1));
+            box.setProperty(runtime, "y1", jsi::Value(det.box.y1));
+            box.setProperty(runtime, "x2", jsi::Value(det.box.x2));
+            box.setProperty(runtime, "y2", jsi::Value(det.box.y2));
+            box.setProperty(runtime, "conf", jsi::Value(det.box.conf));
+            jsSegment.setProperty(runtime, "box", box);
+
+            unidentifiedSegments.setValueAtIndex(runtime, unidentifiedIndex++, jsSegment);
+          }
+          result.setProperty(runtime, "unidentifiedSegments", unidentifiedSegments);
 
           return result;
 

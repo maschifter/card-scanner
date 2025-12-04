@@ -65,7 +65,7 @@ export default function SegmentationScreen() {
       // 1. Load ML models
       console.log('📦 Loading ML models...');
       const yoloAsset = Asset.fromModule(
-        require('../assets/yolo11n-seg-cls.pte'),
+        require('../assets/yolo11n-seg-cls-v2.pte'),
       );
       await yoloAsset.downloadAsync();
 
@@ -73,7 +73,7 @@ export default function SegmentationScreen() {
         throw new Error('Failed to load YOLO model');
       }
 
-      const yoloLocalPath = `${cacheDirectory}yolo11n-seg-cls.pte`;
+      const yoloLocalPath = `${cacheDirectory}yolo11n-seg-cls-v2.pte`;
       await copyAsync({
         from: yoloAsset.localUri,
         to: yoloLocalPath,
@@ -194,7 +194,11 @@ export default function SegmentationScreen() {
             disabled={isProcessing || isLoadingModels}
           >
             <Text style={styles.primaryButtonText}>
-              {isProcessing ? 'Processing...' : isLoadingModels ? 'Loading Models...' : 'Run Segmentation'}
+              {isProcessing
+                ? 'Processing...'
+                : isLoadingModels
+                  ? 'Loading Models...'
+                  : 'Run Segmentation'}
             </Text>
           </TouchableOpacity>
         )}

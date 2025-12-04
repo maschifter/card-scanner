@@ -88,7 +88,7 @@ export default function VisionCameraScanner() {
       // 1. Load ML models
       console.log('📦 Loading ML models...');
       const yoloAsset = Asset.fromModule(
-        require('../assets/yolo11n-seg-cls.pte'),
+        require('../assets/yolo11n-seg-cls-v2.pte'),
       );
       await yoloAsset.downloadAsync();
 
@@ -96,7 +96,7 @@ export default function VisionCameraScanner() {
         throw new Error('Failed to load YOLO model');
       }
 
-      const yoloLocalPath = `${cacheDirectory}yolo11n-seg.pte`;
+      const yoloLocalPath = `${cacheDirectory}yolo11n-seg-cls-v2.pte`;
       await copyAsync({
         from: yoloAsset.localUri,
         to: yoloLocalPath,
@@ -217,6 +217,9 @@ export default function VisionCameraScanner() {
 
       setFrameSize({ width, height });
 
+      // Always show detection for real-time feedback (both identified and unidentified)
+      setDetection(detection);
+
       // Update UI with first identified card's info
       if (detection.success && detection.cards.length > 0) {
         const firstCard = detection.cards[0];
@@ -228,7 +231,6 @@ export default function VisionCameraScanner() {
           setConsecutiveDetections(1); // First detection of this card
 
           // Don't add to history yet - wait for confirmation (2nd detection)
-          setDetection(null); // Hide UI until confirmed
         } else {
           // Same card as before - increment counter
           const newCount = currentCount + 1;
@@ -250,17 +252,6 @@ export default function VisionCameraScanner() {
             if (firstCard.capturedImage) {
               setCroppedImagePath(firstCard.capturedImage.uri);
             }
-
-            // Show detection UI now that it's confirmed
-            setDetection(detection);
-
-            // Hide detection overlay after 1 second
-            setTimeout(() => {
-              setDetection(null);
-            }, 1000);
-          } else if (newCount > 2) {
-            // Already confirmed - UI already hidden by timeout
-            // Do nothing
           }
         }
       }
@@ -369,7 +360,7 @@ export default function VisionCameraScanner() {
       />
 
       {/* Bounding box overlay */}
-      {detection && detection.cards.length > 0 && (
+      {detection && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Svg style={StyleSheet.absoluteFill}>
             {/* Render identified cards (green) */}
@@ -392,6 +383,36 @@ export default function VisionCameraScanner() {
                   width={width}
                   height={height}
                   stroke="#00ff00"
+                  strokeWidth="4"
+                  fill="none"
+                />
+              );
+            })}
+            {/* Render unidentified segmentations (red) - only if confidence is high enough */}
+            {detection.unidentifiedSegments?.map((segment, index) => {
+              const box = segment.boundingBox;
+
+              // Only show if confidence is above threshold (0.7)
+              const confidence = box.conf ?? 0;
+              if (confidence < 0.7) {
+                return null;
+              }
+
+              const scale = screenWidth / frameSize.width;
+
+              const x = box.x1 * scale;
+              const y = box.y1 * scale;
+              const width = (box.x2 - box.x1) * scale;
+              const height = (box.y2 - box.y1) * scale;
+
+              return (
+                <Rect
+                  key={`unidentified-${index}`}
+                  x={x}
+                  y={y}
+                  width={width}
+                  height={height}
+                  stroke="#ff0000"
                   strokeWidth="4"
                   fill="none"
                 />

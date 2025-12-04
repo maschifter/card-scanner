@@ -14,7 +14,9 @@ export async function loadModels(): Promise<ModelPaths> {
   console.log('Loading models from assets...');
 
   // Load assets
-  const yoloAsset = await Asset.loadAsync(require('../assets/yolo11n-seg.pte'));
+  const yoloAsset = await Asset.loadAsync(
+    require('../assets/yolo11n-seg-cls-v2.pte'),
+  );
   const embeddingAsset = await Asset.loadAsync(
     require('../assets/embedding_model.pte'),
   );
@@ -28,7 +30,7 @@ export async function loadModels(): Promise<ModelPaths> {
     embeddingModelPath = embeddingAsset[0].localUri || embeddingAsset[0].uri;
   } else {
     // iOS: Copy to cache directory
-    const yoloCachePath = `${cacheDirectory}yolo11n-seg.pte`;
+    const yoloCachePath = `${cacheDirectory}yolo11n-seg-cls-v2.pte`;
     const embeddingCachePath = `${cacheDirectory}embedding_model.pte`;
 
     await copyAsync({

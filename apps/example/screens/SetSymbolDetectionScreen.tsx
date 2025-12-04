@@ -81,13 +81,13 @@ export default function SetSymbolDetectionScreen() {
 
       // Load card models (required for initialization)
       const cardYoloAsset = Asset.fromModule(
-        require('../assets/yolo11n-seg-cls.pte'),
+        require('../assets/yolo11n-seg-cls-v2.pte'),
       );
       await cardYoloAsset.downloadAsync();
       if (!cardYoloAsset.localUri) {
         throw new Error('Failed to load card YOLO model');
       }
-      const cardYoloLocalPath = `${cacheDirectory}yolo11n-seg-cls.pte`;
+      const cardYoloLocalPath = `${cacheDirectory}yolo11n-seg-cls-v2.pte`;
       await copyAsync({ from: cardYoloAsset.localUri, to: cardYoloLocalPath });
 
       const cardEmbeddingAsset = Asset.fromModule(
