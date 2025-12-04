@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Camera,
   runAtTargetFps,
+  runAsync,
   useCameraDevice,
   useCameraFormat,
   useCameraPermission,
@@ -40,7 +41,9 @@ export default function VisionCameraScanner() {
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
   const format = useCameraFormat(device, [
+    { fps: 30 },
     { videoResolution: { width: 1080, height: 1920 } },
+    { videoStabilizationMode: 'off' },
   ]);
   const [isScanning, setIsScanning] = useState(false);
   const [isLoadingModels, setIsLoadingModels] = useState(true);
@@ -163,7 +166,7 @@ export default function VisionCameraScanner() {
         confidenceThreshold: 0.6,
         maxMatches: 5,
         searchCandidates: 100,
-        captureImage: true,
+        captureImage: false,
         gameSpecificConfig: {
           mtg: {
             setSymbolDetection: {
@@ -214,7 +217,7 @@ export default function VisionCameraScanner() {
 
       setFrameSize({ width, height });
 
-      // Update UI with first card's info
+      // Update UI with first identified card's info
       if (detection.success && detection.cards.length > 0) {
         const firstCard = detection.cards[0];
 
@@ -269,45 +272,38 @@ export default function VisionCameraScanner() {
   const frameProcessor = useFrameProcessor(
     (frame) => {
       'worklet';
-      runAtTargetFps(5, () => {
-        if (!isScanning || !modelPath) {
-          return;
-        }
 
-        // Call startScanning (returns RawScanResult - worklet safe)
-        const rawResult = startScanning(frame);
+      if (!isScanning || !modelPath) {
+        return;
+      }
 
-        // Pass raw result to JS thread for transformation using createDetectionResult
-        if (rawResult.cardCount > 0) {
-          processDetectionCallback(
-            rawResult,
-            rawResult.frameWidth,
-            rawResult.frameHeight,
-            lastScannedCardId,
-            consecutiveDetections,
-          );
-        }
+      // Run the heavy processing asynchronously to avoid blocking the camera
+      runAsync(frame, () => {
+        'worklet';
 
-        // Log detailed timing breakdown
-        const yoloTotal =
-          (rawResult.yoloPreprocessMs ?? 0) +
-          (rawResult.yoloInferenceMs ?? 0) +
-          (rawResult.yoloPostprocessMs ?? 0);
-        const embeddingTotal =
-          (rawResult.embeddingPreprocessMs ?? 0) +
-          (rawResult.embeddingInferenceMs ?? 0);
+        runAtTargetFps(5, () => {
+          // Call startScanning (returns RawScanResult - worklet safe)
+          const rawResult = startScanning(frame);
 
-        console.log(
-          `📊 Frame: ${rawResult.frameWidth}x${rawResult.frameHeight} | Total: ${(rawResult.processingTime ?? 0).toFixed(2)}ms\n` +
-            `  Extract: ${(rawResult.frameExtractionMs ?? 0).toFixed(2)}ms\n` +
-            `  YOLO: ${yoloTotal.toFixed(2)}ms (pre:${(rawResult.yoloPreprocessMs ?? 0).toFixed(1)} + inf:${(rawResult.yoloInferenceMs ?? 0).toFixed(1)} + post:${(rawResult.yoloPostprocessMs ?? 0).toFixed(1)})\n` +
-            `  Embedding: ${embeddingTotal.toFixed(2)}ms (pre:${(rawResult.embeddingPreprocessMs ?? 0).toFixed(1)} + inf:${(rawResult.embeddingInferenceMs ?? 0).toFixed(1)})\n` +
-            `  DB Search: ${(rawResult.dbSearchMs ?? 0).toFixed(2)}ms | Cards: ${rawResult.cardCount}`,
-        );
+          // Pass raw result to JS thread for transformation using createDetectionResult
+
+          if (rawResult.cardCount > 0) {
+            processDetectionCallback(
+              rawResult,
+              rawResult.frameWidth,
+              rawResult.frameHeight,
+              lastScannedCardId,
+              consecutiveDetections,
+            );
+          }
+
+          // Log detailed timing breakdown
+        });
       });
     },
     [
       isScanning,
+      modelPath,
       processDetectionCallback,
       lastScannedCardId,
       consecutiveDetections,
@@ -366,12 +362,17 @@ export default function VisionCameraScanner() {
         isActive={true}
         frameProcessor={frameProcessor}
         pixelFormat="rgb"
+        fps={30}
+        videoStabilizationMode="off"
+        enableBufferCompression={false}
+        photoQualityBalance="speed"
       />
 
       {/* Bounding box overlay */}
       {detection && detection.cards.length > 0 && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Svg style={StyleSheet.absoluteFill}>
+            {/* Render identified cards (green) */}
             {detection.cards.map((card, index) => {
               const box = card.boundingBox;
 
@@ -385,7 +386,7 @@ export default function VisionCameraScanner() {
 
               return (
                 <Rect
-                  key={index}
+                  key={`identified-${index}`}
                   x={x}
                   y={y}
                   width={width}
