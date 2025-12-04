@@ -48,7 +48,6 @@ public:
   struct ScannerConfig {
     std::string yoloPath;
     std::string embeddingPath;
-    std::string gameName;
     std::string scanMode; // "single" or "multiple"
     float segmentationThreshold;
     float iouThreshold;
@@ -74,8 +73,6 @@ public:
   static void releaseModels();
 
   // Thread-safe accessors for current game and config
-  static std::string getCurrentGame();
-  static void setCurrentGame(const std::string &gameName);
   static ScannerConfig getConfig();
 
 private:

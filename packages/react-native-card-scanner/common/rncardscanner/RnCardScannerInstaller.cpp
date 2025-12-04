@@ -43,7 +43,6 @@ std::shared_ptr<cardscanner::SetSymbolEmbedder>
 std::shared_ptr<cardscanner::SetSymbolDatabase>
     CardScannerInstaller::setSymbolDatabase_ = nullptr;
 std::mutex CardScannerInstaller::modelMutex_;
-std::string CardScannerInstaller::currentGame_ = "";
 CardScannerInstaller::ScannerConfig CardScannerInstaller::config_ = {};
 
 void CardScannerInstaller::initializeModels(const ScannerConfig &config) {
@@ -88,11 +87,6 @@ void CardScannerInstaller::initializeModels(const ScannerConfig &config) {
       // We don't throw here, we allow the app to continue; the search will just
       // return empty later.
     }
-  }
-
-  // Set current game
-  if (!config.gameName.empty()) {
-    currentGame_ = config.gameName;
   }
 }
 
@@ -151,16 +145,6 @@ CardScannerInstaller::getSetSymbolDatabase() {
   return setSymbolDatabase_;
 }
 
-std::string CardScannerInstaller::getCurrentGame() {
-  std::lock_guard<std::mutex> lock(modelMutex_);
-  return currentGame_;
-}
-
-void CardScannerInstaller::setCurrentGame(const std::string &gameName) {
-  std::lock_guard<std::mutex> lock(modelMutex_);
-  currentGame_ = gameName;
-}
-
 CardScannerInstaller::ScannerConfig CardScannerInstaller::getConfig() {
   std::lock_guard<std::mutex> lock(modelMutex_);
   return config_;
@@ -199,9 +183,6 @@ void CardScannerInstaller::injectJSIBindings(
             configObj.getProperty(runtime, "embeddingModelPath")
                 .asString(runtime)
                 .utf8(runtime);
-        config.gameName = configObj.getProperty(runtime, "gameName")
-                              .asString(runtime)
-                              .utf8(runtime);
         config.scanMode = configObj.getProperty(runtime, "scanMode")
                               .asString(runtime)
                               .utf8(runtime);
@@ -278,33 +259,6 @@ void CardScannerInstaller::injectJSIBindings(
           // ...
         }
 
-        // Fallback: support old expansionDetectionConfig for backward
-        // compatibility
-        if (!config.enableSetSymbolDetection) {
-          auto oldConfigProp =
-              configObj.getProperty(runtime, "expansionDetectionConfig");
-          if (!oldConfigProp.isUndefined() && oldConfigProp.isObject()) {
-            config.enableSetSymbolDetection = true;
-            jsi::Object oldConfigObj = oldConfigProp.asObject(runtime);
-
-            auto detectionModelProp =
-                oldConfigObj.getProperty(runtime, "detectionModelPath");
-            if (!detectionModelProp.isUndefined() &&
-                detectionModelProp.isString()) {
-              config.setSymbolYoloPath =
-                  detectionModelProp.asString(runtime).utf8(runtime);
-            }
-
-            auto embeddingModelProp =
-                oldConfigObj.getProperty(runtime, "embeddingModelPath");
-            if (!embeddingModelProp.isUndefined() &&
-                embeddingModelProp.isString()) {
-              config.setSymbolEmbedderPath =
-                  embeddingModelProp.asString(runtime).utf8(runtime);
-            }
-          }
-        }
-
         // Return a Promise that runs initialization on background thread
         return Promise::createPromise(
             runtime, callInvoker,
@@ -314,12 +268,6 @@ void CardScannerInstaller::injectJSIBindings(
                 try {
                   // Initialize models with config (this may take time)
                   CardScannerInstaller::initializeModels(config);
-
-                  // Open game database
-                  if (!config.gameName.empty()) {
-                    ObjectBoxDB *db =
-                        dbManager.getOrCreateStore(config.gameName);
-                  }
 
                   // Resolve promise on JS thread
                   promise->getCallInvoker()->invokeAsync([promise]() {
@@ -561,177 +509,6 @@ void CardScannerInstaller::injectJSIBindings(
   jsiRuntime->global().setProperty(*jsiRuntime, "runSegmentationDebug",
                                    std::move(runSegmentationDebugFunc));
 
-  // Create the 'detectSetSymbol' host function
-  auto detectSetSymbolFunc = jsi::Function::createFromHostFunction(
-      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "detectSetSymbol"), 1,
-      [](jsi::Runtime &runtime, const jsi::Value &thisValue,
-         const jsi::Value *args, size_t count) -> jsi::Value {
-        if (count < 1 || !args[0].isString()) {
-          throw jsi::JSError(runtime,
-                             "detectSetSymbol expects (imagePath: string)");
-        }
-        std::string imagePath = args[0].asString(runtime).utf8(runtime);
-
-        try {
-          // Strip file:// prefix if present
-          const std::string filePrefix = "file://";
-          if (imagePath.find(filePrefix) == 0) {
-            imagePath = imagePath.substr(filePrefix.length());
-          }
-
-          // Get models
-          auto yoloModel = CardScannerInstaller::getSetSymbolYoloModel();
-          auto embedder = CardScannerInstaller::getSetSymbolEmbedder();
-          auto database = CardScannerInstaller::getSetSymbolDatabase();
-
-          if (!yoloModel || !embedder) {
-            throw jsi::JSError(
-                runtime,
-                "Set symbol models not initialized. Call initializeScanner() "
-                "with expansionDetectionConfig first.");
-          }
-
-          // Load image
-          cv::Mat image = cv::imread(imagePath);
-          if (image.empty()) {
-            throw jsi::JSError(runtime,
-                               "Failed to load image from: " + imagePath);
-          }
-
-          // Step 1: Run YOLO detection to find set symbol
-          auto detectionResult = yoloModel->detect(image);
-
-          if (detectionResult.detections.empty()) {
-            jsi::Object result(runtime);
-            result.setProperty(runtime, "success", jsi::Value(false));
-            result.setProperty(
-                runtime, "error",
-                jsi::String::createFromUtf8(runtime, "No set symbol detected"));
-            return result;
-          }
-
-          // Get the best detection (highest confidence)
-          const auto &bbox = detectionResult.detections[0];
-
-          // Step 2: Crop the set symbol region
-          int x1 = std::max(0, static_cast<int>(bbox.x1));
-          int y1 = std::max(0, static_cast<int>(bbox.y1));
-          int x2 = std::min(image.cols, static_cast<int>(bbox.x2));
-          int y2 = std::min(image.rows, static_cast<int>(bbox.y2));
-
-          if (x2 <= x1 || y2 <= y1) {
-            throw jsi::JSError(runtime, "Invalid bounding box coordinates");
-          }
-
-          cv::Rect roi(x1, y1, x2 - x1, y2 - y1);
-          cv::Mat symbolCrop = image(roi);
-
-          // Step 3: Save the cropped symbol to a temporary file
-          std::string tempDir = std::string(std::getenv("TMPDIR") ?: "/tmp");
-          std::string croppedPath = tempDir + "/set_symbol_crop.jpg";
-          cv::imwrite(croppedPath, symbolCrop);
-
-          // Step 4: Generate embedding
-          auto embeddingResult = embedder->computeEmbedding(symbolCrop);
-
-          // Step 5: Search in database (if available)
-          std::vector<cardscanner::SetSymbolMatch> matches;
-          if (database) {
-            std::cout << "SetSymbol database available, searching..."
-                      << std::endl;
-            matches = database->search(embeddingResult.embedding, 5);
-            std::cout << "Found " << matches.size() << " matches" << std::endl;
-            if (!matches.empty()) {
-              std::cout << "Top match: " << matches[0].setCode << " - "
-                        << matches[0].setName << " (" << matches[0].similarity
-                        << ")" << std::endl;
-            }
-          } else {
-            std::cout << "⚠️ SetSymbol database not available" << std::endl;
-          }
-
-          // Step 6: Build result object
-          jsi::Object result(runtime);
-          result.setProperty(runtime, "success", jsi::Value(true));
-
-          // Top match (if database available)
-          if (!matches.empty()) {
-            const auto &topMatch = matches[0];
-            result.setProperty(
-                runtime, "setCode",
-                jsi::String::createFromUtf8(runtime, topMatch.setCode));
-            result.setProperty(
-                runtime, "setName",
-                jsi::String::createFromUtf8(runtime, topMatch.setName));
-            result.setProperty(
-                runtime, "variant",
-                jsi::String::createFromUtf8(runtime, topMatch.variant));
-            result.setProperty(runtime, "confidence",
-                               jsi::Value(topMatch.similarity));
-
-            // Top 5 matches
-            jsi::Array topMatches(runtime, matches.size());
-            for (size_t i = 0; i < matches.size(); i++) {
-              jsi::Object match(runtime);
-              match.setProperty(
-                  runtime, "setCode",
-                  jsi::String::createFromUtf8(runtime, matches[i].setCode));
-              match.setProperty(
-                  runtime, "setName",
-                  jsi::String::createFromUtf8(runtime, matches[i].setName));
-              match.setProperty(
-                  runtime, "variant",
-                  jsi::String::createFromUtf8(runtime, matches[i].variant));
-              match.setProperty(runtime, "similarity",
-                                jsi::Value(matches[i].similarity));
-              topMatches.setValueAtIndex(runtime, i, match);
-            }
-            result.setProperty(runtime, "topMatches", topMatches);
-          }
-
-          // Bounding box
-          jsi::Object bboxObj(runtime);
-          bboxObj.setProperty(runtime, "x1", jsi::Value(bbox.x1));
-          bboxObj.setProperty(runtime, "y1", jsi::Value(bbox.y1));
-          bboxObj.setProperty(runtime, "x2", jsi::Value(bbox.x2));
-          bboxObj.setProperty(runtime, "y2", jsi::Value(bbox.y2));
-          bboxObj.setProperty(runtime, "confidence",
-                              jsi::Value(bbox.confidence));
-          result.setProperty(runtime, "bbox", bboxObj);
-
-          // Cropped symbol image path
-          result.setProperty(
-              runtime, "croppedImagePath",
-              jsi::String::createFromUtf8(runtime, "file://" + croppedPath));
-
-          // Embedding array
-          jsi::Array embeddingArray(runtime, embeddingResult.embedding.size());
-          for (size_t i = 0; i < embeddingResult.embedding.size(); i++) {
-            embeddingArray.setValueAtIndex(
-                runtime, i, jsi::Value(embeddingResult.embedding[i]));
-          }
-          result.setProperty(runtime, "embedding", embeddingArray);
-
-          // Performance metrics
-          jsi::Object performance(runtime);
-          performance.setProperty(
-              runtime, "detectionMs",
-              jsi::Value(detectionResult.performance.totalTimeMs));
-          performance.setProperty(
-              runtime, "embeddingMs",
-              jsi::Value(embeddingResult.performance.totalTimeMs));
-          result.setProperty(runtime, "performance", performance);
-
-          return result;
-        } catch (const std::exception &e) {
-          throw jsi::JSError(
-              runtime, std::string("Set symbol detection failed: ") + e.what());
-        }
-      });
-
-  jsiRuntime->global().setProperty(*jsiRuntime, "detectSetSymbol",
-                                   std::move(detectSetSymbolFunc));
-
   auto listGamesFunc = jsi::Function::createFromHostFunction(
       *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "listAvailableGames"),
       0,
@@ -817,12 +594,11 @@ void CardScannerInstaller::injectJSIBindings(
                                    std::move(getCardCountFunc));
 
   auto startScanningFunc = jsi::Function::createFromHostFunction(
-      *jsiRuntime, jsi::PropNameID::forUtf8(*jsiRuntime, "startScanningPlugin"),
-      1,
+      *jsiRuntime, jsi::PropNameID::forUtf8(*jsiRuntime, "scanFramePlugin"), 1,
       [&dbManager](jsi::Runtime &runtime, const jsi::Value &thisArg,
                    const jsi::Value *args, size_t count) -> jsi::Value {
         if (count < 1) {
-          throw jsi::JSError(runtime, "startScanningPlugin expects at least 1 "
+          throw jsi::JSError(runtime, "scanFramePlugin expects at least 1 "
                                       "argument: (frame)");
         }
 
@@ -831,21 +607,12 @@ void CardScannerInstaller::injectJSIBindings(
 
           // Get config (thread-safe)
           auto config = CardScannerInstaller::getConfig();
-          std::string gameName = CardScannerInstaller::getCurrentGame();
-
           // Get the Frame HostObject (first argument)
           auto frameObj = args[0].asObject(runtime);
-
-          auto startFrameExtraction = std::chrono::high_resolution_clock::now();
 
           cv::Mat frameImage;
           frameImage =
               cardscanner::FrameExtractor::extractFrame(runtime, frameObj);
-          auto endFrameExtraction = std::chrono::high_resolution_clock::now();
-          double frameExtractionMs =
-              std::chrono::duration<double, std::milli>(endFrameExtraction -
-                                                        startFrameExtraction)
-                  .count();
 
           // Get singleton YOLO model
           auto yoloModel = CardScannerInstaller::getYoloModel();
@@ -876,14 +643,11 @@ void CardScannerInstaller::injectJSIBindings(
           struct SetSymbolInfo {
             std::string setCode;
             std::string setName;
-            std::string variant;
             float similarity;
             std::string croppedImagePath;
           };
           std::vector<SetSymbolInfo> setSymbolInfos;
 
-          double dbSearchMs = 0.0;
-          double setSymbolDetectionMs = 0.0;
           cardscanner::CardEmbeddingResult embeddingResult;
 
           if (!segResult.detections.empty()) {
@@ -969,7 +733,6 @@ void CardScannerInstaller::injectJSIBindings(
                   // game determination)
                   std::string setCode = "";
                   std::string setName = "";
-                  std::string setVariant = "";
                   float setSimilarity = 0.0f;
                   std::string setSymbolImagePath = "";
 
@@ -1001,12 +764,6 @@ void CardScannerInstaller::injectJSIBindings(
                     }
                   }
 
-                  // If no YOLO predictions pass threshold, fall back to config
-                  // game
-                  if (topGames.empty() && !gameName.empty()) {
-                    topGames.push_back(gameName);
-                  }
-
                   // Adaptive search strategy: search top prediction first
                   std::vector<CardSearchResult> allResults;
                   bool shouldSearchMore = false;
@@ -1021,15 +778,8 @@ void CardScannerInstaller::injectJSIBindings(
                         continue;
 
                       // Search in this game's database
-                      auto startDbSearch =
-                          std::chrono::high_resolution_clock::now();
                       auto gameResults = gameDb->search_similar_cards(
                           embeddingResult.embedding, config.searchCandidates);
-                      auto endDbSearch =
-                          std::chrono::high_resolution_clock::now();
-                      dbSearchMs += std::chrono::duration<double, std::milli>(
-                                        endDbSearch - startDbSearch)
-                                        .count();
 
                       // Tag results with game name
                       for (auto &result : gameResults) {
@@ -1078,42 +828,15 @@ void CardScannerInstaller::injectJSIBindings(
                   if (!allResults.empty() &&
                       allResults[0].score >= config.confidenceThreshold) {
                     bestMatchGame = allResults[0].gameName;
-
-                    // Check if there's a close second from different game
-                    // If top 2 scores are within 0.1 and from different games,
-                    // keep both
-                    const float CLOSE_SCORE_THRESHOLD = 0.1;
-                    if (allResults.size() >= 2) {
-                      float topScore = allResults[0].score;
-                      float secondScore = allResults[1].score;
-                      std::string secondGame = allResults[1].gameName;
-
-                      if (secondScore >= config.confidenceThreshold &&
-                          secondGame != bestMatchGame &&
-                          (topScore - secondScore) < CLOSE_SCORE_THRESHOLD) {
-                        // Scores are too close - include both games in results
-                        bestMatchGame =
-                            ""; // Empty means include all passing threshold
-                      }
-                    }
                   }
 
-                  // Filter: keep cards from best match game, or all if
-                  // uncertain
+                  // Filter: keep only cards from best match game
                   std::vector<CardSearchResult> filteredMatches;
                   for (const auto &match : allResults) {
-                    bool shouldInclude = false;
-
-                    if (bestMatchGame.empty()) {
-                      // Uncertain case: include all cards passing threshold
-                      shouldInclude = match.score >= config.confidenceThreshold;
-                    } else {
-                      // Confident case: only cards from best game
-                      shouldInclude = match.gameName == bestMatchGame &&
-                                      match.score >= config.confidenceThreshold;
-                    }
-
-                    if (shouldInclude) {
+                    // Only include cards from best game that pass threshold
+                    if (!bestMatchGame.empty() &&
+                        match.gameName == bestMatchGame &&
+                        match.score >= config.confidenceThreshold) {
                       filteredMatches.push_back(match);
                       if (filteredMatches.size() >=
                           static_cast<size_t>(config.maxMatches)) {
@@ -1130,9 +853,6 @@ void CardScannerInstaller::injectJSIBindings(
 
                     if (isMTG) {
                       try {
-                        auto startSetSymbol =
-                            std::chrono::high_resolution_clock::now();
-
                         // Detect set symbol location on the card
                         auto symbolDetection =
                             setSymbolYolo->detect(savedCardImg);
@@ -1155,34 +875,6 @@ void CardScannerInstaller::injectJSIBindings(
                             cv::Rect symbolRoi(sx1, sy1, sx2 - sx1, sy2 - sy1);
                             cv::Mat symbolImg = savedCardImg(symbolRoi).clone();
 
-                            // Save cropped set symbol if captureImage enabled
-                            if (config.captureImage) {
-                              try {
-                                auto now = std::chrono::system_clock::now();
-                                auto timestamp = std::chrono::duration_cast<
-                                                     std::chrono::milliseconds>(
-                                                     now.time_since_epoch())
-                                                     .count();
-
-                                std::string symbolFilename =
-                                    "set_symbol_" + std::to_string(timestamp) +
-                                    "_" + std::to_string(cardMatches.size()) +
-                                    ".jpg";
-
-                                std::string cacheDir =
-                                    pathprovider::get_db_path();
-                                setSymbolImagePath =
-                                    cacheDir + "/" + symbolFilename;
-
-                                cv::Mat symbolImgBGR;
-                                cv::cvtColor(symbolImg, symbolImgBGR,
-                                             cv::COLOR_RGB2BGR);
-                                cv::imwrite(setSymbolImagePath, symbolImgBGR);
-                              } catch (const std::exception &e) {
-                                setSymbolImagePath = "";
-                              }
-                            }
-
                             // Compute set symbol embedding and search
                             auto symbolEmbedding =
                                 setSymbolEmbedder->computeEmbedding(symbolImg);
@@ -1199,19 +891,11 @@ void CardScannerInstaller::injectJSIBindings(
                                   confidenceThreshold) {
                                 setCode = symbolMatches[0].setCode;
                                 setName = symbolMatches[0].setName;
-                                setVariant = symbolMatches[0].variant;
                                 setSimilarity = symbolMatches[0].similarity;
                               }
                             }
                           }
                         }
-
-                        auto endSetSymbol =
-                            std::chrono::high_resolution_clock::now();
-                        setSymbolDetectionMs +=
-                            std::chrono::duration<double, std::milli>(
-                                endSetSymbol - startSetSymbol)
-                                .count();
                       } catch (const std::exception &e) {
                         // Set symbol detection failed, continue without it
                       }
@@ -1219,15 +903,15 @@ void CardScannerInstaller::injectJSIBindings(
                   }
 
                   // Store set symbol info
-                  setSymbolInfos.push_back({setCode, setName, setVariant,
-                                            setSimilarity, setSymbolImagePath});
+                  setSymbolInfos.push_back(
+                      {setCode, setName, setSimilarity, setSymbolImagePath});
                 } else {
                   cardMatches.push_back({});
-                  setSymbolInfos.push_back({"", "", "", 0.0f, ""});
+                  setSymbolInfos.push_back({"", "", 0.0f, ""});
                 }
               } catch (const std::exception &e) {
                 cardMatches.push_back({});
-                setSymbolInfos.push_back({"", "", "", 0.0f, ""});
+                setSymbolInfos.push_back({"", "", 0.0f, ""});
               }
             }
           }
@@ -1242,45 +926,19 @@ void CardScannerInstaller::injectJSIBindings(
 
           // Count how many detections have matches
           int identifiedCardCount = 0;
-          for (const auto& matches : cardMatches) {
+          for (const auto &matches : cardMatches) {
             if (!matches.empty()) {
               identifiedCardCount++;
             }
           }
 
           jsi::Object result(runtime);
-          result.setProperty(
-              runtime, "cardCount",
-              jsi::Value(identifiedCardCount));
+          result.setProperty(runtime, "cardCount",
+                             jsi::Value(identifiedCardCount));
           result.setProperty(
               runtime, "segmentationCount",
               jsi::Value(static_cast<int>(segResult.detections.size())));
-          result.setProperty(runtime, "frameWidth",
-                             jsi::Value(frameImage.cols));
-          result.setProperty(runtime, "frameHeight",
-                             jsi::Value(frameImage.rows));
           result.setProperty(runtime, "processingTime", jsi::Value(totalMs));
-
-          // Timing breakdown
-          result.setProperty(runtime, "frameExtractionMs",
-                             jsi::Value(frameExtractionMs));
-          result.setProperty(
-              runtime, "yoloPreprocessMs",
-              jsi::Value(segResult.performance.preprocessingTimeMs));
-          result.setProperty(runtime, "yoloInferenceMs",
-                             jsi::Value(segResult.performance.inferenceTimeMs));
-          result.setProperty(
-              runtime, "yoloPostprocessMs",
-              jsi::Value(segResult.performance.postprocessingTimeMs));
-          result.setProperty(
-              runtime, "embeddingPreprocessMs",
-              jsi::Value(embeddingResult.performance.preprocessingTimeMs));
-          result.setProperty(
-              runtime, "embeddingInferenceMs",
-              jsi::Value(embeddingResult.performance.inferenceTimeMs));
-          result.setProperty(runtime, "dbSearchMs", jsi::Value(dbSearchMs));
-          result.setProperty(runtime, "setSymbolDetectionMs",
-                             jsi::Value(setSymbolDetectionMs));
 
           // Convert detections array (identified cards only)
           jsi::Array detections(runtime, identifiedCardCount);
@@ -1333,25 +991,6 @@ void CardScannerInstaller::injectJSIBindings(
                   jsi::String::createFromUtf8(runtime, croppedImagePaths[i]));
             }
 
-            // YOLO game predictions
-            jsDetection.setProperty(
-                runtime, "predictedGame",
-                jsi::String::createFromUtf8(runtime, det.predictedGame));
-
-            jsi::Array topGames(runtime, det.topGamePredictions.size());
-            for (size_t k = 0; k < det.topGamePredictions.size(); k++) {
-              jsi::Object gamePred(runtime);
-              gamePred.setProperty(
-                  runtime, "game",
-                  jsi::String::createFromUtf8(runtime,
-                                              det.topGamePredictions[k].first));
-              gamePred.setProperty(
-                  runtime, "confidence",
-                  jsi::Value(det.topGamePredictions[k].second));
-              topGames.setValueAtIndex(runtime, k, gamePred);
-            }
-            jsDetection.setProperty(runtime, "topGamePredictions", topGames);
-
             // Set symbol info for MTG cards
             if (i < setSymbolInfos.size() &&
                 !setSymbolInfos[i].setCode.empty()) {
@@ -1362,48 +1001,14 @@ void CardScannerInstaller::injectJSIBindings(
               setSymbol.setProperty(runtime, "setName",
                                     jsi::String::createFromUtf8(
                                         runtime, setSymbolInfos[i].setName));
-              setSymbol.setProperty(runtime, "variant",
-                                    jsi::String::createFromUtf8(
-                                        runtime, setSymbolInfos[i].variant));
               setSymbol.setProperty(runtime, "similarity",
                                     jsi::Value(setSymbolInfos[i].similarity));
-              if (!setSymbolInfos[i].croppedImagePath.empty()) {
-                setSymbol.setProperty(
-                    runtime, "croppedImagePath",
-                    jsi::String::createFromUtf8(
-                        runtime, setSymbolInfos[i].croppedImagePath));
-              }
               jsDetection.setProperty(runtime, "setSymbol", setSymbol);
             }
 
             detections.setValueAtIndex(runtime, detectionIndex++, jsDetection);
           }
           result.setProperty(runtime, "detections", detections);
-
-          // Add unidentified segments array
-          jsi::Array unidentifiedSegments(runtime, segResult.detections.size() - identifiedCardCount);
-          size_t unidentifiedIndex = 0;
-          for (size_t i = 0; i < segResult.detections.size(); i++) {
-            // Only include detections without matches
-            if (i < cardMatches.size() && !cardMatches[i].empty()) {
-              continue;
-            }
-
-            const auto &det = segResult.detections[i];
-            jsi::Object jsSegment(runtime);
-
-            // Bounding box
-            jsi::Object box(runtime);
-            box.setProperty(runtime, "x1", jsi::Value(det.box.x1));
-            box.setProperty(runtime, "y1", jsi::Value(det.box.y1));
-            box.setProperty(runtime, "x2", jsi::Value(det.box.x2));
-            box.setProperty(runtime, "y2", jsi::Value(det.box.y2));
-            box.setProperty(runtime, "conf", jsi::Value(det.box.conf));
-            jsSegment.setProperty(runtime, "box", box);
-
-            unidentifiedSegments.setValueAtIndex(runtime, unidentifiedIndex++, jsSegment);
-          }
-          result.setProperty(runtime, "unidentifiedSegments", unidentifiedSegments);
 
           return result;
 
@@ -1413,7 +1018,7 @@ void CardScannerInstaller::injectJSIBindings(
         }
       });
 
-  jsiRuntime->global().setProperty(*jsiRuntime, "startScanningPlugin",
+  jsiRuntime->global().setProperty(*jsiRuntime, "scanFramePlugin",
                                    std::move(startScanningFunc));
 
   threads::utils::unsafeSetupThreadPool();

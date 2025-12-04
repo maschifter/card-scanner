@@ -5,10 +5,6 @@
 #include <string>
 #include <vector>
 
-namespace objectboxtest {
-class ObjectBoxTest;
-}
-
 struct CardSearchResult {
   std::string card_id;
   std::string name;
@@ -17,7 +13,6 @@ struct CardSearchResult {
 };
 
 class ObjectBoxDB {
-  friend class objectboxtest::ObjectBoxTest;
 
 public:
   ObjectBoxDB(const std::string &db_path);

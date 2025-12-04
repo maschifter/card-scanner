@@ -19,7 +19,7 @@ import {
   useFrameProcessor,
 } from 'react-native-vision-camera';
 import {
-  startScanning,
+  scanFrame,
   initializeScanner,
   releaseScanner,
   createDetectionResult,
@@ -205,17 +205,11 @@ export default function VisionCameraScanner() {
 
   // Process raw scan result and transform to rich Detection type
   const processDetectionCallback = useRunOnJS(
-    (
-      rawResult: any,
-      width: number,
-      height: number,
-      lastCardId: string | null,
-      currentCount: number,
-    ) => {
+    (rawResult: any, lastCardId: string | null, currentCount: number) => {
       // Use createDetectionResult to transform raw → rich types
       const detection = createDetectionResult(rawResult);
 
-      setFrameSize({ width, height });
+      setFrameSize({ width: 1080, height: 1920 });
 
       // Always show detection for real-time feedback (both identified and unidentified)
       setDetection(detection);
@@ -248,7 +242,6 @@ export default function VisionCameraScanner() {
             );
 
             // Set cropped image if available
-            console.log(firstCard.capturedImage);
             if (firstCard.capturedImage) {
               setCroppedImagePath(firstCard.capturedImage.uri);
             }
@@ -274,15 +267,13 @@ export default function VisionCameraScanner() {
 
         runAtTargetFps(5, () => {
           // Call startScanning (returns RawScanResult - worklet safe)
-          const rawResult = startScanning(frame);
+          const rawResult = scanFrame(frame);
 
           // Pass raw result to JS thread for transformation using createDetectionResult
 
           if (rawResult.cardCount > 0) {
             processDetectionCallback(
               rawResult,
-              rawResult.frameWidth,
-              rawResult.frameHeight,
               lastScannedCardId,
               consecutiveDetections,
             );
@@ -383,36 +374,6 @@ export default function VisionCameraScanner() {
                   width={width}
                   height={height}
                   stroke="#00ff00"
-                  strokeWidth="4"
-                  fill="none"
-                />
-              );
-            })}
-            {/* Render unidentified segmentations (red) - only if confidence is high enough */}
-            {detection.unidentifiedSegments?.map((segment, index) => {
-              const box = segment.boundingBox;
-
-              // Only show if confidence is above threshold (0.7)
-              const confidence = box.conf ?? 0;
-              if (confidence < 0.7) {
-                return null;
-              }
-
-              const scale = screenWidth / frameSize.width;
-
-              const x = box.x1 * scale;
-              const y = box.y1 * scale;
-              const width = (box.x2 - box.x1) * scale;
-              const height = (box.y2 - box.y1) * scale;
-
-              return (
-                <Rect
-                  key={`unidentified-${index}`}
-                  x={x}
-                  y={y}
-                  width={width}
-                  height={height}
-                  stroke="#ff0000"
                   strokeWidth="4"
                   fill="none"
                 />

@@ -8,7 +8,6 @@ import type { Frame } from 'react-native-vision-camera';
 export interface ScannerConfig {
   segmentationModelPath: string;
   embeddingModelPath: string;
-  gameName: string; // Default game for initialization
   scanMode: 'single' | 'multiple'; // Single: highest confidence only
   segmentationThreshold: number; // YOLO confidence threshold (default: 0.7)
   iouThreshold: number; // NMS IOU threshold (default: 0.7)
@@ -53,19 +52,10 @@ export interface SwapResult {
 
 export interface RawScanResult {
   cardCount: number;
-  frameWidth: number;
-  frameHeight: number;
+  segmentationCount: number;
   detections: RawDetection[];
   processingTime: number;
   // Timing breakdown
-  frameExtractionMs?: number;
-  yoloPreprocessMs?: number;
-  yoloInferenceMs?: number;
-  yoloPostprocessMs?: number;
-  embeddingPreprocessMs?: number;
-  embeddingInferenceMs?: number;
-  dbSearchMs?: number;
-  setSymbolDetectionMs?: number;
   error?: string;
 }
 
@@ -105,16 +95,6 @@ export interface Detection {
   success: boolean;
   cards: DetectedCard[];
   processingTime: number;
-  timings?: {
-    frameExtraction?: number;
-    yoloPreprocess?: number;
-    yoloInference?: number;
-    yoloPostprocess?: number;
-    embeddingPreprocess?: number;
-    embeddingInference?: number;
-    dbSearch?: number;
-    setSymbolDetection?: number;
-  };
   error?: string;
 }
 
@@ -193,7 +173,7 @@ declare global {
   // Core scanner functions
   var initializeScannerNative: (config: ScannerConfig) => InitializationResult;
   var releaseScanner: () => void;
-  var startScanningPlugin: (frame: Frame) => RawScanResult;
+  var scanFramePlugin: (frame: Frame) => RawScanResult;
 
   // Database management
   var swapDatabaseNative: (sourcePath: string, gameName: string) => SwapResult;
@@ -206,9 +186,6 @@ declare global {
     imagePath: string,
     outputDir: string,
   ) => RawScanResult;
-
-  // Set symbol detection
-  var detectSetSymbol: (imagePath: string) => SetSymbolDetectionResult;
 }
 
 // Set symbol detection result type
@@ -217,7 +194,6 @@ export interface SetSymbolDetectionResult {
   error?: string;
   setCode?: string;
   setName?: string;
-  variant?: string;
   confidence?: number;
   croppedImagePath?: string;
   embedding?: number[];
@@ -231,13 +207,8 @@ export interface SetSymbolDetectionResult {
   topMatches?: Array<{
     setCode: string;
     setName: string;
-    variant: string;
     similarity: number;
   }>;
-  performance?: {
-    detectionMs: number;
-    embeddingMs: number;
-  };
 }
 
 // ============================================================================
@@ -252,9 +223,9 @@ if (global.initializeScannerNative == null) {
   }
   CardScannerInstallerNativeModule.install();
 
-  if (global.startScanningPlugin == null) {
+  if (global.scanFramePlugin == null) {
     throw new Error(
-      `Failed to install react-native-card-scanner: The global 'startScanningPlugin' function was not found after installation.`,
+      `Failed to install react-native-card-scanner: The global 'scanFramePlugin' function was not found after installation.`,
     );
   }
 }
@@ -295,14 +266,14 @@ export function releaseScanner(): void {
  * @param frame - Vision Camera frame
  * @returns Raw scan result (worklet-safe)
  */
-export function startScanning(frame: Frame): RawScanResult {
+export function scanFrame(frame: Frame): RawScanResult {
   'worklet';
 
-  if (typeof startScanningPlugin !== 'function') {
-    throw new Error('startScanningPlugin is not available in worklet runtime');
+  if (typeof scanFramePlugin !== 'function') {
+    throw new Error('scanFramePlugin is not available in worklet runtime');
   }
 
-  return startScanningPlugin(frame);
+  return scanFramePlugin(frame);
 }
 
 /**
@@ -356,16 +327,6 @@ export function createDetectionResult(raw: RawScanResult): Detection {
     success: true,
     cards,
     processingTime: raw.processingTime,
-    timings: {
-      frameExtraction: raw.frameExtractionMs,
-      yoloPreprocess: raw.yoloPreprocessMs,
-      yoloInference: raw.yoloInferenceMs,
-      yoloPostprocess: raw.yoloPostprocessMs,
-      embeddingPreprocess: raw.embeddingPreprocessMs,
-      embeddingInference: raw.embeddingInferenceMs,
-      dbSearch: raw.dbSearchMs,
-      setSymbolDetection: raw.setSymbolDetectionMs,
-    },
   };
 }
 
