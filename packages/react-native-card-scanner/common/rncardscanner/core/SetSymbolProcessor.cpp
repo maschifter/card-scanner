@@ -1,7 +1,10 @@
 #include "SetSymbolProcessor.h"
+#include "../Constants.h"
 
 namespace rncardscanner {
 namespace core {
+
+using namespace cardscanner::constants;
 
 dto::SetSymbolInfo SetSymbolProcessor::processSetSymbol(
     const cv::Mat &cardImage, const std::vector<dto::CardMatch> &cardMatches,
@@ -83,9 +86,9 @@ dto::SetSymbolInfo SetSymbolProcessor::matchSetSymbol(
   }
 
   // Check confidence threshold
-  float effectiveConfidenceThreshold =
-      confidenceThreshold > 0.0f ? confidenceThreshold
-                                  : database::MIN_SIMILARITY_SCORE;
+  float effectiveConfidenceThreshold = confidenceThreshold > 0.0f
+                                           ? confidenceThreshold
+                                           : database::MIN_SIMILARITY_SCORE;
 
   if (symbolMatches[0].similarity < effectiveConfidenceThreshold) {
     return dto::SetSymbolInfo();
