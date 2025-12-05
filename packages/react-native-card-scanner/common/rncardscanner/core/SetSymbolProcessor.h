@@ -2,10 +2,10 @@
 
 #include "../dto/ScanResults.h"
 #include "../dto/ScannerConfig.h"
+#include "../models/mtg/SetSymbolEmbedder.h"
+#include "../models/mtg/SetSymbolYoloModel.h"
 #include "../utils/ImageUtils.h"
 #include <ObjectBoxDB.h>
-#include <SetSymbolEmbedder.h>
-#include <SetSymbolYoloModel.h>
 #include <opencv2/opencv.hpp>
 
 namespace rncardscanner {

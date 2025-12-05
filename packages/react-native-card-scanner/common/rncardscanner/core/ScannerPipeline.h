@@ -2,14 +2,14 @@
 
 #include "../dto/ScanResults.h"
 #include "../dto/ScannerConfig.h"
+#include "../models/mtg/SetSymbolEmbedder.h"
+#include "../models/mtg/SetSymbolYoloModel.h"
 #include "SearchStrategy.h"
 #include "SetSymbolProcessor.h"
 #include <CardEmbeddingModel.h>
 #include <DatabaseManager.h>
 #include <ObjectBoxDB.h>
 #include <PathProvider.h>
-#include <SetSymbolEmbedder.h>
-#include <SetSymbolYoloModel.h>
 #include <YoloSegmentationModel.h>
 #include <opencv2/opencv.hpp>
 
