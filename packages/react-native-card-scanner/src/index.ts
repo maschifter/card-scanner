@@ -69,7 +69,6 @@ export interface RawDetection {
     // MTG set symbol info
     setCode: string;
     setName: string;
-    variant: string;
     similarity: number;
     croppedImagePath?: string;
   };
@@ -120,7 +119,6 @@ export interface DetectedCard {
     // MTG set symbol info
     setCode: string;
     setName: string;
-    variant: string;
     similarity: number;
     croppedImagePath?: string;
   };
@@ -179,7 +177,6 @@ declare global {
   var swapDatabaseNative: (sourcePath: string, gameName: string) => SwapResult;
   var getCardCount: (gameName: string) => number;
   var listAvailableGames: () => DatabaseInfo[];
-  var closeGameStore: (gameName: string) => void;
 
   // Debug functions
   var runSegmentationDebug: (
@@ -379,14 +376,6 @@ export async function swapDatabase(
  */
 export function getCardCount(gameName: string): number {
   return global.getCardCount(gameName);
-}
-
-/**
- * Close a game store/database
- * @param gameName - Game identifier to close
- */
-export function closeGameStore(gameName: string): void {
-  global.closeGameStore(gameName);
 }
 
 // ============================================================================

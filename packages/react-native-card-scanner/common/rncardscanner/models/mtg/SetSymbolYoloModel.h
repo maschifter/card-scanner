@@ -18,17 +18,9 @@ struct SetSymbolBBox {
   float confidence;
 };
 
-struct SetSymbolDetectionPerformance {
-  double totalTimeMs;
-  double preprocessingTimeMs;
-  double inferenceTimeMs;
-  double postprocessingTimeMs;
-};
-
 // Result from YOLO object detection
 struct SetSymbolDetectionResult {
   std::vector<SetSymbolBBox> detections;
-  SetSymbolDetectionPerformance performance;
 };
 
 /**

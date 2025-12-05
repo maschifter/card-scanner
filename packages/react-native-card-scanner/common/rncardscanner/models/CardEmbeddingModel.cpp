@@ -1,5 +1,7 @@
 #include "CardEmbeddingModel.h"
 #include "../Constants.h"
+#include "../utils/ImageNetNormalization.h"
+#include "../utils/PathUtils.h"
 #include "DatabaseManager.h"
 #include <chrono>
 #include <iostream>
@@ -14,38 +16,12 @@ using namespace constants;
 
 std::vector<float>
 CardEmbeddingModel::normalizeImage(const cv::Mat &img) const {
-  // Convert to float (no normalization yet)
-  cv::Mat floatImg;
-  img.convertTo(floatImg, CV_32FC3);
-
-  // Prepare input tensor data in NCHW format
-  const int inputSize = model::EMBEDDING_INPUT_SIZE;
-  const int channels = model::EMBEDDING_CHANNELS;
-  std::vector<float> normalizedImageData(1 * channels * inputSize * inputSize);
-
-  for (int c = 0; c < channels; c++) {
-    for (int h = 0; h < inputSize; h++) {
-      for (int w = 0; w < inputSize; w++) {
-        int chw_idx = c * inputSize * inputSize + h * inputSize + w;
-        float pixel = floatImg.at<cv::Vec3f>(h, w)[c];
-        // Apply ImageNet normalization: (pixel/scale - mean) / std
-        normalizedImageData[chw_idx] =
-            (pixel / imagenet::PIXEL_SCALE - imagenet::MEAN[c]) /
-            imagenet::STD[c];
-      }
-    }
-  }
-
-  return normalizedImageData;
+  return utils::ImageNetNormalization::normalizeImage(
+      img, model::EMBEDDING_INPUT_SIZE);
 }
 
 CardEmbeddingModel::CardEmbeddingModel(const std::string &modelPath) {
-  // Strip file:// prefix if present
-  std::string cleanPath = modelPath;
-  const std::string filePrefix = "file://";
-  if (cleanPath.find(filePrefix) == 0) {
-    cleanPath = cleanPath.substr(filePrefix.length());
-  }
+  std::string cleanPath = utils::PathUtils::stripFilePrefix(modelPath);
 
   module_ = std::make_unique<Module>(
       cleanPath, Module::LoadMode::MmapUseMlockIgnoreErrors);
@@ -59,11 +35,10 @@ CardEmbeddingModel::CardEmbeddingModel(const std::string &modelPath) {
 
 CardEmbeddingResult
 CardEmbeddingModel::computeEmbedding(const cv::Mat &cardImg) {
-  auto totalStart = std::chrono::high_resolution_clock::now();
   if (cardImg.empty()) {
     throw std::runtime_error("Input image is empty");
   }
-  auto prepStart = std::chrono::high_resolution_clock::now();
+
   // Resize to model input size (MobileNet)
   cv::Mat resized;
   cv::resize(
@@ -72,15 +47,7 @@ CardEmbeddingModel::computeEmbedding(const cv::Mat &cardImg) {
 
   std::vector<float> inputData = normalizeImage(resized);
 
-  auto prepEnd = std::chrono::high_resolution_clock::now();
-
-  double embeddingPreprocessingTimeMs =
-      std::chrono::duration_cast<std::chrono::microseconds>(prepEnd - prepStart)
-          .count() /
-      perf::MICROSECONDS_TO_MILLISECONDS;
   try {
-    // Extract embedding from card (directly from cv::Mat, no disk I/O!)
-    auto embeddingStart = std::chrono::high_resolution_clock::now();
     std::vector<int> inputShape = {1, model::EMBEDDING_CHANNELS,
                                    model::EMBEDDING_INPUT_SIZE,
                                    model::EMBEDDING_INPUT_SIZE};
@@ -108,30 +75,7 @@ CardEmbeddingModel::computeEmbedding(const cv::Mat &cardImg) {
       embedding[i] = outputData[i];
     }
 
-    auto embeddingEnd = std::chrono::high_resolution_clock::now();
-
-    double embeddingTimeMs =
-        std::chrono::duration_cast<std::chrono::microseconds>(embeddingEnd -
-                                                              embeddingStart)
-            .count() /
-        perf::MICROSECONDS_TO_MILLISECONDS;
-
-    CardEmbeddingResult result;
-    result.embedding = embedding;
-    CardEmbeddingPerformance performance;
-    performance.totalTimeMs = embeddingTimeMs + embeddingPreprocessingTimeMs;
-    performance.inferenceTimeMs = embeddingTimeMs;
-    performance.preprocessingTimeMs = embeddingPreprocessingTimeMs;
-
-    auto totalEnd = std::chrono::high_resolution_clock::now();
-    double totalTimeMs = std::chrono::duration_cast<std::chrono::microseconds>(
-                             totalEnd - totalStart)
-                             .count() /
-                         perf::MICROSECONDS_TO_MILLISECONDS;
-    performance.totalTimeMs = totalTimeMs;
-    result.performance = performance;
-
-    return result;
+    return {embedding};
   } catch (const std::exception &e) {
     throw; // Re-throw to let caller handle
   }

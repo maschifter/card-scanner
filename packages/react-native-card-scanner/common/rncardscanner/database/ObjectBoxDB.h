@@ -12,6 +12,13 @@ struct CardSearchResult {
   double score;
 };
 
+struct SetSymbolMatch {
+  std::string setCode;
+  std::string setName;
+  std::string variant;
+  float similarity;
+};
+
 class ObjectBoxDB {
 
 public:
@@ -23,8 +30,16 @@ public:
   search_similar_cards(const std::vector<float> &query_embedding,
                        int limit = 100);
 
+  // Similarity search for MTG set symbols
+  std::vector<SetSymbolMatch>
+  search_similar_set_symbols(const std::vector<float> &query_embedding,
+                             int limit = 5);
+
   // Get total card count
   uint64_t get_card_count();
+
+  // Get total set symbol count (for MTG set symbol databases)
+  uint64_t get_set_symbol_count();
 
 private:
   std::unique_ptr<obx::Store> store;

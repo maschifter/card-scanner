@@ -101,7 +101,6 @@ export default function SegmentationScreen() {
       const result = await initializeScanner({
         segmentationModelPath: yoloLocalPath,
         embeddingModelPath: embeddingLocalPath,
-        gameName: 'lorcana',
         scanMode: 'single',
         segmentationThreshold: 0.7,
         iouThreshold: 0.7,
@@ -161,7 +160,6 @@ export default function SegmentationScreen() {
 
       console.log('Segmentation result:', result);
       console.log('Detected cards:', result.cardCount);
-      console.log('Inference time:', result.inferenceMs, 'ms');
       setYoloResult(result);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -236,30 +234,6 @@ export default function SegmentationScreen() {
             <View style={styles.statRow}>
               <Text style={styles.statLabel}>Cards Detected:</Text>
               <Text style={styles.statValue}>{yoloResult.cardCount}</Text>
-            </View>
-            <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Total Time:</Text>
-              <Text style={styles.statValue}>
-                {yoloResult.totalMs.toFixed(1)} ms
-              </Text>
-            </View>
-            <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Inference Time:</Text>
-              <Text style={styles.statValue}>
-                {yoloResult.inferenceMs.toFixed(1)} ms
-              </Text>
-            </View>
-            <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Preprocessing Time:</Text>
-              <Text style={styles.statValue}>
-                {yoloResult.preprocessingMs.toFixed(1)} ms
-              </Text>
-            </View>
-            <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Postprocessing Time:</Text>
-              <Text style={styles.statValue}>
-                {yoloResult.postprocessingMs.toFixed(1)} ms
-              </Text>
             </View>
           </View>
 

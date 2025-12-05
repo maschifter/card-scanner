@@ -1,5 +1,7 @@
 #include "DatabaseManager.h"
+#include "../Constants.h"
 #include "../database/objectbox-model.h"
+#include "../utils/PathUtils.h"
 #include "ObjectBoxDB.h"
 #include "PathProvider.h"
 #include <filesystem>
@@ -7,17 +9,15 @@
 
 namespace fs = std::filesystem;
 namespace cardscanner {
-// Privates:
-std::unique_ptr<DatabaseManager> DatabaseManager::instance_ = nullptr;
+
+using namespace constants;
 
 DatabaseManager::DatabaseManager() : baseDbPath_(pathprovider::get_db_path()) {
-
   // Constructor should scan for existing stores, and attach them
   scanForExistingStores();
 }
 
 std::string DatabaseManager::resolvePathFor(const std::string &gameName) const {
-
   fs::path fullPath = baseDbPath_;
   // This operations should be fail proofed in case gameName path doesnt exist
   fullPath /= gameName;
@@ -26,26 +26,25 @@ std::string DatabaseManager::resolvePathFor(const std::string &gameName) const {
 
 // Publics:
 DatabaseManager &DatabaseManager::getInstance() {
-  if (instance_ == nullptr) {
-    // If not created, create the single instance now
-    instance_ = std::unique_ptr<DatabaseManager>(new DatabaseManager());
-  }
-  // Return a reference to the existing single instance
-  return *instance_;
+  // Meyer's Singleton - thread-safe since C++11
+  static DatabaseManager instance;
+  return instance;
 }
 
 std::set<std::string> DatabaseManager::getKnownGames() const {
+  std::lock_guard<std::mutex> lock(mutex_);
   return knownGames_;
 }
 
 ObjectBoxDB *DatabaseManager::getOrCreateStore(const std::string &gameName) {
+  std::lock_guard<std::mutex> lock(mutex_);
 
   if (knownGames_.find(gameName) == knownGames_.end()) {
     knownGames_.insert(gameName);
   }
   auto it = activeStores_.find(gameName);
   if (it != activeStores_.end()) {
-    return it->second.get(); // Store found in activeStores - Retrun it
+    return it->second.get(); // Store found in activeStores - Return it
   }
 
   const std::string path = resolvePathFor(gameName);
@@ -56,25 +55,27 @@ ObjectBoxDB *DatabaseManager::getOrCreateStore(const std::string &gameName) {
 }
 
 void DatabaseManager::openStore(const std::string &gameName) {
+  std::lock_guard<std::mutex> lock(mutex_);
   if (knownGames_.find(gameName) == knownGames_.end()) {
     knownGames_.insert(gameName);
   }
-  if (isClosedAndSwappable(gameName)) {
+  if (activeStores_.find(gameName) == activeStores_.end()) {
     const std::string path = resolvePathFor(gameName);
-
     GameStorePtr newGameStore = std::make_unique<ObjectBoxDB>(path);
     activeStores_.emplace(gameName, std::move(newGameStore));
   }
 }
 
 void DatabaseManager::closeStore(const std::string &gameName) {
+  std::lock_guard<std::mutex> lock(mutex_);
   auto it = activeStores_.find(gameName);
   if (it != activeStores_.end()) {
-    activeStores_.erase(it); // Unique_ptr should handle closing and destruciton
+    activeStores_.erase(it); // Unique_ptr should handle closing and destruction
   }
 }
 
 bool DatabaseManager::isClosedAndSwappable(const std::string &gameName) const {
+  std::lock_guard<std::mutex> lock(mutex_);
   // If the gameName is NOT in the map, the store is closed (not active).
   return activeStores_.find(gameName) == activeStores_.end();
 }
@@ -88,6 +89,7 @@ void DatabaseManager::scanForExistingStores() {
     return;
   }
 
+  std::lock_guard<std::mutex> lock(mutex_);
   knownGames_.clear();
 
   try {
@@ -98,7 +100,7 @@ void DatabaseManager::scanForExistingStores() {
 
         // Skip set-symbols directory (used by SetSymbolDatabase, not game
         // cards)
-        if (gameName == "set-symbols") {
+        if (gameName == database::SET_SYMBOL_DB_NAME) {
           continue;
         }
 
@@ -122,55 +124,36 @@ void DatabaseManager::scanForExistingStores() {
 
 std::string DatabaseManager::getStorePath(const std::string &gameName) const {
   fs::path path(resolvePathFor(gameName));
-  path /= "data.mdb";
+  path /= database::DB_FILENAME;
   return path;
 }
 
-fs::path clean_path(const std::string &path_str) {
-  std::string cleaned = path_str;
-  const std::string prefix = "file://";
-  if (cleaned.rfind(prefix, 0) == 0) {
-    cleaned.erase(0, prefix.length());
-  }
-  return fs::path(cleaned);
-}
-
-void DatabaseManager::initSetSymbolStoreInternal() {
-  try {
-    // Define paths
-    fs::path baseDbPath(baseDbPath_);
-    fs::path dbDir = baseDbPath / "set-symbols";
-    fs::path targetPath = dbDir / "data.mdb";
-
-    // Ensure directory exists
-    if (!fs::exists(dbDir)) {
-      fs::create_directories(dbDir);
-    }
-
-    // Open the store
-    // Note: We assume create_obx_model() works for SetSymbols here.
-    // If you have multiple models, ensure you call the correct model creation
-    // function.
-    std::cout << "Opening SetSymbol database at: " << dbDir << std::endl;
-    obx::Options options(create_obx_model());
-    options.directory(dbDir.string().c_str());
-
-    setSymbolStore_ = std::make_unique<obx::Store>(options);
-  } catch (const std::exception &e) {
-    std::cerr << "Failed to initialize SetSymbol store: " << e.what()
-              << std::endl;
-    setSymbolStore_.reset(); // Ensure nullptr on failure
-  }
-}
-
-obx::Store *DatabaseManager::getSetSymbolStore() {
+ObjectBoxDB *DatabaseManager::getSetSymbolStore() {
+  std::lock_guard<std::mutex> lock(mutex_);
   if (!setSymbolStore_) {
-    initSetSymbolStoreInternal();
+    try {
+      // Define path for set symbols database
+      fs::path baseDbPath(baseDbPath_);
+      fs::path dbDir = baseDbPath / database::SET_SYMBOL_DB_NAME;
+
+      // Ensure directory exists
+      if (!fs::exists(dbDir)) {
+        fs::create_directories(dbDir);
+      }
+
+      std::cout << "Opening SetSymbol database at: " << dbDir << std::endl;
+      setSymbolStore_ = std::make_unique<ObjectBoxDB>(dbDir.string());
+    } catch (const std::exception &e) {
+      std::cerr << "Failed to initialize SetSymbol store: " << e.what()
+                << std::endl;
+      setSymbolStore_.reset(); // Ensure nullptr on failure
+    }
   }
   return setSymbolStore_.get();
 }
 
 void DatabaseManager::closeSetSymbolStore() {
+  std::lock_guard<std::mutex> lock(mutex_);
   if (setSymbolStore_) {
     setSymbolStore_.reset();
     std::cout << "SetSymbol store closed." << std::endl;
@@ -183,7 +166,7 @@ bool DatabaseManager::swapDatabaseFile(const std::string &gameName,
                                        const std::string &sourcePath) {
 
   // Handle Special Case: Set Symbols
-  if (gameName == "set-symbols") {
+  if (gameName == database::SET_SYMBOL_DB_NAME) {
     closeSetSymbolStore();
   } else {
     if (!isClosedAndSwappable(gameName)) {
@@ -191,22 +174,13 @@ bool DatabaseManager::swapDatabaseFile(const std::string &gameName,
     }
   }
 
-  // Path cleanup helper (moved from old SetSymbol class)
-  auto clean_path_local = [](const std::string &path_str) {
-    std::string cleaned = path_str;
-    const std::string prefix = "file://";
-    if (cleaned.find(prefix) == 0) {
-      cleaned = cleaned.substr(prefix.length());
-    }
-    return fs::path(cleaned);
-  };
-
-  fs::path source = clean_path_local(sourcePath);
+  fs::path source = fs::path(utils::PathUtils::stripFilePrefix(sourcePath));
 
   // Determine target path
   fs::path target;
-  if (gameName == "set-symbols") {
-    target = fs::path(baseDbPath_) / "set-symbols" / "data.mdb";
+  if (gameName == database::SET_SYMBOL_DB_NAME) {
+    target = fs::path(baseDbPath_) / database::SET_SYMBOL_DB_NAME /
+             database::DB_FILENAME;
   } else {
     target = fs::path(getStorePath(gameName));
   }
@@ -225,8 +199,9 @@ bool DatabaseManager::swapDatabaseFile(const std::string &gameName,
       fs::rename(source, target);
     } else {
       // Atomic swap attempt
-      fs::path tempPath =
-          target.parent_path() / ("temp_swap_" + target.filename().string());
+      fs::path tempPath = target.parent_path() /
+                          (std::string(database::TEMP_SWAP_PREFIX) +
+                           target.filename().string());
       fs::rename(target, tempPath); // Backup old
       try {
         fs::rename(source, target); // Move new in
@@ -239,7 +214,7 @@ bool DatabaseManager::swapDatabaseFile(const std::string &gameName,
     }
 
     // Re-open logic
-    if (gameName == "set-symbols") {
+    if (gameName == database::SET_SYMBOL_DB_NAME) {
       getSetSymbolStore(); // Re-initializes
     } else {
       openStore(gameName);

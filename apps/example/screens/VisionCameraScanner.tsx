@@ -26,7 +26,6 @@ import {
   getSupportedGames,
   type Detection,
   type DetectedCard,
-  type Game,
 } from 'react-native-card-scanner';
 import { Asset } from 'expo-asset';
 import { cacheDirectory, copyAsync } from 'expo-file-system/legacy';
@@ -34,7 +33,6 @@ import Svg, { Rect } from 'react-native-svg';
 import { useRunOnJS } from 'react-native-worklets-core';
 
 const screenWidth = Dimensions.get('window').width;
-const screenHeight = Dimensions.get('window').height;
 
 export default function VisionCameraScanner() {
   const insets = useSafeAreaInsets();
@@ -49,11 +47,6 @@ export default function VisionCameraScanner() {
   const [isLoadingModels, setIsLoadingModels] = useState(true);
   const [modelError, setModelError] = useState<string | null>(null);
   const [modelPath, setModelPath] = useState<string | null>(null);
-  const [embeddingModelPath, setEmbeddingModelPath] = useState<string | null>(
-    null,
-  );
-  const [availableGames, setAvailableGames] = useState<Game[]>([]);
-  const [currentGame, setCurrentGame] = useState<string>('lorcana');
   // Use Detection type from createDetectionResult
   const [detection, setDetection] = useState<Detection | null>(null);
   // Coordinates are from rotated frame (portrait 1080x1920)
@@ -118,7 +111,6 @@ export default function VisionCameraScanner() {
         from: embeddingAsset.localUri,
         to: embeddingLocalPath,
       });
-      setEmbeddingModelPath(embeddingLocalPath);
       console.log('✅ Embedding model loaded');
 
       // 2. Load set symbol detection models (MTG)
@@ -159,7 +151,6 @@ export default function VisionCameraScanner() {
       const result = await initializeScanner({
         segmentationModelPath: yoloLocalPath,
         embeddingModelPath: embeddingLocalPath,
-        gameName: currentGame,
         scanMode: 'single',
         segmentationThreshold: 0.7,
         iouThreshold: 0.7,
@@ -188,12 +179,6 @@ export default function VisionCameraScanner() {
       // Load available games after initialization
       const games = await getSupportedGames();
       console.log('🎮 Available games:', games);
-      setAvailableGames(games);
-
-      // Set first game as current if available
-      if (games.length > 0) {
-        setCurrentGame(games[0].name);
-      }
 
       setIsLoadingModels(false);
     } catch (error) {
@@ -392,6 +377,8 @@ export default function VisionCameraScanner() {
             }}
           >
             <Text style={{ color: 'white', fontSize: 11, lineHeight: 16 }}>
+              {'\n'} Processing time: {detection.processingTime.toFixed(1)} ms{' '}
+              {'\n'}
               {/* Card info with confidence */}
               {cardWithConfidence && (
                 <>
@@ -405,77 +392,12 @@ export default function VisionCameraScanner() {
                   ⚡ Set: {detection.cards[0].setSymbol.setCode.toUpperCase()} -{' '}
                   {detection.cards[0].setSymbol.setName}
                   {'\n'}
-                  {'  '}Variant: {detection.cards[0].setSymbol.variant}
                   {'\n'}
                   {'  '}Match:{' '}
                   {(detection.cards[0].setSymbol.similarity * 100).toFixed(1)}%
-                  {'\n'}
                 </>
               )}
-              {/* YOLO game predictions */}
-              {detection?.cards[0]?.predictedGame && (
-                <>
-                  🎮 YOLO: {detection.cards[0].predictedGame.toUpperCase()}
-                  {'\n'}
-                  {detection.cards[0].topGamePredictions
-                    ?.map(
-                      (pred, idx) =>
-                        `  ${idx + 1}. ${pred.game}: ${(pred.confidence * 100).toFixed(1)}%\n`,
-                    )
-                    .join('')}
-                  {'\n'}
-                </>
-              )}
-              {/* Timing breakdown */}
-              {detection?.timings && (
-                <>
-                  ⏱️ Total: {detection.processingTime.toFixed(1)}ms{'\n'}
-                  {/* {'  '}Extract:{' '}
-                  {(detection.timings.frameExtraction ?? 0).toFixed(1)}ms
-                  {'\n'}
-                  {'  '}YOLO:{' '}
-                  {(
-                    (detection.timings.yoloPreprocess ?? 0) +
-                    (detection.timings.yoloInference ?? 0) +
-                    (detection.timings.yoloPostprocess ?? 0)
-                  ).toFixed(1)}
-                  ms{'\n'}
-                  {'    '}Pre:{' '}
-                  {(detection.timings.yoloPreprocess ?? 0).toFixed(1)}ms
-                  {'\n'}
-                  {'    '}Inf:{' '}
-                  {(detection.timings.yoloInference ?? 0).toFixed(1)}ms
-                  {'\n'}
-                  {'    '}Post:{' '}
-                  {(detection.timings.yoloPostprocess ?? 0).toFixed(1)}ms
-                  {'\n'}
-                  {'  '}Emb:{' '}
-                  {(
-                    (detection.timings.embeddingPreprocess ?? 0) +
-                    (detection.timings.embeddingInference ?? 0)
-                  ).toFixed(1)}
-                  ms{'\n'}
-                  {'    '}Pre:{' '}
-                  {(detection.timings.embeddingPreprocess ?? 0).toFixed(1)}ms
-                  {'\n'}
-                  {'    '}Inf:{' '}
-                  {(detection.timings.embeddingInference ?? 0).toFixed(1)}ms
-                  {'\n'}
-                  {'  '}DB: {(detection.timings.dbSearch ?? 0).toFixed(1)}ms
-                  {'\n'}
-                  {detection.timings.setSymbolDetection &&
-                    detection.timings.setSymbolDetection > 0 && (
-                      <>
-                        {'  '}SetSym:{' '}
-                        {(detection.timings.setSymbolDetection ?? 0).toFixed(1)}
-                        ms
-                        {'\n'}
-                      </>
-                    )}
-                  {'\n'}
-                </> */}
-                </>
-              )}
+              {'\n'}
               Detections: {detection?.cards.length ?? 0}
             </Text>
             {croppedImagePath && (

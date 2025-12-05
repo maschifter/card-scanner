@@ -35,15 +35,23 @@ constexpr float PIXEL_SCALE = 255.0f;
 } // namespace imagenet
 
 // ============================================================================
-// Database Search Parameters
+// Database Configuration
 // ============================================================================
 namespace database {
-// Maximum number of similar cards to return from search
+// Search parameters
 constexpr int MAX_SEARCH_RESULTS = 100;
 // Minimum cosine similarity score for card matching (0.6 = 60% similarity)
 constexpr float MIN_SIMILARITY_SCORE = 0.6f;
 // Embedding vector dimension
 constexpr size_t EMBEDDING_VECTOR_SIZE = 256;
+
+// Database file names and paths
+constexpr const char* SET_SYMBOL_DB_NAME = "set-symbols";
+constexpr const char* DB_FILENAME = "data.mdb";
+constexpr const char* TEMP_SWAP_PREFIX = "temp_swap_";
+
+// Set symbol search configuration
+constexpr int SET_SYMBOL_MAX_RESULTS = 1;
 } // namespace database
 
 // ============================================================================
@@ -54,9 +62,16 @@ namespace yolo {
 // Gray padding color for letterbox (R=114, G=114, B=114)
 const cv::Scalar LETTERBOX_PADDING_COLOR(114, 114, 114);
 
+// Class detection
+constexpr int NUM_CLASSES = 8;
+constexpr int MAX_TOP_PREDICTIONS = 3;
+constexpr const char* UNKNOWN_CLASS_NAME = "unknown";
+
 // Bounding box processing
 // Padding pixels to add around bounding box for mask extraction
 constexpr int BBOX_PADDING = 10;
+// Bounding box features: [x, y, w, h]
+constexpr int YOLO11_BOX_FEATURES = 4;
 
 // Mask processing
 // Threshold for converting probabilistic mask to binary (0.5 = 50%)
@@ -65,22 +80,14 @@ constexpr float MASK_THRESHOLD = 0.5f;
 constexpr uint8_t BINARY_MASK_VALUE = 255;
 // Downsample scale for faster quad extraction from mask
 constexpr float MASK_DOWNSAMPLE_SCALE = 0.25f;
-
-// YOLO11-seg model output structure
-// Total features per prediction: [x, y, w, h, conf, mask_coeff_0..31] = 37
-constexpr int YOLO11_FEATURES = 37;
-// Bounding box features: [x, y, w, h]
-constexpr int YOLO11_BOX_FEATURES = 4;
-// Confidence feature count
-constexpr int YOLO11_CONF_FEATURE = 1;
 // Mask coefficients count (prototypes)
 constexpr int YOLO11_MASK_COEFFS = 32;
-// Number of predictions (anchor points) for 384x384 input
-constexpr int YOLO11_PREDICTIONS = 3024;
-// First mask coefficient index in feature array
-constexpr int YOLO11_MASK_COEFF_START = 5;
-// Last mask coefficient index (exclusive)
-constexpr int YOLO11_MASK_COEFF_END = 37;
+
+// IoU calculation
+constexpr float IOU_EPSILON = 1e-6f;
+
+// Set symbol detection (specific to SetSymbolYoloModel)
+constexpr int SET_SYMBOL_PRED_SIZE = 5;
 
 // Quad extraction
 // Epsilon fractions for polygon approximation (in order of preference)
@@ -93,6 +100,8 @@ constexpr float TOPMOST_TIE_TOLERANCE = 2.0f;
 constexpr double MIN_QUAD_AREA = 5.0;
 // Minimum distance between quad points to avoid degenerate cases
 constexpr float MIN_POINT_DISTANCE = 1.0f;
+// Orientation tolerance for Y-coordinate comparison
+constexpr float ORIENT_Y_TOLERANCE = 0.01f;
 } // namespace yolo
 
 // ============================================================================
@@ -151,6 +160,40 @@ constexpr float SIGMOID_ONE = 1.0f;
 // Matrix reshape single channel
 constexpr int RESHAPE_SINGLE_CHANNEL = 1;
 } // namespace matrix
+
+// ============================================================================
+// MTG-Specific Configuration
+// ============================================================================
+namespace mtg {
+// Default thresholds for MTG card detection
+constexpr float DEFAULT_DETECTION_THRESHOLD = 0.3f;
+constexpr float DEFAULT_CONFIDENCE_THRESHOLD = 0.6f;
+} // namespace mtg
+
+// ============================================================================
+// Visualization Constants
+// ============================================================================
+namespace viz {
+// Colors (BGR format for OpenCV)
+const cv::Scalar QUAD_COLOR_GREEN(0, 255, 0);
+const cv::Scalar BBOX_COLOR_YELLOW(0, 255, 255);
+
+// Line properties
+constexpr int QUAD_LINE_THICKNESS = 3;
+constexpr int BBOX_LINE_THICKNESS = 1;
+
+// Label properties
+constexpr float LABEL_FONT_SCALE = 0.5f;
+constexpr int LABEL_OFFSET_Y = -5;
+constexpr int PERCENT_MULTIPLIER = 100;
+} // namespace viz
+
+// ============================================================================
+// File/Path Constants
+// ============================================================================
+namespace file {
+constexpr const char* URI_PREFIX = "file://";
+} // namespace file
 
 } // namespace constants
 } // namespace cardscanner

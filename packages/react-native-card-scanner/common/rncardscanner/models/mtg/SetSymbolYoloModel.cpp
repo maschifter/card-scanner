@@ -1,5 +1,7 @@
 #include "SetSymbolYoloModel.h"
 #include "../../Constants.h"
+#include "../../utils/PathUtils.h"
+#include "../../utils/YoloPreprocessing.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -16,12 +18,7 @@ using namespace constants;
 SetSymbolYoloModel::SetSymbolYoloModel(const std::string &modelPath, float conf,
                                        float iou, int imgsz)
     : conf_(conf), iou_(iou), imgsz_(imgsz) {
-  // Strip file:// prefix if present
-  std::string cleanPath = modelPath;
-  const std::string filePrefix = "file://";
-  if (cleanPath.find(filePrefix) == 0) {
-    cleanPath = cleanPath.substr(filePrefix.length());
-  }
+  std::string cleanPath = utils::PathUtils::stripFilePrefix(modelPath);
 
   module_ = std::make_unique<Module>(
       cleanPath, Module::LoadMode::MmapUseMlockIgnoreErrors);
@@ -34,69 +31,12 @@ SetSymbolYoloModel::SetSymbolYoloModel(const std::string &modelPath, float conf,
 }
 
 cv::Mat SetSymbolYoloModel::letterbox(const cv::Mat &img, int newSize) const {
-  int height = img.rows;
-  int width = img.cols;
-
-  // Scale ratio (new / old)
-  float r = std::min(static_cast<float>(newSize) / height,
-                     static_cast<float>(newSize) / width);
-
-  // Compute new unpadded dimensions
-  int newUnpadW = std::round(width * r);
-  int newUnpadH = std::round(height * r);
-
-  // Compute padding
-  float dw = (newSize - newUnpadW) / letterbox::PADDING_DIVISOR;
-  float dh = (newSize - newUnpadH) / letterbox::PADDING_DIVISOR;
-
-  // Resize if needed
-  cv::Mat resized;
-  if (height != newUnpadH || width != newUnpadW) {
-    cv::resize(img, resized, cv::Size(newUnpadW, newUnpadH), 0, 0,
-               cv::INTER_LINEAR);
-  } else {
-    resized = img;
-  }
-
-  // Add padding
-  int top = std::round(dh - letterbox::PADDING_ADJUST_MINUS);
-  int bottom = std::round(dh + letterbox::PADDING_ADJUST_PLUS);
-  int left = std::round(dw - letterbox::PADDING_ADJUST_MINUS);
-  int right = std::round(dw + letterbox::PADDING_ADJUST_PLUS);
-
-  cv::Mat padded;
-  cv::copyMakeBorder(resized, padded, top, bottom, left, right,
-                     cv::BORDER_CONSTANT, yolo::LETTERBOX_PADDING_COLOR);
-
-  return padded;
+  return utils::YoloPreprocessing::letterbox(img, newSize);
 }
 
 std::vector<float> SetSymbolYoloModel::preprocess(const cv::Mat &img,
                                                   cv::Mat &letterboxed) const {
-  // Letterbox resize
-  letterboxed = letterbox(img, imgsz_);
-
-  // Convert to float and normalize to [0, 1]
-  cv::Mat normalized;
-  letterboxed.convertTo(normalized, CV_32FC3,
-                        matrix::SIGMOID_ONE / imagenet::PIXEL_SCALE);
-
-  // Convert HWC to CHW and flatten to vector
-  const int channels = model::EMBEDDING_CHANNELS;
-  std::vector<float> inputData(1 * channels * imgsz_ * imgsz_);
-  const float *data = normalized.ptr<float>();
-  size_t hw = imgsz_ * imgsz_;
-
-  for (int c = 0; c < channels; c++) {
-    for (int h = 0; h < imgsz_; h++) {
-      const float *row = data + h * imgsz_ * channels;
-      for (int w = 0; w < imgsz_; w++) {
-        inputData[c * hw + h * imgsz_ + w] = row[w * channels + c];
-      }
-    }
-  }
-
-  return inputData;
+  return utils::YoloPreprocessing::preprocess(img, imgsz_, letterboxed);
 }
 
 float SetSymbolYoloModel::computeIoU(const SetSymbolBBox &a,
@@ -110,7 +50,7 @@ float SetSymbolYoloModel::computeIoU(const SetSymbolBBox &a,
   float area1 = (a.x2 - a.x1) * (a.y2 - a.y1);
   float area2 = (b.x2 - b.x1) * (b.y2 - b.y1);
 
-  return inter / (area1 + area2 - inter + 1e-6f);
+  return inter / (area1 + area2 - inter + yolo::IOU_EPSILON);
 }
 
 std::vector<int> SetSymbolYoloModel::nonMaxSuppression(
@@ -170,7 +110,7 @@ SetSymbolYoloModel::postprocess(const cv::Mat &originalImg,
   // Determine format from output shape
   bool isTransposed = false;
   int numPredictions = 0;
-  const int predSize = 5; // x, y, w, h, conf
+  const int predSize = yolo::SET_SYMBOL_PRED_SIZE; // x, y, w, h, conf
 
   if (outputShape.size() == 3) {
     // [batch, dim1, dim2]
@@ -307,18 +247,13 @@ SetSymbolYoloModel::detect(const std::string &imagePath) {
 }
 
 SetSymbolDetectionResult SetSymbolYoloModel::detect(const cv::Mat &image) {
-  auto startTime = std::chrono::high_resolution_clock::now();
-
   SetSymbolDetectionResult result;
 
   // Preprocessing
-  auto preprocessStart = std::chrono::high_resolution_clock::now();
   cv::Mat letterboxed;
   std::vector<float> inputData = preprocess(image, letterboxed);
-  auto preprocessEnd = std::chrono::high_resolution_clock::now();
 
   // Inference
-  auto inferenceStart = std::chrono::high_resolution_clock::now();
   std::vector<int> inputShape = {1, 3, imgsz_, imgsz_};
   auto inputTensor = from_blob(inputData.data(), inputShape);
   auto inferenceResult = module_->forward(inputTensor);
@@ -335,14 +270,6 @@ SetSymbolDetectionResult SetSymbolYoloModel::detect(const cv::Mat &image) {
   // Convert ArrayRef to vector
   std::vector<long long> outputShape(outputSizes.begin(), outputSizes.end());
 
-  std::cout << "Output tensor shape: [";
-  for (size_t i = 0; i < outputShape.size(); i++) {
-    std::cout << outputShape[i];
-    if (i < outputShape.size() - 1)
-      std::cout << ", ";
-  }
-  std::cout << "]" << std::endl;
-
   size_t outSize = 1;
   for (const auto &dim : outputShape) {
     outSize *= dim;
@@ -350,29 +277,9 @@ SetSymbolDetectionResult SetSymbolYoloModel::detect(const cv::Mat &image) {
 
   const float *outData = outputTensor.const_data_ptr<float>();
   std::vector<float> preds(outData, outData + outSize);
-  auto inferenceEnd = std::chrono::high_resolution_clock::now();
 
   // Postprocessing
-  auto postprocessStart = std::chrono::high_resolution_clock::now();
   result.detections = postprocess(image, letterboxed, preds, outputShape);
-  auto postprocessEnd = std::chrono::high_resolution_clock::now();
-
-  auto endTime = std::chrono::high_resolution_clock::now();
-
-  // Calculate timing
-  result.performance.preprocessingTimeMs =
-      std::chrono::duration<double, std::milli>(preprocessEnd - preprocessStart)
-          .count();
-  result.performance.inferenceTimeMs =
-      std::chrono::duration<double, std::milli>(inferenceEnd - inferenceStart)
-          .count();
-  result.performance.postprocessingTimeMs =
-      std::chrono::duration<double, std::milli>(postprocessEnd -
-                                                postprocessStart)
-          .count();
-  result.performance.totalTimeMs =
-      std::chrono::duration<double, std::milli>(endTime - startTime).count();
-
   return result;
 }
 

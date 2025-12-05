@@ -11,15 +11,8 @@ namespace cardscanner {
 using namespace executorch::extension;
 using ::executorch::extension::module::Module;
 
-struct SetSymbolEmbeddingPerformance {
-  double totalTimeMs;
-  double preprocessingTimeMs;
-  double inferenceTimeMs;
-};
-
 struct SetSymbolEmbeddingResult {
-  std::vector<float> embedding;  // 128-dim L2-normalized
-  SetSymbolEmbeddingPerformance performance;
+  std::vector<float> embedding; // 128-dim L2-normalized
 };
 
 /**

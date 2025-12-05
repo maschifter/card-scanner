@@ -1,5 +1,7 @@
 #include "SetSymbolEmbedder.h"
 #include "../../Constants.h"
+#include "../../utils/ImageNetNormalization.h"
+#include "../../utils/PathUtils.h"
 #include <chrono>
 #include <iostream>
 #include <opencv2/opencv.hpp>
@@ -19,38 +21,12 @@ constexpr int CHANNELS = 3;        // RGB
 } // namespace set_symbol
 
 std::vector<float> SetSymbolEmbedder::normalizeImage(const cv::Mat &img) const {
-  // Convert to float
-  cv::Mat floatImg;
-  img.convertTo(floatImg, CV_32FC3);
-
-  // Prepare input tensor data in NCHW format
-  const int inputSize = set_symbol::INPUT_SIZE;
-  const int channels = set_symbol::CHANNELS;
-  std::vector<float> normalizedImageData(1 * channels * inputSize * inputSize);
-
-  for (int c = 0; c < channels; c++) {
-    for (int h = 0; h < inputSize; h++) {
-      for (int w = 0; w < inputSize; w++) {
-        int chw_idx = c * inputSize * inputSize + h * inputSize + w;
-        float pixel = floatImg.at<cv::Vec3f>(h, w)[c];
-        // Apply ImageNet normalization: (pixel/scale - mean) / std
-        normalizedImageData[chw_idx] =
-            (pixel / imagenet::PIXEL_SCALE - imagenet::MEAN[c]) /
-            imagenet::STD[c];
-      }
-    }
-  }
-
-  return normalizedImageData;
+  return utils::ImageNetNormalization::normalizeImage(img,
+                                                      set_symbol::INPUT_SIZE);
 }
 
 SetSymbolEmbedder::SetSymbolEmbedder(const std::string &modelPath) {
-  // Strip file:// prefix if present
-  std::string cleanPath = modelPath;
-  const std::string filePrefix = "file://";
-  if (cleanPath.find(filePrefix) == 0) {
-    cleanPath = cleanPath.substr(filePrefix.length());
-  }
+  std::string cleanPath = utils::PathUtils::stripFilePrefix(modelPath);
 
   module_ = std::make_unique<Module>(
       cleanPath, Module::LoadMode::MmapUseMlockIgnoreErrors);
@@ -64,13 +40,9 @@ SetSymbolEmbedder::SetSymbolEmbedder(const std::string &modelPath) {
 
 SetSymbolEmbeddingResult
 SetSymbolEmbedder::computeEmbedding(const cv::Mat &symbolImg) {
-  auto totalStart = std::chrono::high_resolution_clock::now();
-
   if (symbolImg.empty()) {
     throw std::runtime_error("Input set symbol image is empty");
   }
-
-  auto prepStart = std::chrono::high_resolution_clock::now();
 
   // Resize to model input size (96x96)
   cv::Mat resized;
@@ -79,17 +51,8 @@ SetSymbolEmbedder::computeEmbedding(const cv::Mat &symbolImg) {
 
   std::vector<float> inputData = normalizeImage(resized);
 
-  auto prepEnd = std::chrono::high_resolution_clock::now();
-
-  double preprocessingTimeMs =
-      std::chrono::duration_cast<std::chrono::microseconds>(prepEnd - prepStart)
-          .count() /
-      perf::MICROSECONDS_TO_MILLISECONDS;
-
   try {
     // Run inference
-    auto inferenceStart = std::chrono::high_resolution_clock::now();
-
     std::vector<int> inputShape = {1, set_symbol::CHANNELS,
                                    set_symbol::INPUT_SIZE,
                                    set_symbol::INPUT_SIZE};
@@ -120,27 +83,7 @@ SetSymbolEmbedder::computeEmbedding(const cv::Mat &symbolImg) {
       embedding[i] = outputData[i];
     }
 
-    auto inferenceEnd = std::chrono::high_resolution_clock::now();
-
-    double inferenceTimeMs =
-        std::chrono::duration_cast<std::chrono::microseconds>(inferenceEnd -
-                                                              inferenceStart)
-            .count() /
-        perf::MICROSECONDS_TO_MILLISECONDS;
-
-    auto totalEnd = std::chrono::high_resolution_clock::now();
-    double totalTimeMs = std::chrono::duration_cast<std::chrono::microseconds>(
-                             totalEnd - totalStart)
-                             .count() /
-                         perf::MICROSECONDS_TO_MILLISECONDS;
-
-    SetSymbolEmbeddingResult result;
-    result.embedding = embedding;
-    result.performance.totalTimeMs = totalTimeMs;
-    result.performance.inferenceTimeMs = inferenceTimeMs;
-    result.performance.preprocessingTimeMs = preprocessingTimeMs;
-
-    return result;
+    return {embedding};
   } catch (const std::exception &e) {
     throw; // Re-throw to let caller handle
   }
