@@ -334,7 +334,6 @@ export default function VisionCameraScanner() {
         fps={30}
         videoStabilizationMode="off"
         enableBufferCompression={false}
-        photoQualityBalance="speed"
         onLayout={(event) => {
           const { width, height } = event.nativeEvent.layout;
           setCameraLayout({ width, height });
