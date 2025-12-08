@@ -46,3 +46,42 @@ struct Card_ {
     static const obx::Property<Card, OBXPropertyType_String> card_id;
 };
 
+
+struct SetSymbol_;
+
+struct SetSymbol {
+    obx_id id;
+    std::string set_code;
+    std::string set_name;
+    std::string variant;
+    uint64_t date_created;
+    std::vector<float> embedding;
+
+    struct _OBX_MetaInfo {
+        static constexpr obx_schema_id entityId() { return 2; }
+    
+        static void setObjectId(SetSymbol& object, obx_id newId) { object.id = newId; }
+    
+        /// Write given object to the FlatBufferBuilder
+        static void toFlatBuffer(flatbuffers::FlatBufferBuilder& fbb, const SetSymbol& object);
+    
+        /// Read an object from a valid FlatBuffer
+        static SetSymbol fromFlatBuffer(const void* data, size_t size);
+    
+        /// Read an object from a valid FlatBuffer
+        static std::unique_ptr<SetSymbol> newFromFlatBuffer(const void* data, size_t size);
+    
+        /// Read an object from a valid FlatBuffer
+        static void fromFlatBuffer(const void* data, size_t size, SetSymbol& outObject);
+    };
+};
+
+struct SetSymbol_ {
+    static const obx::Property<SetSymbol, OBXPropertyType_Long> id;
+    static const obx::Property<SetSymbol, OBXPropertyType_String> set_code;
+    static const obx::Property<SetSymbol, OBXPropertyType_String> set_name;
+    static const obx::Property<SetSymbol, OBXPropertyType_String> variant;
+    static const obx::Property<SetSymbol, OBXPropertyType_Long> date_created;
+    static const obx::Property<SetSymbol, OBXPropertyType_FloatVector> embedding;
+};
+

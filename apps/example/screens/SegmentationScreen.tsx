@@ -64,14 +64,16 @@ export default function SegmentationScreen() {
 
       // 1. Load ML models
       console.log('📦 Loading ML models...');
-      const yoloAsset = Asset.fromModule(require('../assets/yolo11n-seg.pte'));
+      const yoloAsset = Asset.fromModule(
+        require('../assets/yolo11n-seg-cls-v2.pte'),
+      );
       await yoloAsset.downloadAsync();
 
       if (!yoloAsset.localUri) {
         throw new Error('Failed to load YOLO model');
       }
 
-      const yoloLocalPath = `${cacheDirectory}yolo11n-seg.pte`;
+      const yoloLocalPath = `${cacheDirectory}yolo11n-seg-cls-v2.pte`;
       await copyAsync({
         from: yoloAsset.localUri,
         to: yoloLocalPath,
@@ -96,7 +98,22 @@ export default function SegmentationScreen() {
 
       // 3. Initialize scanner with ML models and default game
       console.log('🚀 Initializing scanner...');
-      initializeScanner(yoloLocalPath, embeddingLocalPath, 'lorcana');
+      const result = await initializeScanner({
+        segmentationModelPath: yoloLocalPath,
+        embeddingModelPath: embeddingLocalPath,
+        scanMode: 'single',
+        segmentationThreshold: 0.7,
+        iouThreshold: 0.7,
+        confidenceThreshold: 0.6,
+        maxMatches: 5,
+        searchCandidates: 100,
+        captureImage: false,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to initialize scanner');
+      }
+
       console.log('✅ Scanner initialized successfully');
 
       setIsLoadingModels(false);
@@ -128,6 +145,11 @@ export default function SegmentationScreen() {
       return;
     }
 
+    if (isLoadingModels) {
+      setError('Models are still loading. Please wait...');
+      return;
+    }
+
     setIsProcessing(true);
     setError(null);
     setYoloResult(null);
@@ -138,7 +160,6 @@ export default function SegmentationScreen() {
 
       console.log('Segmentation result:', result);
       console.log('Detected cards:', result.cardCount);
-      console.log('Inference time:', result.inferenceMs, 'ms');
       setYoloResult(result);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -168,10 +189,14 @@ export default function SegmentationScreen() {
           <TouchableOpacity
             style={[styles.primaryButton, styles.secondaryButton]}
             onPress={runSegmentation}
-            disabled={isProcessing}
+            disabled={isProcessing || isLoadingModels}
           >
             <Text style={styles.primaryButtonText}>
-              {isProcessing ? 'Processing...' : 'Run Segmentation'}
+              {isProcessing
+                ? 'Processing...'
+                : isLoadingModels
+                  ? 'Loading Models...'
+                  : 'Run Segmentation'}
             </Text>
           </TouchableOpacity>
         )}
@@ -209,30 +234,6 @@ export default function SegmentationScreen() {
             <View style={styles.statRow}>
               <Text style={styles.statLabel}>Cards Detected:</Text>
               <Text style={styles.statValue}>{yoloResult.cardCount}</Text>
-            </View>
-            <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Total Time:</Text>
-              <Text style={styles.statValue}>
-                {yoloResult.totalMs.toFixed(1)} ms
-              </Text>
-            </View>
-            <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Inference Time:</Text>
-              <Text style={styles.statValue}>
-                {yoloResult.inferenceMs.toFixed(1)} ms
-              </Text>
-            </View>
-            <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Preprocessing Time:</Text>
-              <Text style={styles.statValue}>
-                {yoloResult.preprocessingMs.toFixed(1)} ms
-              </Text>
-            </View>
-            <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Postprocessing Time:</Text>
-              <Text style={styles.statValue}>
-                {yoloResult.postprocessingMs.toFixed(1)} ms
-              </Text>
             </View>
           </View>
 

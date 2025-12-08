@@ -12,21 +12,20 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Camera,
   runAtTargetFps,
+  runAsync,
   useCameraDevice,
   useCameraFormat,
   useCameraPermission,
   useFrameProcessor,
 } from 'react-native-vision-camera';
 import {
-  startScanning,
+  scanFrame,
   initializeScanner,
   releaseScanner,
   createDetectionResult,
-  switchGame,
   getSupportedGames,
   type Detection,
   type DetectedCard,
-  type Game,
 } from 'react-native-card-scanner';
 import { Asset } from 'expo-asset';
 import { cacheDirectory, copyAsync } from 'expo-file-system/legacy';
@@ -34,24 +33,20 @@ import Svg, { Rect } from 'react-native-svg';
 import { useRunOnJS } from 'react-native-worklets-core';
 
 const screenWidth = Dimensions.get('window').width;
-const screenHeight = Dimensions.get('window').height;
 
 export default function VisionCameraScanner() {
   const insets = useSafeAreaInsets();
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
   const format = useCameraFormat(device, [
+    { fps: 30 },
     { videoResolution: { width: 1080, height: 1920 } },
+    { videoStabilizationMode: 'off' },
   ]);
   const [isScanning, setIsScanning] = useState(false);
   const [isLoadingModels, setIsLoadingModels] = useState(true);
   const [modelError, setModelError] = useState<string | null>(null);
   const [modelPath, setModelPath] = useState<string | null>(null);
-  const [embeddingModelPath, setEmbeddingModelPath] = useState<string | null>(
-    null,
-  );
-  const [availableGames, setAvailableGames] = useState<Game[]>([]);
-  const [currentGame, setCurrentGame] = useState<string>('lorcana');
   // Use Detection type from createDetectionResult
   const [detection, setDetection] = useState<Detection | null>(null);
   // Coordinates are from rotated frame (portrait 1080x1920)
@@ -62,6 +57,15 @@ export default function VisionCameraScanner() {
   const [croppedImagePath, setCroppedImagePath] = useState<string | null>(null);
   const [timingStats, setTimingStats] = useState<any>(null);
   const [cameraLayout, setCameraLayout] = useState({ width: 0, height: 0 });
+
+  // Card history tracking
+  const [lastScannedCardId, setLastScannedCardId] = useState<string | null>(
+    null,
+  );
+  const [consecutiveDetections, setConsecutiveDetections] = useState<number>(0);
+  const [scannedCardsHistory, setScannedCardsHistory] = useState<
+    DetectedCard[]
+  >([]);
 
   // Load models on mount
   useEffect(() => {
@@ -78,14 +82,16 @@ export default function VisionCameraScanner() {
 
       // 1. Load ML models
       console.log('📦 Loading ML models...');
-      const yoloAsset = Asset.fromModule(require('../assets/yolo11n-seg.pte'));
+      const yoloAsset = Asset.fromModule(
+        require('../assets/yolo11n-seg-cls-v2.pte'),
+      );
       await yoloAsset.downloadAsync();
 
       if (!yoloAsset.localUri) {
         throw new Error('Failed to load YOLO model');
       }
 
-      const yoloLocalPath = `${cacheDirectory}yolo11n-seg.pte`;
+      const yoloLocalPath = `${cacheDirectory}yolo11n-seg-cls-v2.pte`;
       await copyAsync({
         from: yoloAsset.localUri,
         to: yoloLocalPath,
@@ -107,22 +113,63 @@ export default function VisionCameraScanner() {
         from: embeddingAsset.localUri,
         to: embeddingLocalPath,
       });
-      setEmbeddingModelPath(embeddingLocalPath);
       console.log('✅ Embedding model loaded');
+
+      // 2. Load set symbol detection models (MTG)
+      console.log('📦 Loading set symbol detection models...');
+      const setSymbolYoloAsset = Asset.fromModule(
+        require('../assets/mtg/set_symbol_detection.pte'),
+      );
+      await setSymbolYoloAsset.downloadAsync();
+      if (!setSymbolYoloAsset.localUri) {
+        throw new Error('Failed to load set symbol YOLO model');
+      }
+      const setSymbolYoloPath = `${cacheDirectory}set_symbol_detection.pte`;
+      await copyAsync({
+        from: setSymbolYoloAsset.localUri,
+        to: setSymbolYoloPath,
+      });
+      console.log('✅ Set symbol YOLO loaded');
+
+      const setSymbolEmbedderAsset = Asset.fromModule(
+        require('../assets/mtg/set_symbol_embedder.pte'),
+      );
+      await setSymbolEmbedderAsset.downloadAsync();
+      if (!setSymbolEmbedderAsset.localUri) {
+        throw new Error('Failed to load set symbol embedder');
+      }
+      const setSymbolEmbedderPath = `${cacheDirectory}set_symbol_embedder.pte`;
+      await copyAsync({
+        from: setSymbolEmbedderAsset.localUri,
+        to: setSymbolEmbedderPath,
+      });
+      console.log('✅ Set symbol embedder loaded');
+
+      // Note: Set symbol database is loaded at app start via loadAllDatabases()
+      // It's accessible via DatabaseManager at 'set-symbols'
 
       // 3. Initialize scanner with configuration
       console.log('🚀 Initializing scanner...');
       const result = await initializeScanner({
         segmentationModelPath: yoloLocalPath,
         embeddingModelPath: embeddingLocalPath,
-        gameName: currentGame,
         scanMode: 'single',
         segmentationThreshold: 0.7,
         iouThreshold: 0.7,
         confidenceThreshold: 0.6,
         maxMatches: 5,
         searchCandidates: 100,
-        captureImage: false, // Enable image capture
+        captureImage: false,
+        gameSpecificConfig: {
+          mtg: {
+            setSymbolDetection: {
+              detectionModelPath: setSymbolYoloPath,
+              embeddingModelPath: setSymbolEmbedderPath,
+              detectionThreshold: 0.3,
+              confidenceThreshold: 0.6,
+            },
+          },
+        },
       });
 
       if (!result.success) {
@@ -134,12 +181,6 @@ export default function VisionCameraScanner() {
       // Load available games after initialization
       const games = await getSupportedGames();
       console.log('🎮 Available games:', games);
-      setAvailableGames(games);
-
-      // Set first game as current if available
-      if (games.length > 0) {
-        setCurrentGame(games[0].name);
-      }
 
       setIsLoadingModels(false);
     } catch (error) {
@@ -151,23 +192,47 @@ export default function VisionCameraScanner() {
 
   // Process raw scan result and transform to rich Detection type
   const processDetectionCallback = useRunOnJS(
-    (rawResult: any, width: number, height: number) => {
+    (rawResult: any, lastCardId: string | null, currentCount: number) => {
       // Use createDetectionResult to transform raw → rich types
       const detection = createDetectionResult(rawResult);
 
-      setDetection(detection);
-      setFrameSize({ width, height });
+      setFrameSize({ width: 1080, height: 1920 });
 
-      // Update UI with first card's info
+      // Always show detection for real-time feedback (both identified and unidentified)
+      setDetection(detection);
+
+      // Update UI with first identified card's info
       if (detection.success && detection.cards.length > 0) {
         const firstCard = detection.cards[0];
-        setCardWithConfidence(
-          `${firstCard.cardId} (${(firstCard.confidenceScore * 100).toFixed(1)}%)`,
-        );
 
-        // Set cropped image if available
-        if (firstCard.capturedImage) {
-          setCroppedImagePath(firstCard.capturedImage);
+        // Check if this is a new card (different from last scanned)
+        if (firstCard.cardId !== lastCardId) {
+          // Different card - reset counter and start tracking
+          setLastScannedCardId(firstCard.cardId);
+          setConsecutiveDetections(1); // First detection of this card
+
+          // Don't add to history yet - wait for confirmation (2nd detection)
+        } else {
+          // Same card as before - increment counter
+          const newCount = currentCount + 1;
+          setConsecutiveDetections(newCount);
+
+          if (newCount === 2) {
+            // Second consecutive detection - now confirm and add to history!
+            setScannedCardsHistory((prev) => {
+              const newHistory = [firstCard, ...prev];
+              return newHistory.slice(0, 10); // Keep only last 10
+            });
+
+            setCardWithConfidence(
+              `${firstCard.name} [${firstCard.gameName}] (${(firstCard.confidenceScore * 100).toFixed(1)}%)`,
+            );
+
+            // Set cropped image if available
+            if (firstCard.capturedImage) {
+              setCroppedImagePath(firstCard.capturedImage.uri);
+            }
+          }
         }
       }
     },
@@ -178,70 +243,45 @@ export default function VisionCameraScanner() {
   const frameProcessor = useFrameProcessor(
     (frame) => {
       'worklet';
-      runAtTargetFps(5, () => {
-        if (!isScanning || !modelPath) {
-          return;
-        }
 
-        // Call startScanning (returns RawScanResult - worklet safe)
-        const rawResult = startScanning(frame);
+      if (!isScanning || !modelPath) {
+        return;
+      }
 
-        // Pass raw result to JS thread for transformation using createDetectionResult
-        if (rawResult.cardCount > 0) {
-          processDetectionCallback(
-            rawResult,
-            rawResult.frameWidth,
-            rawResult.frameHeight,
-          );
-        }
+      // Run the heavy processing asynchronously to avoid blocking the camera
+      runAsync(frame, () => {
+        'worklet';
 
-        // Log detailed timing breakdown
-        const yoloTotal =
-          (rawResult.yoloPreprocessMs ?? 0) +
-          (rawResult.yoloInferenceMs ?? 0) +
-          (rawResult.yoloPostprocessMs ?? 0);
-        const embeddingTotal =
-          (rawResult.embeddingPreprocessMs ?? 0) +
-          (rawResult.embeddingInferenceMs ?? 0);
+        runAtTargetFps(5, () => {
+          // Call startScanning (returns RawScanResult - worklet safe)
+          const rawResult = scanFrame(frame);
 
-        console.log(
-          `📊 Frame: ${rawResult.frameWidth}x${rawResult.frameHeight} | Total: ${(rawResult.processingTime ?? 0).toFixed(2)}ms\n` +
-            `  Extract: ${(rawResult.frameExtractionMs ?? 0).toFixed(2)}ms\n` +
-            `  YOLO: ${yoloTotal.toFixed(2)}ms (pre:${(rawResult.yoloPreprocessMs ?? 0).toFixed(1)} + inf:${(rawResult.yoloInferenceMs ?? 0).toFixed(1)} + post:${(rawResult.yoloPostprocessMs ?? 0).toFixed(1)})\n` +
-            `  Embedding: ${embeddingTotal.toFixed(2)}ms (pre:${(rawResult.embeddingPreprocessMs ?? 0).toFixed(1)} + inf:${(rawResult.embeddingInferenceMs ?? 0).toFixed(1)})\n` +
-            `  DB Search: ${(rawResult.dbSearchMs ?? 0).toFixed(2)}ms | Cards: ${rawResult.cardCount}`,
-        );
+          // Pass raw result to JS thread for transformation using createDetectionResult
+
+          if (rawResult.cardCount > 0) {
+            processDetectionCallback(
+              rawResult,
+              lastScannedCardId,
+              consecutiveDetections,
+            );
+          }
+
+          // Log detailed timing breakdown
+        });
       });
     },
-    [isScanning, processDetectionCallback],
+    [
+      isScanning,
+      modelPath,
+      processDetectionCallback,
+      lastScannedCardId,
+      consecutiveDetections,
+    ],
   );
 
   const toggleScanning = () => {
     setIsScanning(!isScanning);
     if (isScanning) {
-    }
-  };
-
-  const handleGameSwitch = (gameName: string) => {
-    // Stop scanning during switch
-    const wasScanning = isScanning;
-    if (wasScanning) {
-      setIsScanning(false);
-    }
-
-    // Switch game
-    console.log(`🎮 Switching to ${gameName}...`);
-    switchGame(gameName);
-    setCurrentGame(gameName);
-
-    // Clear previous detection
-    setDetection(null);
-    setCardWithConfidence(null);
-    setCroppedImagePath(null);
-
-    // Resume scanning if it was active
-    if (wasScanning) {
-      setTimeout(() => setIsScanning(true), 100);
     }
   };
 
@@ -291,6 +331,10 @@ export default function VisionCameraScanner() {
         isActive={true}
         frameProcessor={frameProcessor}
         pixelFormat="rgb"
+        fps={30}
+        videoStabilizationMode="off"
+        enableBufferCompression={false}
+        photoQualityBalance="speed"
         onLayout={(event) => {
           const { width, height } = event.nativeEvent.layout;
           setCameraLayout({ width, height });
@@ -298,9 +342,10 @@ export default function VisionCameraScanner() {
       />
 
       {/* Bounding box overlay */}
-      {detection && detection.cards.length > 0 && (
+      {detection && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Svg style={StyleSheet.absoluteFill}>
+            {/* Render identified cards (green) */}
             {detection.cards.map((card, index) => {
               const box = card.boundingBox;
 
@@ -338,7 +383,7 @@ export default function VisionCameraScanner() {
 
               return (
                 <Rect
-                  key={index}
+                  key={`identified-${index}`}
                   x={x}
                   y={y}
                   width={width}
@@ -354,7 +399,7 @@ export default function VisionCameraScanner() {
           <View
             style={{
               position: 'absolute',
-              top: 100,
+              top: 50,
               left: 20,
               backgroundColor: 'rgba(0,0,0,0.7)',
               padding: 10,
@@ -362,6 +407,8 @@ export default function VisionCameraScanner() {
             }}
           >
             <Text style={{ color: 'white', fontSize: 11, lineHeight: 16 }}>
+              {'\n'} Processing time: {detection.processingTime.toFixed(1)} ms{' '}
+              {'\n'}
               {/* Card info with confidence */}
               {cardWithConfidence && (
                 <>
@@ -369,45 +416,18 @@ export default function VisionCameraScanner() {
                   {'\n\n'}
                 </>
               )}
-              {/* Timing breakdown */}
-              {detection?.timings && (
+              {/* MTG Set Symbol */}
+              {detection?.cards[0]?.setSymbol && (
                 <>
-                  ⏱️ Total: {detection.processingTime.toFixed(1)}ms{'\n'}
-                  {'  '}Extract:{' '}
-                  {(detection.timings.frameExtraction ?? 0).toFixed(1)}ms
+                  ⚡ Set: {detection.cards[0].setSymbol.setCode.toUpperCase()} -{' '}
+                  {detection.cards[0].setSymbol.setName}
                   {'\n'}
-                  {'  '}YOLO:{' '}
-                  {(
-                    (detection.timings.yoloPreprocess ?? 0) +
-                    (detection.timings.yoloInference ?? 0) +
-                    (detection.timings.yoloPostprocess ?? 0)
-                  ).toFixed(1)}
-                  ms{'\n'}
-                  {'    '}Pre:{' '}
-                  {(detection.timings.yoloPreprocess ?? 0).toFixed(1)}ms
                   {'\n'}
-                  {'    '}Inf:{' '}
-                  {(detection.timings.yoloInference ?? 0).toFixed(1)}ms
-                  {'\n'}
-                  {'    '}Post:{' '}
-                  {(detection.timings.yoloPostprocess ?? 0).toFixed(1)}ms
-                  {'\n'}
-                  {'  '}Emb:{' '}
-                  {(
-                    (detection.timings.embeddingPreprocess ?? 0) +
-                    (detection.timings.embeddingInference ?? 0)
-                  ).toFixed(1)}
-                  ms{'\n'}
-                  {'    '}Pre:{' '}
-                  {(detection.timings.embeddingPreprocess ?? 0).toFixed(1)}ms
-                  {'\n'}
-                  {'    '}Inf:{' '}
-                  {(detection.timings.embeddingInference ?? 0).toFixed(1)}ms
-                  {'\n'}
-                  {'  '}DB: {(detection.timings.dbSearch ?? 0).toFixed(1)}ms
-                  {'\n\n'}
+                  {'  '}Match:{' '}
+                  {(detection.cards[0].setSymbol.similarity * 100).toFixed(1)}%
                 </>
               )}
+              {'\n'}
               Detections: {detection?.cards.length ?? 0}
             </Text>
             {croppedImagePath && (
@@ -422,37 +442,48 @@ export default function VisionCameraScanner() {
                 resizeMode="contain"
               />
             )}
+            {/* Set Symbol Image */}
+            {detection?.cards[0]?.setSymbol?.croppedImagePath && (
+              <View style={{ marginTop: 10 }}>
+                <Text style={{ color: 'white', fontSize: 10, marginBottom: 4 }}>
+                  Set Symbol:
+                </Text>
+                <Image
+                  source={{
+                    uri: detection.cards[0].setSymbol.croppedImagePath,
+                  }}
+                  style={{
+                    width: 60,
+                    height: 60,
+                    borderRadius: 4,
+                    backgroundColor: 'rgba(255,255,255,0.1)',
+                  }}
+                  resizeMode="contain"
+                />
+              </View>
+            )}
           </View>
         </View>
       )}
 
-      {/* Game Switcher */}
-      {availableGames.length > 0 && (
-        <View style={[styles.gameSwitcher, { top: 10 }]}>
-          <Text style={styles.gameSwitcherLabel}>
-            Game: {currentGame.toUpperCase()}
+      {/* Card History */}
+      {scannedCardsHistory.length > 0 && (
+        <View style={styles.historyContainer}>
+          <Text style={styles.historyTitle}>
+            📜 Scanned Cards ({scannedCardsHistory.length})
           </Text>
-          <View style={styles.gameButtons}>
-            {availableGames.map((game) => (
-              <TouchableOpacity
-                key={game.name}
-                style={[
-                  styles.gameButton,
-                  currentGame === game.name && styles.gameButtonActive,
-                ]}
-                onPress={() => handleGameSwitch(game.name)}
-              >
-                <Text
-                  style={[
-                    styles.gameButtonText,
-                    currentGame === game.name && styles.gameButtonTextActive,
-                  ]}
-                >
-                  {game.name.toUpperCase()}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {scannedCardsHistory.map((card, index) => (
+            <View key={`${card.cardId}-${index}`} style={styles.historyItem}>
+              <Text style={styles.historyCardName} numberOfLines={1}>
+                {card.name}
+              </Text>
+              <Text style={styles.historyCardInfo}>
+                {card.gameName.toUpperCase()} •{' '}
+                {(card.confidenceScore * 100).toFixed(0)}%
+                {card.setSymbol && ` • ${card.setSymbol.setCode.toUpperCase()}`}
+              </Text>
+            </View>
+          ))}
         </View>
       )}
 
@@ -581,5 +612,36 @@ const styles = StyleSheet.create({
   },
   gameButtonTextActive: {
     color: '#fff',
+  },
+  historyContainer: {
+    position: 'absolute',
+    top: 100,
+    right: 10,
+    maxWidth: 200,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    borderRadius: 8,
+    padding: 10,
+    maxHeight: 300,
+  },
+  historyTitle: {
+    color: '#4CAF50',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  historyItem: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 6,
+  },
+  historyCardName: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  historyCardInfo: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 9,
+    marginTop: 2,
   },
 });

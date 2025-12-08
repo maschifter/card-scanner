@@ -6,20 +6,13 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   ScrollView,
-  Alert,
 } from 'react-native';
 import {
   autoLoadDatabase,
   checkDatabaseStatus,
   DatabaseStats,
 } from '../utils/database';
-import {
-  runYoloSegmentation,
-  useDatabaseManager,
-} from 'react-native-card-scanner';
-import * as FileSystem from 'expo-file-system';
-import { Asset } from 'expo-asset';
-import { loadModels } from '../utils/models';
+import { useDatabaseManager } from 'react-native-card-scanner';
 
 const DEFAULT_GAME_NAME = 'lorcana';
 
@@ -28,11 +21,9 @@ export default function HomeScreen() {
   const [stats, setStats] = useState<DatabaseStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [autoLoadMessage, setAutoLoadMessage] = useState<string | null>(null);
-  const [isBenchmarkingYolo, setIsBenchmarkingYolo] = useState(false);
   const [selectedGame, setSelectedGame] = useState<string | null>(
     DEFAULT_GAME_NAME,
   );
-  const [yoloResult, setYoloResult] = useState<string | null>(null);
   const { databases, refreshDatabases } = useDatabaseManager();
 
   useEffect(() => {

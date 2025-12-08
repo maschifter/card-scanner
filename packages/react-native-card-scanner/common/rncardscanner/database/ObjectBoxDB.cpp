@@ -106,7 +106,62 @@ ObjectBoxDB::search_similar_cards(const std::vector<float> &query_embedding,
   return results;
 }
 
+std::vector<SetSymbolMatch>
+ObjectBoxDB::search_similar_set_symbols(const std::vector<float> &query_embedding,
+                                        int limit) {
+  std::vector<SetSymbolMatch> results;
+
+  try {
+    obx::Box<SetSymbol> box(*store);
+
+    // Perform HNSW vector search
+    auto query = box.query()
+                     .nearestNeighborsFloat32(SetSymbol_::embedding,
+                                              query_embedding.data(), limit)
+                     .build();
+
+    auto symbols = query.find();
+
+    // Calculate dot product similarity for each symbol
+    for (const auto &symbol : symbols) {
+      SetSymbolMatch match;
+      match.setCode = symbol.set_code;
+      match.setName = symbol.set_name;
+      match.variant = symbol.variant;
+
+      // Calculate cosine similarity (dot product of normalized vectors)
+      float dotProduct = 0.0f;
+      for (size_t i = 0; i < query_embedding.size() && i < symbol.embedding.size(); i++) {
+        dotProduct += query_embedding[i] * symbol.embedding[i];
+      }
+      match.similarity = dotProduct;
+      results.push_back(match);
+    }
+
+    // Sort by similarity (highest first)
+    std::sort(results.begin(), results.end(),
+              [](const SetSymbolMatch &a, const SetSymbolMatch &b) {
+                return a.similarity > b.similarity;
+              });
+
+  } catch (const std::exception &e) {
+    std::cerr << "SetSymbol search failed: " << e.what() << std::endl;
+  }
+
+  return results;
+}
+
 uint64_t ObjectBoxDB::get_card_count() {
   obx::Box<Card> box(*store);
   return box.count();
+}
+
+uint64_t ObjectBoxDB::get_set_symbol_count() {
+  try {
+    obx::Box<SetSymbol> box(*store);
+    return box.count();
+  } catch (const std::exception &e) {
+    std::cerr << "Failed to get set symbol count: " << e.what() << std::endl;
+    return 0;
+  }
 }

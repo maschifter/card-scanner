@@ -1,16 +1,14 @@
 #pragma once
 
+#include "core/ScannerPipeline.h"
+#include "dto/ScanResults.h"
+#include "dto/ScannerConfig.h"
+#include "utils/JSISerializer.h"
 #include <DatabaseManager.h>
 #include <ReactCommon/CallInvoker.h>
 #include <jsi/jsi.h>
 #include <memory>
 #include <mutex>
-
-// Forward declarations
-namespace cardscanner {
-class YoloSegmentationModel;
-class CardEmbeddingModel;
-} // namespace cardscanner
 
 namespace rncardscanner {
 
@@ -36,38 +34,26 @@ public:
   // Singleton model instances
   static std::shared_ptr<cardscanner::YoloSegmentationModel> getYoloModel();
   static std::shared_ptr<cardscanner::CardEmbeddingModel> getEmbeddingModel();
-
-  // Scanner configuration struct
-  struct ScannerConfig {
-    std::string yoloPath;
-    std::string embeddingPath;
-    std::string gameName;
-    std::string scanMode; // "single" or "multiple"
-    float segmentationThreshold;
-    float iouThreshold;
-    float confidenceThreshold;
-    int maxMatches;
-    int searchCandidates;
-    bool captureImage;
-  };
+  static std::shared_ptr<cardscanner::SetSymbolYoloModel>
+  getSetSymbolYoloModel();
+  static std::shared_ptr<cardscanner::SetSymbolEmbedder> getSetSymbolEmbedder();
 
   // Initialize models with configuration
-  static void initializeModels(const ScannerConfig &config);
+  static void initializeModels();
 
   // Release models and free resources
   static void releaseModels();
 
-  // Thread-safe accessors for current game and config
-  static std::string getCurrentGame();
-  static void setCurrentGame(const std::string &gameName);
-  static ScannerConfig getConfig();
+  // Thread-safe accessors for config
+  static dto::ScannerConfig getConfig();
 
 private:
   static std::shared_ptr<cardscanner::YoloSegmentationModel> yoloModel_;
   static std::shared_ptr<cardscanner::CardEmbeddingModel> embeddingModel_;
+  static std::shared_ptr<cardscanner::SetSymbolYoloModel> setSymbolYoloModel_;
+  static std::shared_ptr<cardscanner::SetSymbolEmbedder> setSymbolEmbedder_;
   static std::mutex modelMutex_;
-  static std::string currentGame_;
-  static ScannerConfig config_;
+  static dto::ScannerConfig config_;
 };
 
 } // namespace rncardscanner

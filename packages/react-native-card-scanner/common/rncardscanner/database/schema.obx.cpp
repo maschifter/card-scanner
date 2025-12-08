@@ -67,3 +67,79 @@ void Card::_OBX_MetaInfo::fromFlatBuffer(const void* data, size_t, Card& outObje
     }
 }
 
+const obx::Property<SetSymbol, OBXPropertyType_Long> SetSymbol_::id(1);
+const obx::Property<SetSymbol, OBXPropertyType_String> SetSymbol_::set_code(2);
+const obx::Property<SetSymbol, OBXPropertyType_String> SetSymbol_::set_name(3);
+const obx::Property<SetSymbol, OBXPropertyType_String> SetSymbol_::variant(4);
+const obx::Property<SetSymbol, OBXPropertyType_Long> SetSymbol_::date_created(5);
+const obx::Property<SetSymbol, OBXPropertyType_FloatVector> SetSymbol_::embedding(6);
+
+void SetSymbol::_OBX_MetaInfo::toFlatBuffer(flatbuffers::FlatBufferBuilder& fbb, const SetSymbol& object) {
+    fbb.Clear();
+    auto offsetset_code = fbb.CreateString(object.set_code);
+    auto offsetset_name = fbb.CreateString(object.set_name);
+    auto offsetvariant = fbb.CreateString(object.variant);
+    auto offsetembedding = fbb.CreateVector(object.embedding);
+    flatbuffers::uoffset_t fbStart = fbb.StartTable();
+    fbb.AddElement(4, object.id);
+    fbb.AddOffset(6, offsetset_code);
+    fbb.AddOffset(8, offsetset_name);
+    fbb.AddOffset(10, offsetvariant);
+    fbb.AddElement(12, object.date_created);
+    fbb.AddOffset(14, offsetembedding);
+    flatbuffers::Offset<flatbuffers::Table> offset;
+    offset.o = fbb.EndTable(fbStart);
+    fbb.Finish(offset);
+}
+
+SetSymbol SetSymbol::_OBX_MetaInfo::fromFlatBuffer(const void* data, size_t size) {
+    SetSymbol object;
+    fromFlatBuffer(data, size, object);
+    return object;
+}
+
+std::unique_ptr<SetSymbol> SetSymbol::_OBX_MetaInfo::newFromFlatBuffer(const void* data, size_t size) {
+    auto object = std::make_unique<SetSymbol>();
+    fromFlatBuffer(data, size, *object);
+    return object;
+}
+
+void SetSymbol::_OBX_MetaInfo::fromFlatBuffer(const void* data, size_t, SetSymbol& outObject) {
+    const auto* table = flatbuffers::GetRoot<flatbuffers::Table>(data);
+    assert(table);
+    outObject.id = table->GetField<obx_id>(4, 0);
+    {
+        auto* ptr = table->GetPointer<const flatbuffers::String*>(6);
+        if (ptr) {
+            outObject.set_code.assign(ptr->c_str(), ptr->size());
+        } else {
+            outObject.set_code.clear();
+        }
+    }
+    {
+        auto* ptr = table->GetPointer<const flatbuffers::String*>(8);
+        if (ptr) {
+            outObject.set_name.assign(ptr->c_str(), ptr->size());
+        } else {
+            outObject.set_name.clear();
+        }
+    }
+    {
+        auto* ptr = table->GetPointer<const flatbuffers::String*>(10);
+        if (ptr) {
+            outObject.variant.assign(ptr->c_str(), ptr->size());
+        } else {
+            outObject.variant.clear();
+        }
+    }
+    outObject.date_created = table->GetField<uint64_t>(12, 0);
+    {
+        auto* ptr = table->GetPointer<const flatbuffers::Vector<float>*>(14);
+        if (ptr) { 
+            outObject.embedding.assign(ptr->begin(), ptr->end());
+        } else {
+            outObject.embedding.clear();
+        }
+    }
+}
+

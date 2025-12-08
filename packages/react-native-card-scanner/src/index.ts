@@ -8,7 +8,6 @@ import type { Frame } from 'react-native-vision-camera';
 export interface ScannerConfig {
   segmentationModelPath: string;
   embeddingModelPath: string;
-  gameName: string; // Default game for initialization
   scanMode: 'single' | 'multiple'; // Single: highest confidence only
   segmentationThreshold: number; // YOLO confidence threshold (default: 0.7)
   iouThreshold: number; // NMS IOU threshold (default: 0.7)
@@ -16,12 +15,19 @@ export interface ScannerConfig {
   maxMatches: number; // Max matches to return per detection
   searchCandidates: number; // DB fetch size for approximate search
   captureImage?: boolean; // Save cropped card images
-  expansionDetectionConfig?: {
-    segmentationModelPath: string;
-    embeddingModelPath: string;
-    segmentationThreshold: number;
-    confidenceThreshold: number;
+
+  // Game-specific detection configs (extensible per-game features)
+  gameSpecificConfig?: {
+    mtg?: {
+      setSymbolDetection?: {
+        detectionModelPath: string;
+        embeddingModelPath: string;
+        detectionThreshold: number;
+        confidenceThreshold: number;
+      };
+    };
   };
+
   enableLanguageDetection?: boolean;
   enableFoilDetection?: boolean;
 }
@@ -46,18 +52,10 @@ export interface SwapResult {
 
 export interface RawScanResult {
   cardCount: number;
-  frameWidth: number;
-  frameHeight: number;
+  segmentationCount: number;
   detections: RawDetection[];
   processingTime: number;
   // Timing breakdown
-  frameExtractionMs?: number;
-  yoloPreprocessMs?: number;
-  yoloInferenceMs?: number;
-  yoloPostprocessMs?: number;
-  embeddingPreprocessMs?: number;
-  embeddingInferenceMs?: number;
-  dbSearchMs?: number;
   error?: string;
 }
 
@@ -65,10 +63,25 @@ export interface RawDetection {
   box: BoundingBox;
   matches: RawMatch[];
   croppedImagePath?: string;
+  predictedGame?: string; // YOLO's top game prediction
+  topGamePredictions?: GamePrediction[]; // Top 3 game predictions from YOLO
+  setSymbol?: {
+    // MTG set symbol info
+    setCode: string;
+    setName: string;
+    similarity: number;
+    croppedImagePath?: string;
+  };
+}
+
+export interface GamePrediction {
+  game: string;
+  confidence: number;
 }
 
 export interface RawMatch {
   cardId: string;
+  name: string;
   gameName: string;
   score: number;
 }
@@ -81,26 +94,34 @@ export interface Detection {
   success: boolean;
   cards: DetectedCard[];
   processingTime: number;
-  timings?: {
-    frameExtraction?: number;
-    yoloPreprocess?: number;
-    yoloInference?: number;
-    yoloPostprocess?: number;
-    embeddingPreprocess?: number;
-    embeddingInference?: number;
-    dbSearch?: number;
-  };
   error?: string;
+}
+
+interface CapturedImage {
+  uri: string;
+  width: number;
+  height: number;
+  format: 'jpeg' | 'png' | 'webp';
+  size: number; // in bytes
 }
 
 export interface DetectedCard {
   cardId: string;
   name: string;
-  gameName: string;
+  gameName: string; // From best match (multi-game search)
   confidenceScore: number;
   boundingBox: BoundingBox;
-  capturedImage?: string;
+  capturedImage?: CapturedImage;
   alternativeCards: AlternativeMatch[];
+  predictedGame?: string; // YOLO's prediction
+  topGamePredictions?: GamePrediction[]; // YOLO's top 3
+  setSymbol?: {
+    // MTG set symbol info
+    setCode: string;
+    setName: string;
+    similarity: number;
+    croppedImagePath?: string;
+  };
   language?: {
     code: string;
     confidence: number;
@@ -150,20 +171,41 @@ declare global {
   // Core scanner functions
   var initializeScannerNative: (config: ScannerConfig) => InitializationResult;
   var releaseScanner: () => void;
-  var startScanningPlugin: (frame: Frame) => RawScanResult;
+  var scanFramePlugin: (frame: Frame) => RawScanResult;
 
   // Database management
-  var switchGame: (gameName: string) => void;
   var swapDatabaseNative: (sourcePath: string, gameName: string) => SwapResult;
   var getCardCount: (gameName: string) => number;
   var listAvailableGames: () => DatabaseInfo[];
-  var closeGameStore: (gameName: string) => void;
 
   // Debug functions
   var runSegmentationDebug: (
     imagePath: string,
     outputDir: string,
   ) => RawScanResult;
+}
+
+// Set symbol detection result type
+export interface SetSymbolDetectionResult {
+  success: boolean;
+  error?: string;
+  setCode?: string;
+  setName?: string;
+  confidence?: number;
+  croppedImagePath?: string;
+  embedding?: number[];
+  bbox?: {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    confidence: number;
+  };
+  topMatches?: Array<{
+    setCode: string;
+    setName: string;
+    similarity: number;
+  }>;
 }
 
 // ============================================================================
@@ -178,9 +220,9 @@ if (global.initializeScannerNative == null) {
   }
   CardScannerInstallerNativeModule.install();
 
-  if (global.startScanningPlugin == null) {
+  if (global.scanFramePlugin == null) {
     throw new Error(
-      `Failed to install react-native-card-scanner: The global 'startScanningPlugin' function was not found after installation.`,
+      `Failed to install react-native-card-scanner: The global 'scanFramePlugin' function was not found after installation.`,
     );
   }
 }
@@ -221,14 +263,14 @@ export function releaseScanner(): void {
  * @param frame - Vision Camera frame
  * @returns Raw scan result (worklet-safe)
  */
-export function startScanning(frame: Frame): RawScanResult {
+export function scanFrame(frame: Frame): RawScanResult {
   'worklet';
 
-  if (typeof startScanningPlugin !== 'function') {
-    throw new Error('startScanningPlugin is not available in worklet runtime');
+  if (typeof scanFramePlugin !== 'function') {
+    throw new Error('scanFramePlugin is not available in worklet runtime');
   }
 
-  return startScanningPlugin(frame);
+  return scanFramePlugin(frame);
 }
 
 /**
@@ -246,38 +288,42 @@ export function createDetectionResult(raw: RawScanResult): Detection {
     };
   }
 
-  const cards: DetectedCard[] = raw.detections.map((det) => {
-    const primaryMatch = det.matches[0];
-    const alternativeCards = det.matches.slice(1).map((match) => ({
-      cardId: match.cardId,
-      name: '', // Name will be fetched separately or from card data service
-      confidence: match.score,
-    }));
+  const cards: DetectedCard[] = raw.detections
+    .filter((det) => det.matches && det.matches.length > 0)
+    .map((det) => {
+      const primaryMatch = det.matches[0];
+      const alternativeCards = det.matches.slice(1).map((match) => ({
+        cardId: match.cardId,
+        name: match.name,
+        confidence: match.score,
+      }));
 
-    return {
-      cardId: primaryMatch?.cardId || '',
-      name: '', // Name will be fetched separately or from card data service
-      gameName: primaryMatch?.gameName || '',
-      confidenceScore: primaryMatch?.score || 0,
-      boundingBox: det.box,
-      capturedImage: det.croppedImagePath ? det.croppedImagePath : undefined,
-      alternativeCards,
-    };
-  });
+      return {
+        cardId: primaryMatch.cardId,
+        name: primaryMatch.name,
+        gameName: primaryMatch.gameName,
+        confidenceScore: primaryMatch.score,
+        boundingBox: det.box,
+        capturedImage: det.croppedImagePath
+          ? {
+              uri: det.croppedImagePath,
+              width: 0, // TODO: Add actual dimensions if available
+              height: 0,
+              format: 'jpeg' as const,
+              size: 0,
+            }
+          : undefined,
+        alternativeCards,
+        predictedGame: det.predictedGame,
+        topGamePredictions: det.topGamePredictions,
+        setSymbol: det.setSymbol,
+      };
+    });
 
   return {
     success: true,
     cards,
     processingTime: raw.processingTime,
-    timings: {
-      frameExtraction: raw.frameExtractionMs,
-      yoloPreprocess: raw.yoloPreprocessMs,
-      yoloInference: raw.yoloInferenceMs,
-      yoloPostprocess: raw.yoloPostprocessMs,
-      embeddingPreprocess: raw.embeddingPreprocessMs,
-      embeddingInference: raw.embeddingInferenceMs,
-      dbSearch: raw.dbSearchMs,
-    },
   };
 }
 
@@ -324,28 +370,12 @@ export async function swapDatabase(
 }
 
 /**
- * Switch to a different game database
- * @param gameName - Game identifier to switch to
- */
-export function switchGame(gameName: string): void {
-  global.switchGame(gameName);
-}
-
-/**
  * Get card count for a specific game
  * @param gameName - Game identifier
  * @returns Number of cards in database
  */
 export function getCardCount(gameName: string): number {
   return global.getCardCount(gameName);
-}
-
-/**
- * Close a game store/database
- * @param gameName - Game identifier to close
- */
-export function closeGameStore(gameName: string): void {
-  global.closeGameStore(gameName);
 }
 
 // ============================================================================

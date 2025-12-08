@@ -1,6 +1,7 @@
 #ifndef PATHPROVIDER_H
 #define PATHPROVIDER_H
 
+#include <mutex>
 #include <string>
 
 namespace pathprovider {

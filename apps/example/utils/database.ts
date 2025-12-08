@@ -13,6 +13,12 @@ const GAME_DATABASES = [
   { name: 'fab', asset: require('../assets/fab.mdb') },
 ];
 
+// Set symbol database (for MTG)
+const SET_SYMBOL_DATABASE = {
+  name: 'set-symbols',
+  asset: require('../assets/mtg/mtg-sets.mdb'),
+};
+
 export interface DatabaseStats {
   cardCount: number;
   isLoaded: boolean;
@@ -77,12 +83,38 @@ export async function loadDatabaseFromAsset(
 }
 
 /**
+ * Load set symbol database (MTG sets) - same as game databases
+ */
+export async function loadSetSymbolDatabase(): Promise<void> {
+  try {
+    console.log('📦 Loading set symbol database...');
+    await loadDatabaseFromAsset(
+      SET_SYMBOL_DATABASE.name,
+      SET_SYMBOL_DATABASE.asset,
+    );
+    console.log('✅ Set symbol database loaded successfully');
+  } catch (error) {
+    console.error('❌ Failed to load set symbol database:', error);
+    throw error;
+  }
+}
+
+/**
  * Load all game databases from assets
  */
 export async function loadAllDatabases(): Promise<GameDatabaseStatus[]> {
   console.log('📦 Loading all game databases...');
 
   const results: GameDatabaseStatus[] = [];
+
+  // Load set symbol database first (for MTG)
+  try {
+    await loadSetSymbolDatabase();
+  } catch (error) {
+    console.error(
+      '❌ Set symbol database failed to load, continuing with games...',
+    );
+  }
 
   for (const game of GAME_DATABASES) {
     try {

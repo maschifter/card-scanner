@@ -1,4 +1,7 @@
 #include "DatabaseManager.h"
+#include "../Constants.h"
+#include "../database/objectbox-model.h"
+#include "../utils/PathUtils.h"
 #include "ObjectBoxDB.h"
 #include "PathProvider.h"
 #include <filesystem>
@@ -6,17 +9,15 @@
 
 namespace fs = std::filesystem;
 namespace cardscanner {
-// Privates:
-std::unique_ptr<DatabaseManager> DatabaseManager::instance_ = nullptr;
+
+using namespace constants;
 
 DatabaseManager::DatabaseManager() : baseDbPath_(pathprovider::get_db_path()) {
-
   // Constructor should scan for existing stores, and attach them
   scanForExistingStores();
 }
 
 std::string DatabaseManager::resolvePathFor(const std::string &gameName) const {
-
   fs::path fullPath = baseDbPath_;
   // This operations should be fail proofed in case gameName path doesnt exist
   fullPath /= gameName;
@@ -25,26 +26,25 @@ std::string DatabaseManager::resolvePathFor(const std::string &gameName) const {
 
 // Publics:
 DatabaseManager &DatabaseManager::getInstance() {
-  if (instance_ == nullptr) {
-    // If not created, create the single instance now
-    instance_ = std::unique_ptr<DatabaseManager>(new DatabaseManager());
-  }
-  // Return a reference to the existing single instance
-  return *instance_;
+  // Meyer's Singleton - thread-safe since C++11
+  static DatabaseManager instance;
+  return instance;
 }
 
 std::set<std::string> DatabaseManager::getKnownGames() const {
+  std::lock_guard<std::mutex> lock(mutex_);
   return knownGames_;
 }
 
 ObjectBoxDB *DatabaseManager::getOrCreateStore(const std::string &gameName) {
+  std::lock_guard<std::mutex> lock(mutex_);
 
   if (knownGames_.find(gameName) == knownGames_.end()) {
     knownGames_.insert(gameName);
   }
   auto it = activeStores_.find(gameName);
   if (it != activeStores_.end()) {
-    return it->second.get(); // Store found in activeStores - Retrun it
+    return it->second.get(); // Store found in activeStores - Return it
   }
 
   const std::string path = resolvePathFor(gameName);
@@ -55,25 +55,27 @@ ObjectBoxDB *DatabaseManager::getOrCreateStore(const std::string &gameName) {
 }
 
 void DatabaseManager::openStore(const std::string &gameName) {
+  std::lock_guard<std::mutex> lock(mutex_);
   if (knownGames_.find(gameName) == knownGames_.end()) {
     knownGames_.insert(gameName);
   }
-  if (isClosedAndSwappable(gameName)) {
+  if (activeStores_.find(gameName) == activeStores_.end()) {
     const std::string path = resolvePathFor(gameName);
-
     GameStorePtr newGameStore = std::make_unique<ObjectBoxDB>(path);
     activeStores_.emplace(gameName, std::move(newGameStore));
   }
 }
 
 void DatabaseManager::closeStore(const std::string &gameName) {
+  std::lock_guard<std::mutex> lock(mutex_);
   auto it = activeStores_.find(gameName);
   if (it != activeStores_.end()) {
-    activeStores_.erase(it); // Unique_ptr should handle closing and destruciton
+    activeStores_.erase(it); // Unique_ptr should handle closing and destruction
   }
 }
 
 bool DatabaseManager::isClosedAndSwappable(const std::string &gameName) const {
+  std::lock_guard<std::mutex> lock(mutex_);
   // If the gameName is NOT in the map, the store is closed (not active).
   return activeStores_.find(gameName) == activeStores_.end();
 }
@@ -87,6 +89,7 @@ void DatabaseManager::scanForExistingStores() {
     return;
   }
 
+  std::lock_guard<std::mutex> lock(mutex_);
   knownGames_.clear();
 
   try {
@@ -94,6 +97,12 @@ void DatabaseManager::scanForExistingStores() {
 
       if (entry.is_directory()) {
         const std::string gameName = entry.path().filename().string();
+
+        // Skip set-symbols directory (used by SetSymbolDatabase, not game
+        // cards)
+        if (gameName == database::SET_SYMBOL_DB_NAME) {
+          continue;
+        }
 
         fs::path dataFilePath = getStorePath(gameName);
 
@@ -115,72 +124,109 @@ void DatabaseManager::scanForExistingStores() {
 
 std::string DatabaseManager::getStorePath(const std::string &gameName) const {
   fs::path path(resolvePathFor(gameName));
-  path /= "data.mdb";
+  path /= database::DB_FILENAME;
   return path;
 }
 
-fs::path clean_path(const std::string &path_str) {
-  std::string cleaned = path_str;
-  const std::string prefix = "file://";
-  if (cleaned.rfind(prefix, 0) == 0) {
-    cleaned.erase(0, prefix.length());
+ObjectBoxDB *DatabaseManager::getSetSymbolStore() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!setSymbolStore_) {
+    try {
+      // Define path for set symbols database
+      fs::path baseDbPath(baseDbPath_);
+      fs::path dbDir = baseDbPath / database::SET_SYMBOL_DB_NAME;
+
+      // Ensure directory exists
+      if (!fs::exists(dbDir)) {
+        fs::create_directories(dbDir);
+      }
+
+      std::cout << "Opening SetSymbol database at: " << dbDir << std::endl;
+      setSymbolStore_ = std::make_unique<ObjectBoxDB>(dbDir.string());
+    } catch (const std::exception &e) {
+      std::cerr << "Failed to initialize SetSymbol store: " << e.what()
+                << std::endl;
+      setSymbolStore_.reset(); // Ensure nullptr on failure
+    }
   }
-  return fs::path(cleaned);
+  return setSymbolStore_.get();
 }
+
+void DatabaseManager::closeSetSymbolStore() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (setSymbolStore_) {
+    setSymbolStore_.reset();
+    std::cout << "SetSymbol store closed." << std::endl;
+  }
+}
+
+// --- UPDATED SWAP LOGIC ---
 
 bool DatabaseManager::swapDatabaseFile(const std::string &gameName,
                                        const std::string &sourcePath) {
 
-  if (!isClosedAndSwappable(gameName)) {
-    closeStore(gameName);
+  // Handle Special Case: Set Symbols
+  if (gameName == database::SET_SYMBOL_DB_NAME) {
+    closeSetSymbolStore();
+  } else {
+    if (!isClosedAndSwappable(gameName)) {
+      closeStore(gameName);
+    }
   }
 
-  // 2. Define paths using the Manager's logic
-  fs::path source = clean_path(sourcePath);
+  fs::path source = fs::path(utils::PathUtils::stripFilePrefix(sourcePath));
 
-  fs::path target = getStorePath(gameName);
-
-  // Target is: DB_PATH/gameName/data.mdb
-  // Source is: the path to the incoming new file
+  // Determine target path
+  fs::path target;
+  if (gameName == database::SET_SYMBOL_DB_NAME) {
+    target = fs::path(baseDbPath_) / database::SET_SYMBOL_DB_NAME /
+             database::DB_FILENAME;
+  } else {
+    target = fs::path(getStorePath(gameName));
+  }
 
   try {
     fs::create_directories(target.parent_path());
 
+    // Basic copy/swap logic
     if (!fs::exists(source)) {
+      std::cerr << "Source file does not exist: " << source << std::endl;
       return false;
     }
 
+    // If target doesn't exist, simple move
     if (!fs::exists(target)) {
       fs::rename(source, target);
-      openStore(gameName); // This adds it to the map
-      return true;
+    } else {
+      // Atomic swap attempt
+      fs::path tempPath = target.parent_path() /
+                          (std::string(database::TEMP_SWAP_PREFIX) +
+                           target.filename().string());
+      fs::rename(target, tempPath); // Backup old
+      try {
+        fs::rename(source, target); // Move new in
+        fs::remove(tempPath);       // Delete backup
+      } catch (...) {
+        // Rollback if move fails
+        fs::rename(tempPath, target);
+        throw;
+      }
     }
 
-    // Create temporary path near the target (for atomic swap)
-    fs::path tempPath =
-        target.parent_path() / ("temp_swap_" + target.filename().string());
+    // Re-open logic
+    if (gameName == database::SET_SYMBOL_DB_NAME) {
+      getSetSymbolStore(); // Re-initializes
+    } else {
+      openStore(gameName);
+    }
 
-    fs::rename(target, tempPath);
+    return true;
 
-    fs::rename(source, target);
-
-    fs::remove(tempPath);
-
-    openStore(gameName);
-
-  } catch (const fs::filesystem_error &e) {
-    // Log error and return failure
-    std::cerr << "Filesystem Error during swap for " << gameName << ": "
-              << e.what() << std::endl;
-    return false;
   } catch (const std::exception &e) {
-    // Log other errors
-    std::cerr << "Standard Exception during swap for " << gameName << ": "
-              << e.what() << std::endl;
+    std::cerr << "Swap failed for " << gameName << ": " << e.what()
+              << std::endl;
     return false;
   }
-
-  return true;
 }
 
 } // namespace cardscanner

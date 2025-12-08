@@ -6,7 +6,6 @@ import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { loadAllDatabases, type GameDatabaseStatus } from './utils/database';
 import HomeScreen from './screens/HomeScreen';
 import SegmentationScreen from './screens/SegmentationScreen';
-import DatabaseManagerScreen from './screens/DatabaseScreen';
 import VisionCameraScanner from './screens/VisionCameraScanner';
 
 const Tab = createBottomTabNavigator();
@@ -32,9 +31,7 @@ export default function App() {
     const failedDatabases = results.filter((r) => !r.stats.isLoaded);
     if (failedDatabases.length === results.length) {
       // All databases failed
-      setLoadError(
-        'Failed to load any game databases. Please check the logs.',
-      );
+      setLoadError('Failed to load any game databases. Please check the logs.');
     } else if (failedDatabases.length > 0) {
       // Some databases failed
       console.warn(
@@ -85,8 +82,6 @@ export default function App() {
               iconName = focused ? 'home' : 'home-outline';
             } else if (route.name === 'Segmentation') {
               iconName = focused ? 'scan' : 'scan-outline';
-            } else if (route.name === 'Databases') {
-              iconName = focused ? 'server' : 'server-outline';
             } else if (route.name === 'VisionCamera') {
               iconName = focused ? 'videocam' : 'videocam-outline';
             }
@@ -113,11 +108,6 @@ export default function App() {
           name="Segmentation"
           component={SegmentationScreen}
           options={{ title: 'Segmentation' }}
-        />
-        <Tab.Screen
-          name="Databases"
-          component={DatabaseManagerScreen}
-          options={{ title: 'Databases' }}
         />
         <Tab.Screen
           name="VisionCamera"

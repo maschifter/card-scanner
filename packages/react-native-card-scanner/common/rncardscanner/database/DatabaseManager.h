@@ -5,100 +5,169 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <objectbox.hpp>
-#include <stdexcept>
+#include <set>
 #include <string>
 
 namespace cardscanner {
 using GameStorePtr = std::unique_ptr<ObjectBoxDB>;
 
+/**
+ * @class DatabaseManager
+ * @brief Thread-safe singleton managing multiple ObjectBox database instances
+ *
+ * This class manages two types of databases:
+ * 1. Game Stores - One database per card game (MTG, Pokemon, etc.)
+ * 2. Set Symbol Store - Special database for set symbol embeddings (MTG-specific)
+ *
+ * Key Features:
+ * - Thread-safe singleton using Meyer's pattern (C++11 guarantees)
+ * - Lazy initialization - databases opened on first access
+ * - Store management - open/close/swap operations
+ * - Auto-discovery - scans filesystem for existing databases
+ *
+ * Database Structure:
+ * - Base path: Application's database directory
+ * - Game stores: <baseDbPath>/<gameName>/data.mdb
+ * - Set symbol store: <baseDbPath>/set-symbols/data.mdb
+ *
+ * Thread Safety:
+ * All public methods are protected by an internal mutex. Safe to call from
+ * any thread (JS thread, native module threads, background threads).
+ *
+ * Usage:
+ * @code
+ * auto& manager = DatabaseManager::getInstance();
+ * ObjectBoxDB* mtgDb = manager.getOrCreateStore("mtg");
+ * ObjectBoxDB* setSymbolDb = manager.getSetSymbolStore();
+ * @endcode
+ */
 class DatabaseManager {
 private:
   DatabaseManager();
-  // --- Singleton Pattern Implementation ---
-  static std::unique_ptr<DatabaseManager> instance_;
 
+  // Standard Game Stores
   std::map<std::string, GameStorePtr> activeStores_;
   std::set<std::string> knownGames_;
+
+  // Set Symbol Store (now using ObjectBoxDB like game stores)
+  GameStorePtr setSymbolStore_;
+
   const std::string baseDbPath_;
 
+  // Mutex for thread-safe access to shared state
+  mutable std::mutex mutex_;
+
 public:
-  // --- Prevent Copying/Moving (Standard Singleton Practice) ---
+  // Prevent copying and assignment (singleton pattern)
   DatabaseManager(const DatabaseManager &) = delete;
   DatabaseManager &operator=(const DatabaseManager &) = delete;
-  DatabaseManager(DatabaseManager &&) = delete;
-  DatabaseManager &operator=(DatabaseManager &&) = delete;
 
-  // --- Public Singleton Access ---
+  /**
+   * @brief Returns the singleton instance (Meyer's singleton - thread-safe)
+   * @return Reference to the DatabaseManager singleton
+   */
   static DatabaseManager &getInstance();
 
   /**
-   * @brief Resolves the full file path for a game's data file.
-   * @param gameName The unique identifier (directory name).
-   * @return The full path (e.g., "DB_PATH/GameA/data.mdb").
+   * @brief Resolves the full filesystem path for a game's database directory
+   * @param gameName Name of the game (e.g., "mtg", "pokemon")
+   * @return Full path to the game's database directory
    */
   std::string resolvePathFor(const std::string &gameName) const;
 
   /**
-   * @brief Gets a list of all game names that have an existing database file.
-   * @return A copy of the set of known game names.
+   * @brief Returns set of all known games discovered during initialization
+   * @return Set of game names (e.g., {"mtg", "pokemon"})
    */
   std::set<std::string> getKnownGames() const;
 
+  // --- Game Access ---
+
   /**
-   * @brief Gets the active store for a game, or opens it if not yet
-   * initialized.
-   * @param gameName The unique game identifier.
-   * @return A raw pointer to the active store. Returns nullptr or throws if
-   * opening fails.
+   * @brief Gets or creates a database store for the specified game
+   * @param gameName Name of the game (e.g., "mtg", "pokemon")
+   * @return Pointer to the ObjectBoxDB instance, or nullptr on failure
+   *
+   * Opens the database if not already open. Creates the directory structure
+   * if it doesn't exist. Thread-safe.
    */
   ObjectBoxDB *getOrCreateStore(const std::string &gameName);
 
   /**
-   * @brief Opens a specific game's store and adds it to the active
-   * registry. This makes the underlying file unsafe for swapping/modification.
-   * @param gameName The unique game identifier.
+   * @brief Explicitly opens a database store for a game
+   * @param gameName Name of the game to open
+   *
+   * Initializes the ObjectBoxDB instance. No-op if already open.
    */
   void openStore(const std::string &gameName);
 
   /**
-   * @brief Closes a specific game's store and removes it from the active
-   * registry. This makes the underlying file safe for swapping/modification.
-   * @param gameName The unique game identifier.
+   * @brief Closes a game's database store
+   * @param gameName Name of the game to close
+   *
+   * Releases resources and removes from active stores. Required before
+   * swapping database files.
    */
   void closeStore(const std::string &gameName);
 
   /**
-   * @brief Checks if a specific game's store is fully closed and safe to
-   * swap/modify.
-   * @param gameName The unique game identifier.
-   * @return true if the store is not active (i.e., closed), false otherwise.
+   * @brief Checks if a store is closed and can be swapped
+   * @param gameName Name of the game to check
+   * @return true if store is closed and swappable, false otherwise
    */
   bool isClosedAndSwappable(const std::string &gameName) const;
 
-  // --- API: Path and Discovery ---
+  // --- Set Symbol Access ---
 
   /**
-   * @brief Scans the base path for existing game directories and confirms their
-   * DB files. This can be used to populate a list of available games.
+   * @brief Returns the ObjectBoxDB for Set Symbols
+   * @return Pointer to the set symbol database, or nullptr on failure
+   *
+   * Initializes the database if not already open. Used for MTG set symbol
+   * recognition via embedding search.
+   */
+  ObjectBoxDB *getSetSymbolStore();
+
+  /**
+   * @brief Closes the set symbol store
+   *
+   * Required before swapping the set symbol database file. Releases all
+   * resources associated with the set symbol database.
+   */
+  void closeSetSymbolStore();
+
+  // --- Management ---
+
+  /**
+   * @brief Scans filesystem for existing database directories
+   *
+   * Populates knownGames_ with all games that have database directories.
+   * Called automatically during initialization.
    */
   void scanForExistingStores();
 
   /**
-   * @brief Provides the full file path for a store,
-   * @param gameName The unique game identifier.
-   * @return The full file path to the expected database file.
+   * @brief Returns the full path to a game's database directory
+   * @param gameName Name of the game
+   * @return Full filesystem path (e.g., "/path/to/db/mtg")
    */
   std::string getStorePath(const std::string &gameName) const;
 
   /**
-   * @brief Performs a three-step file swap for a specific game's database.
-   * * This method ensures the database is closed, performs the swap,
-   * and optionally reopens the target database.
-   * * @param gameName The unique identifier (directory name) of the target
-   * database.
-   * @param sourcePath The full path to the new, incoming database file.
-   * @return true on successful swap and reopen, false otherwise.
+   * @brief Atomically swaps a game's database file with a new one
+   * @param gameName Name of the game whose database to swap
+   * @param sourcePath Path to the new database file (data.mdb)
+   * @return true if swap succeeded, false otherwise
+   *
+   * Process:
+   * 1. Verifies store is closed
+   * 2. Copies source to temporary location
+   * 3. Removes old database
+   * 4. Moves temporary to final location
+   *
+   * Thread-safe. Fails if store is currently open.
    */
   bool swapDatabaseFile(const std::string &gameName,
                         const std::string &sourcePath);
