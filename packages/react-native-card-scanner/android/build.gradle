@@ -1,0 +1,206 @@
+import org.apache.tools.ant.taskdefs.condition.Os
+
+buildscript {
+  ext {
+    agp_version = '8.4.2'
+    objectboxVersion = '5.0.1'
+  }
+
+  // Buildscript is evaluated before everything else so we can't use getExtOrDefault
+  def kotlin_version = rootProject.ext.has("kotlinVersion") ? rootProject.ext.get("kotlinVersion") : project.properties["CardScanner_kotlinVersion"]
+
+  repositories {
+    google()
+    mavenCentral()
+  }
+
+  dependencies {
+    classpath "com.android.tools.build:gradle:$agp_version"
+    // noinspection DifferentKotlinGradleVersion
+    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    classpath "io.objectbox:objectbox-gradle-plugin:$objectboxVersion"
+  }
+}
+
+def reactNativeArchitectures() {
+  def value = rootProject.getProperties().get("reactNativeArchitectures")
+  // For simplicity, we'll support the most common architectures.
+  // Adjust this list if your pre-built .so files support fewer/more.
+  def defaultArchitectures = ["x86_64", "arm64-v8a"]
+  if(!value) {
+    return defaultArchitectures
+  }
+  def architectures = value.split(",")
+  return architectures.findAll { it in defaultArchitectures }
+}
+
+apply plugin: "com.android.library"
+apply plugin: "kotlin-android"
+apply plugin: "com.facebook.react"
+apply plugin: "io.objectbox"
+
+
+def getExtOrDefault(name) {
+  return rootProject.ext.has(name) ? rootProject.ext.get(name) : project.properties["CardScanner_" + name]
+}
+
+def getExtOrIntegerDefault(name) {
+  return rootProject.ext.has(name) ? rootProject.ext.get(name) : (project.properties["CardScanner_" + name]).toInteger()
+}
+
+def supportsNamespace() {
+  def parsed = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION.tokenize('.')
+  def major = parsed[0].toInteger()
+  def minor = parsed[1].toInteger()
+
+  // Namespace support was added in 7.3.0
+  return (major == 7 && minor >= 3) || major >= 8
+}
+
+def safeAppExtGet(prop, fallback) {
+  def appProject = rootProject.allprojects.find { it.plugins.hasPlugin('com.android.application') }
+  appProject?.ext?.has(prop) ? appProject.ext.get(prop) : fallback
+}
+
+def toPlatformFileString(String path) {
+  if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+      path = path.replace(File.separatorChar, '/' as char)
+  }
+  return path
+}
+
+def resolveReactNativeDirectory() {
+  def reactNativeLocation = safeAppExtGet("REACT_NATIVE_NODE_MODULES_DIR", null)
+
+  if (reactNativeLocation !== null) {
+    return file(reactNativeLocation)
+  }
+
+  // Fallback to node resolver for custom directory structures like monorepos.
+  def reactNativePackage = file(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim())
+  if(reactNativePackage.exists()) {
+      return reactNativePackage.parentFile
+  }
+
+  throw new GradleException(
+      "[RnCardScanner] Unable to resolve react-native location in node_modules. You should project extension property (in `app/build.gradle`) `REACT_NATIVE_NODE_MODULES_DIR` with path to react-native."
+  )
+}
+
+def reactNativeRootDir = resolveReactNativeDirectory()
+
+
+android {
+  if (supportsNamespace()) {
+    namespace "com.cardnexus.cardscanner"
+  }
+
+    buildFeatures {
+    prefab true
+    prefabPublishing true
+    buildConfig true
+  }
+
+  prefab {
+    "react-native-card-scanner" {
+      headers "src/main/cpp"
+    }
+  }
+
+  compileSdkVersion getExtOrIntegerDefault("compileSdkVersion")
+
+  defaultConfig {
+    minSdkVersion getExtOrIntegerDefault("minSdkVersion")
+    targetSdkVersion getExtOrIntegerDefault("targetSdkVersion")
+    externalNativeBuild {
+      cmake {
+          cppFlags "-O3 -DNDEBUG -frtti -fexceptions -Wall -fstack-protector-all -fopenmp -static-openmp -funroll-loops -ffast-math"
+          abiFilters (*reactNativeArchitectures())
+          arguments "-DANDROID_STL=c++_shared",
+                    "-DREACT_NATIVE_DIR=${resolveReactNativeDirectory()}",
+                    "-DCMAKE_BUILD_TYPE=Release",
+                    "-DANDROID_ARM_NEON=TRUE"
+      }
+    }
+    ndk {
+      abiFilters (*reactNativeArchitectures())
+    }
+  }
+
+  externalNativeBuild {
+    cmake {
+      path "CMakeLists.txt"
+    }
+  }
+
+  buildTypes {
+    release {
+      minifyEnabled false
+    }
+  }
+
+  lintOptions {
+    disable "GradleCompatible"
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_1_8
+    targetCompatibility JavaVersion.VERSION_1_8
+  }
+
+  sourceSets {
+      main {
+          jniLibs.srcDirs = ["src/main/jniLibs"]
+      }
+  }
+}
+
+repositories {
+  mavenCentral()
+  google()
+}
+
+def kotlin_version = getExtOrDefault("kotlinVersion")
+
+dependencies {
+  // Standard React Native dependencies
+  implementation "com.facebook.react:react-android"
+  implementation "com.facebook.react:react-native:+"
+  implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+  // Add fbjni, which is required for the JNI bridge
+  implementation 'com.facebook.fbjni:fbjni:0.6.0'
+  implementation 'com.facebook.fbjni:fbjni:0.6.0'
+  implementation "io.objectbox:objectbox-android:$objectboxVersion"
+  implementation files('libs/classes.jar')
+}
+
+task extractSo(type: Copy) {
+    doFirst {
+        println 'Extracting *.so file(s)....'
+
+        def objectboxAarFile = fileTree(dir: gradle.gradleUserHomeDir).include("caches/modules-2/files-2.1/io.objectbox/objectbox-android/${objectboxVersion}/**/*.aar").singleFile
+
+        if (objectboxAarFile == null || !objectboxAarFile.exists()) {
+            throw new GradleException("Could not find objectbox-android AAR file in Gradle caches. Searched in: ${gradle.gradleUserHomeDir}/caches/modules-2/files-2.1/io.objectbox/objectbox-android/${objectboxVersion}/")
+        }
+
+        from zipTree(objectboxAarFile)
+    }
+
+    into "${project.projectDir}/src/main/jniLibs/"
+    include "jni/**/*.so"
+
+    eachFile {
+        def segments = it.getRelativePath().getSegments() as List
+        println segments
+        it.setPath(segments.tail().join("/"))
+        return it
+    }
+    includeEmptyDirs = false
+
+    doLast {
+        println "Extracted .so files to: ${project.projectDir}/src/main/jniLibs/"
+    }
+}
+
+preBuild.dependsOn extractSo

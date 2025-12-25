@@ -1,0 +1,20 @@
+table Metadata {
+    id: ulong (id: 0);
+    key: string (id: 1);
+    value: string (id: 2);
+}
+
+table Card {
+    id: ulong (id: 0);
+    card_id: string (id: 1);
+    /// objectbox: index=hnsw, hnsw-dimensions=256, hnsw-neighbors-per-node=16, hnsw-indexing-search-count=100, hnsw-distance-type=Cosine
+    embedding: [float] (id: 2);
+}
+
+table SetSymbol {
+    id: ulong (id: 0);
+    set_code: string (id: 1);
+
+    /// objectbox: index=hnsw, hnsw-dimensions=128, hnsw-neighbors-per-node=16, hnsw-indexing-search-count=100, hnsw-distance-type=Cosine
+    embedding: [float] (id: 2);
+}

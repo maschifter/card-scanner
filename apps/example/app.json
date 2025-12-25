@@ -1,0 +1,30 @@
+{
+  "name": "CardScannerExample",
+  "displayName": "CardScannerExample",
+  "newArchEnabled": true,
+  "version": "1.0.0",
+  "orientation": "portrait",
+  "assetBundlePatterns": ["assets/**/*"],
+  "ios": {
+    "supportsTablet": true,
+    "bundleIdentifier": "com.cardnexus.cardscannerexample",
+    "infoPlist": {
+      "NSCameraUsageDescription": "Camera access is required to scan trading cards in real-time"
+    },
+    "appleTeamId": "B357MU264T"
+  },
+  "android": {
+    "package": "com.cardnexus.cardscannerexample",
+    "permissions": ["CAMERA"]
+  },
+  "plugins": [
+    [
+      "expo-build-properties",
+      {
+        "android": {
+          "minSdkVersion": 29
+        }
+      }
+    ]
+  ]
+}
