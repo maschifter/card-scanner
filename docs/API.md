@@ -432,10 +432,13 @@ Information about a single detected card.
 
 ```typescript
 interface DetectedCard {
-  // Primary match
-  cardId: string;
-  gameName: string; // From best match (multi-game search)
-  confidenceScore: number; // Match confidence [0.0, 1.0]
+  // Primary match (optional, if a card is recognized in the database)
+  cardId?: string;
+  gameName?: string; // From best match (multi-game search)
+  confidenceScore?: number; // Match confidence [0.0, 1.0]
+
+  // Game prediction
+  predictedGameName?: string; // Game predicted by YOLO, even if no DB match
 
   // Location
   boundingBox: BoundingBox;

@@ -73,6 +73,7 @@ struct ProcessedCard {
   // Recognition results
   std::vector<CardMatch> matches;
   std::vector<float> embedding;
+  std::string predictedGameName;
 
   // Game-specific metadata
   SetSymbolInfo setSymbol; // MTG: set symbol detection

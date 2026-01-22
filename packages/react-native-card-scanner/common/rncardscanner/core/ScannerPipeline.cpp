@@ -240,6 +240,14 @@ dto::ProcessedCard ScannerPipeline::processDetection(
   card.matches = recognizeCard(processingImage, detection, config, dbManager,
                                embeddingModel);
 
+  // If no matches, but we have a predicted game, store it
+  if (card.matches.empty()) {
+    card.predictedGameName = detection.predictedGame;
+  } else {
+    // If a game was detected and recognized, use its name as the predicted game
+    card.predictedGameName = card.matches[0].gameName;
+  }
+
   // Stage 5: Game-specific metadata detection
   if (card.hasMatches()) {
     // MTG: Detect set symbol (with disambiguation threshold)

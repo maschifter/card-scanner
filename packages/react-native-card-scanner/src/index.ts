@@ -80,9 +80,10 @@ export interface CapturedImage {
 }
 
 export interface DetectedCard {
-  cardId: string;
-  gameName: string; // From best match (multi-game search)
-  confidenceScore: number;
+  cardId?: string;
+  gameName?: string; // From best match (multi-game search)
+  predictedGameName?: string; // From YOLO model, even if no DB match
+  confidenceScore?: number;
   boundingBox: BoundingBox;
   capturedImage?: CapturedImage;
   alternativeCards: AlternativeMatch[];

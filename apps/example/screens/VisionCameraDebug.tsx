@@ -201,6 +201,17 @@ export default function VisionCameraDebug() {
             <Text style={styles.debugText}>
               Processing: {detection.processingTime.toFixed(1)} ms{'\n'}{' '}
             </Text>
+            {/* Predicted Game Name */}
+            {currentCard?.predictedGameName && (
+              <Text style={styles.debugText}>
+                Predicted Game: {currentCard.predictedGameName.toUpperCase()}
+              </Text>
+            )}
+            {currentCard && (
+              <Text style={styles.debugText}>
+                Game: {currentCard.gameName ? currentCard.gameName.toUpperCase() : 'NOT POPULATED'}
+              </Text>
+            )}
             {/* Top 3 Matches */}
             {currentCard && (
               <View style={styles.matchesContainer}>
@@ -211,12 +222,18 @@ export default function VisionCameraDebug() {
                   <Text style={styles.matchNumber}>1.</Text>
                   <View style={styles.matchDetails}>
                     <Text style={styles.matchName}>{currentCard.cardId}</Text>
-                    <Text style={styles.matchInfo}>
-                      {currentCard.gameName.toUpperCase()} •{' '}
-                      {(currentCard.confidenceScore * 100).toFixed(1)}%
-                      {currentCard.setSymbol?.setCode &&
-                        ` • ${currentCard.setSymbol.setCode.toUpperCase()}`}
-                    </Text>
+                    {(currentCard.gameName || currentCard.confidenceScore) && (
+                      <Text style={styles.matchInfo}>
+                        {currentCard.gameName?.toUpperCase()}
+                        {currentCard.gameName &&
+                          currentCard.confidenceScore &&
+                          ' • '}
+                        {currentCard.confidenceScore &&
+                          `${(currentCard.confidenceScore * 100).toFixed(1)}%`}
+                        {currentCard.setSymbol?.setCode &&
+                          ` • ${currentCard.setSymbol.setCode.toUpperCase()}`}
+                      </Text>
+                    )}
                   </View>
                 </View>
 

@@ -18,15 +18,13 @@ jsi::Object JSISerializer::serializeScanResult(jsi::Runtime &runtime,
   jsResult.setProperty(runtime, "processingTime",
                        jsi::Value(result.processingTimeMs));
 
-  // Cards array (only identified cards)
-  jsi::Array cards(runtime, result.getIdentifiedCount());
+  // Cards array (all detected cards)
+  jsi::Array cards(runtime, result.cards.size());
   size_t cardIndex = 0;
 
   for (const auto &card : result.cards) {
-    if (card.isIdentified()) {
-      jsi::Object jsCard = serializeDetectedCard(runtime, card);
-      cards.setValueAtIndex(runtime, cardIndex++, jsCard);
-    }
+    jsi::Object jsCard = serializeDetectedCard(runtime, card);
+    cards.setValueAtIndex(runtime, cardIndex++, jsCard);
   }
 
   jsResult.setProperty(runtime, "cards", cards);
@@ -253,6 +251,13 @@ JSISerializer::serializeDetectedCard(jsi::Runtime &runtime,
         jsi::String::createFromUtf8(runtime, primaryMatch.gameName));
     jsCard.setProperty(runtime, "confidenceScore",
                        jsi::Value(primaryMatch.score));
+  }
+
+  // Always include predicted game name if available
+  if (!card.predictedGameName.empty()) {
+    jsCard.setProperty(
+        runtime, "predictedGameName",
+        jsi::String::createFromUtf8(runtime, card.predictedGameName));
   }
 
   // Bounding box

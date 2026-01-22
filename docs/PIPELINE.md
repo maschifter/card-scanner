@@ -57,6 +57,7 @@ The scanner processes camera frames through a **5-stage pipeline**:
 │  STAGE 1: Card Segmentation (YOLO)                          │
 ├─────────────────────────────────────────────────────────────┤
 │  • Detect cards → bounding boxes                            │
+│  • Predict top game → predictedGameName                     │
 │  • Predict games → top 3 game predictions                   │
 │  • Optional: Dewarped images                                │
 │  • Scan mode filter: single/multiple                        │
@@ -236,7 +237,8 @@ std::vector<Detection> rawDetections = yoloModel->detect(frameImage);
 
 - Bounding boxes
 - Confidence scores
-- Game predictions (top 3)
+- Top game prediction (`predictedGameName`)
+- Game predictions (top 3 for multi-database search)
 - Optional dewarped images
 
 **Reference:** [`models/YoloSegmentationModel.cpp`](../packages/react-native-card-scanner/common/rncardscanner/models/YoloSegmentationModel.cpp)
@@ -460,6 +462,9 @@ std::vector<dto::CardMatch> filterToBestGame(
 ```
 
 **Result:** Up to `config.maxMatches` cards from best game above `config.confidenceThreshold`
+
+**Note on `predictedGameName` vs. `gameName`:**
+The `predictedGameName` from Stage 1 is always returned for a detection. However, the `gameName` field on a `DetectedCard` is only populated if a successful match is found in a database during this stage. This allows the application to know the likely game of a card even if it's not in the database.
 
 ---
 
