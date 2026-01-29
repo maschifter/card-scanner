@@ -26,6 +26,7 @@ import {
 import Svg, { Rect } from 'react-native-svg';
 import { useRunOnJS } from 'react-native-worklets-core';
 import { useScannerLoader } from '../hooks/useScannerLoader';
+import { checkDatabaseStatus } from '../utils/database';
 
 const screenWidth = Dimensions.get('window').width;
 const screenHeight = Dimensions.get('window').height;
@@ -48,6 +49,10 @@ export default function VisionCameraDebug() {
   const [cameraLayout, setCameraLayout] = useState({ width: 0, height: 0 });
 
   const [currentCard, setCurrentCard] = useState<DetectedCard | null>(null);
+  const [missingGameAlerts, setMissingGameAlerts] = useState<
+    Record<string, number>
+  >({});
+  const [emptyDatabases, setEmptyDatabases] = useState<Set<string>>(new Set());
 
   const { isLoading, error } = useScannerLoader('single');
 
@@ -60,6 +65,38 @@ export default function VisionCameraDebug() {
 
       if (firstCard.capturedImage) {
         setCroppedImagePath(firstCard.capturedImage.uri);
+      }
+
+      // Track missing database detections with debouncing
+      if (firstCard.predictedGameName && !firstCard.gameName) {
+        // No match found - might be missing database
+        setMissingGameAlerts((prev) => {
+          const game = firstCard.predictedGameName!;
+          const count = (prev[game] || 0) + 1;
+          const confidence = firstCard.predictedGameConfidence || 0;
+
+          // Alert if: 3+ consecutive frames AND confidence >= 60%
+          if (count >= 3 && confidence >= 0.6) {
+            // Verify database is actually missing before alerting
+            checkDatabaseStatus(game).then((status) => {
+              if (!status.isLoaded) {
+                console.warn(
+                  `Missing database detected: ${game.toUpperCase()} ` +
+                    `(confidence: ${(confidence * 100).toFixed(1)}%, frames: ${count})`,
+                );
+                // Mark this game as having empty database
+                setEmptyDatabases((prev) => new Set(prev).add(game));
+                // Could show Alert/Modal here: Alert.alert(...)
+              }
+            });
+          }
+
+          return { ...prev, [game]: count };
+        });
+      } else {
+        // Reset counters on successful match
+        setMissingGameAlerts({});
+        setEmptyDatabases(new Set());
       }
     } else {
       setCurrentCard(null);
@@ -205,13 +242,21 @@ export default function VisionCameraDebug() {
             {currentCard?.predictedGameName && (
               <Text style={styles.debugText}>
                 Predicted Game: {currentCard.predictedGameName.toUpperCase()}
+                {currentCard.predictedGameConfidence !== undefined &&
+                  ` (${(currentCard.predictedGameConfidence * 100).toFixed(1)}%)`}
               </Text>
             )}
-            {currentCard && (
-              <Text style={styles.debugText}>
-                Game: {currentCard.gameName ? currentCard.gameName.toUpperCase() : 'NOT POPULATED'}
-              </Text>
-            )}
+            {/* Missing Database Alert */}
+            {currentCard?.predictedGameName &&
+              !currentCard.gameName &&
+              emptyDatabases.has(currentCard.predictedGameName) && (
+                <Text style={styles.warningText}>
+                  Missing DB: {currentCard.predictedGameName.toUpperCase()}{' '}
+                  (Database not loaded -{' '}
+                  {missingGameAlerts[currentCard.predictedGameName] || 1}{' '}
+                  frames)
+                </Text>
+              )}
             {/* Top 3 Matches */}
             {currentCard && (
               <View style={styles.matchesContainer}>
@@ -336,6 +381,13 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
     fontSize: 11,
     lineHeight: 16,
+  },
+  warningText: {
+    color: '#FFA726',
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: 'bold',
+    marginTop: 4,
   },
   croppedImage: {
     width: 150,

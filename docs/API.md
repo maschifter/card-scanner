@@ -439,6 +439,7 @@ interface DetectedCard {
 
   // Game prediction
   predictedGameName?: string; // Game predicted by YOLO, even if no DB match
+  predictedGameConfidence?: number; // YOLO confidence for predicted game [0.0, 1.0]
 
   // Location
   boundingBox: BoundingBox;

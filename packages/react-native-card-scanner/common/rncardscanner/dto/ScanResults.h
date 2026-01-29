@@ -74,6 +74,7 @@ struct ProcessedCard {
   std::vector<CardMatch> matches;
   std::vector<float> embedding;
   std::string predictedGameName;
+  float predictedGameConfidence; // YOLO confidence for predicted game (0.0-1.0)
 
   // Game-specific metadata
   SetSymbolInfo setSymbol; // MTG: set symbol detection
@@ -81,7 +82,7 @@ struct ProcessedCard {
 
   ProcessedCard()
       : detectionConfidence(0.0f), imageWidth(0), imageHeight(0),
-        imageFileSize(0) {}
+        imageFileSize(0), predictedGameConfidence(0.0f) {}
 
   bool hasMatches() const { return !matches.empty(); }
   bool isIdentified() const { return hasMatches() && matches[0].score >= 0.0f; }

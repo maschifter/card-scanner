@@ -95,5 +95,3 @@ apps/*/android/
 Makefile
 
 .claude
-
-*.mdb

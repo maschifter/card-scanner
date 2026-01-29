@@ -258,6 +258,8 @@ JSISerializer::serializeDetectedCard(jsi::Runtime &runtime,
     jsCard.setProperty(
         runtime, "predictedGameName",
         jsi::String::createFromUtf8(runtime, card.predictedGameName));
+    jsCard.setProperty(runtime, "predictedGameConfidence",
+                       jsi::Value(static_cast<double>(card.predictedGameConfidence)));
   }
 
   // Bounding box

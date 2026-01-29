@@ -243,9 +243,15 @@ dto::ProcessedCard ScannerPipeline::processDetection(
   // If no matches, but we have a predicted game, store it
   if (card.matches.empty()) {
     card.predictedGameName = detection.predictedGame;
+    // Store YOLO confidence for the predicted game
+    card.predictedGameConfidence = !detection.topGamePredictions.empty()
+        ? detection.topGamePredictions[0].second
+        : 0.0f;
   } else {
     // If a game was detected and recognized, use its name as the predicted game
     card.predictedGameName = card.matches[0].gameName;
+    // Use the match score as confidence
+    card.predictedGameConfidence = card.matches[0].score;
   }
 
   // Stage 5: Game-specific metadata detection

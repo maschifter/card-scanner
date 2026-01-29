@@ -466,6 +466,9 @@ std::vector<dto::CardMatch> filterToBestGame(
 **Note on `predictedGameName` vs. `gameName`:**
 The `predictedGameName` from Stage 1 is always returned for a detection. However, the `gameName` field on a `DetectedCard` is only populated if a successful match is found in a database during this stage. This allows the application to know the likely game of a card even if it's not in the database.
 
+**Note on `predictedGameConfidence`:**
+The `predictedGameConfidence` field contains the YOLO model's confidence score (0.0-1.0) for the predicted game. This can be used to filter out low-confidence predictions and prevent false positive database download prompts. For example, requiring 60%+ confidence and multiple consecutive frames before prompting users to download a missing database.
+
 ---
 
 ### STAGE 5: Game-Specific Metadata
