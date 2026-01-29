@@ -103,3 +103,17 @@ index 09970a9..08f63cf 100644
  
        // release JNI reference
        AHardwareBuffer_release(hardwareBuffer);
+diff --git a/node_modules/react-native-vision-camera/src/frame-processors/runAsync.ts b/node_modules/react-native-vision-camera/src/frame-processors/runAsync.ts
+index e98fab5..0efc34f 100644
+--- a/node_modules/react-native-vision-camera/src/frame-processors/runAsync.ts
++++ b/node_modules/react-native-vision-camera/src/frame-processors/runAsync.ts
+@@ -15,8 +15,7 @@ let runOnAsyncContext: (frame: Frame, func: () => void) => void
+ try {
+   const Worklets = WorkletsProxy.Worklets
+   isAsyncContextBusy = Worklets.createSharedValue(false)
+-
+-  const asyncContext = Worklets.createContext('VisionCamera.async')
++  const asyncContext = Worklets.defaultContext
+   runOnAsyncContext = asyncContext.createRunAsync((frame: Frame, func: () => void) => {
+     'worklet'
+     try {

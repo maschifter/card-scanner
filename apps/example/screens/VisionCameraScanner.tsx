@@ -415,7 +415,7 @@ export default function VisionCameraScanner() {
                       />
                     ) : (
                       <Text style={styles.cardPlaceholderText}>
-                        {card.name.substring(0, 3).toUpperCase()}
+                        {card.cardId?.substring(0, 3).toUpperCase()}
                       </Text>
                     )}
                   </View>
@@ -423,7 +423,7 @@ export default function VisionCameraScanner() {
                   {/* Card Name */}
                   <View style={styles.cardNameContainer}>
                     <Text style={styles.cardNameText} numberOfLines={2}>
-                      {card.name} {(card.confidenceScore * 100).toFixed(1)}%
+                      {card.cardId} {(card.confidenceScore * 100).toFixed(1)}%
                     </Text>
                     <Text style={styles.cardIdText} numberOfLines={1}>
                       {card.cardId}
@@ -435,7 +435,7 @@ export default function VisionCameraScanner() {
                     <Text style={styles.cardSetText}>
                       #{index + 1}{' '}
                       {card.setSymbol?.setCode.toUpperCase() ||
-                        card.gameName.toUpperCase()}
+                        card.gameName?.toUpperCase()}
                     </Text>
                   </View>
                 </View>
