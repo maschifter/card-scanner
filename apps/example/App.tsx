@@ -8,6 +8,7 @@ import HomeScreen from './screens/HomeScreen';
 import MultipleScannerScreen from './screens/MultipleScannerScreen';
 import VisionCameraScanner from './screens/VisionCameraScanner';
 import VisionCameraDebug from './screens/VisionCameraDebug';
+import BenchmarkScreen from './screens/BenchmarkScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -81,6 +82,8 @@ export default function App() {
               iconName = focused ? 'videocam' : 'videocam-outline';
             } else if (route.name === 'Debug') {
               iconName = focused ? 'bug' : 'bug-outline';
+            } else if (route.name === 'Benchmark') {
+              iconName = focused ? 'speedometer' : 'speedometer-outline';
             }
 
             return <Ionicons name={iconName} size={size} color={color} />;
@@ -121,6 +124,11 @@ export default function App() {
             title: 'Debug View',
             headerShown: false,
           }}
+        />
+        <Tab.Screen
+          name="Benchmark"
+          component={BenchmarkScreen}
+          options={{ title: 'Benchmark' }}
         />
       </Tab.Navigator>
     </NavigationContainer>

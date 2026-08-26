@@ -1,3 +1,8 @@
+// The base config pulls in jest types;
+// For now app has no tests and no @types/jest installed.
 {
-  "extends": "@react-native/typescript-config/tsconfig.json"
+  "extends": "@react-native/typescript-config",
+  "compilerOptions": {
+    "types": []
+  }
 }

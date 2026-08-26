@@ -1,0 +1,92 @@
+{
+  "name": "@cardnexus/card-scanner",
+  "version": "0.1.0",
+  "description": "A simple React Native card scanner library",
+  "source": "./src/index.ts",
+  "main": "./lib/commonjs/index.js",
+  "module": "./lib/module/index.js",
+  "types": "./lib/typescript/index.d.ts",
+  "react-native": "src/index",
+  "files": [
+    "src",
+    "lib",
+    "common",
+    "android",
+    "ios",
+    "third-party",
+    "nitrogen",
+    "nitro.json",
+    "*.podspec",
+    "react-native.config.js",
+    "!android/build",
+    "!ios/build",
+    "!**/__tests__",
+    "!**/__fixtures__",
+    "!**/__mocks__",
+    "!**/.*"
+  ],
+  "scripts": {
+    "example": "yarn workspace card-scanner-example",
+    "typecheck": "tsc",
+    "lint": "eslint \"**/*.{js,ts,tsx}\"",
+    "nitrogen": "nitrogen",
+    "prepare": "nitrogen && bob build"
+  },
+  "keywords": [
+    "react-native",
+    "ios",
+    "android"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cardnexus/card-scanner.git"
+  },
+  "author": "CardNexus <hello@cardnexus.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/cardnexus/card-scanner#readme",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*",
+    "react-native-nitro-modules": "*",
+    "react-native-vision-camera": "*"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.0",
+    "nitrogen": "0.36.5",
+    "react": "19.2.0",
+    "react-native": "0.83.10",
+    "react-native-builder-bob": "^0.30.2",
+    "react-native-nitro-modules": "0.36.5",
+    "react-native-vision-camera": "^5.2.1",
+    "typescript": "~5.8.3"
+  },
+  "packageManager": "yarn@4.1.1",
+  "react-native-builder-bob": {
+    "source": "src",
+    "output": "lib",
+    "targets": [
+      [
+        "module"
+      ],
+      [
+        "typescript",
+        {
+          "project": "tsconfig.json"
+        }
+      ]
+    ]
+  },
+  "codegenConfig": {
+    "name": "CardScannerSpec",
+    "type": "modules",
+    "jsSrcsDir": "src",
+    "android": {
+      "javaPackageName": "com.cardnexus.cardscanner"
+    }
+  },
+  "dependencies": {
+    "@cardnexus/card-scanner-core": "workspace:*",
+    "expo-file-system": "~55.0.24"
+  }
+}

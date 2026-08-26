@@ -12,6 +12,8 @@ import { scanImage, type Detection } from '@cardnexus/card-scanner';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useScannerLoader } from '../hooks/useScannerLoader';
+import { cardLabel } from '../utils/cardNames';
+import { pct } from '../utils/format';
 
 // Helper to convert HEIC to JPEG
 async function ensureJPEG(uri: string): Promise<string> {
@@ -37,7 +39,7 @@ export default function MultipleScannerScreen() {
   const [detection, setDetection] = useState<Detection | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const { isLoading, error } = useScannerLoader('multiple');
+  const { isLoading, error, retry } = useScannerLoader();
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -58,8 +60,8 @@ export default function MultipleScannerScreen() {
     setDetection(null);
 
     try {
-      const result = await scanImage(selectedImage!);
-
+      const result = await scanImage(selectedImage!, 'multiple');
+      console.log(result);
       setDetection(result);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -123,6 +125,9 @@ export default function MultipleScannerScreen() {
         <View style={styles.errorCard}>
           <Text style={styles.errorIcon}>⚠️</Text>
           <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={retry}>
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -142,11 +147,26 @@ export default function MultipleScannerScreen() {
               {detection.cards.map((card, index) => (
                 <View key={index} style={styles.detectionItem}>
                   <Text style={styles.detectionTitle}>
-                    {card.cardId} ({card.gameName.toUpperCase()})
+                    {cardLabel(card.cardId) || 'Unknown Card'}
+                    {card.gameName && ` (${card.gameName})`}
                   </Text>
-                  <Text>
-                    Confidence: {(card.confidenceScore * 100).toFixed(1)}%
-                  </Text>
+                  {card.predictedGameName && (
+                    <Text style={styles.predictedGame}>
+                      Predicted Game: {card.predictedGameName}
+                      {card.predictedGameConfidence !== undefined &&
+                        ` (${pct(card.predictedGameConfidence)})`}
+                    </Text>
+                  )}
+                  {card.boundingBox?.conf !== undefined && (
+                    <Text style={styles.confidenceText}>
+                      Detection Confidence: {pct(card.boundingBox.conf)}
+                    </Text>
+                  )}
+                  {card.confidenceScore !== undefined && (
+                    <Text style={styles.confidenceText}>
+                      Match Confidence: {pct(card.confidenceScore)}
+                    </Text>
+                  )}
 
                   {card.capturedImage && (
                     <Image
@@ -167,11 +187,10 @@ export default function MultipleScannerScreen() {
                           .map((altCard, matchIndex) => (
                             <View key={matchIndex} style={styles.matchItem}>
                               <Text style={styles.matchName}>
-                                {matchIndex + 2}. {altCard.cardId}
+                                {matchIndex + 2}. {cardLabel(altCard.cardId)}
                               </Text>
                               <Text style={styles.matchDetails}>
-                                Confidence:{' '}
-                                {(altCard.confidence * 100).toFixed(1)}%
+                                Confidence: {pct(altCard.confidence)}
                               </Text>
                             </View>
                           ))}
@@ -184,8 +203,7 @@ export default function MultipleScannerScreen() {
                         Set: {card.setSymbol.setCode.toUpperCase()}
                       </Text>
                       <Text style={styles.setSymbolSimilarity}>
-                        Similarity:{' '}
-                        {(card.setSymbol.similarity * 100).toFixed(1)}%
+                        Similarity: {pct(card.setSymbol.similarity)}
                       </Text>
                     </View>
                   )}
@@ -300,6 +318,18 @@ const styles = StyleSheet.create({
     color: '#d32f2f',
     textAlign: 'center',
   },
+  retryButton: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
   resultCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -341,7 +371,17 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 12,
+    marginBottom: 8,
+  },
+  predictedGame: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
+  },
+  confidenceText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
   },
   matchesContainer: {
     marginTop: 12,

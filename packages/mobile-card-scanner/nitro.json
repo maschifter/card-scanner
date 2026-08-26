@@ -1,0 +1,20 @@
+{
+  "$schema": "https://nitro.margelo.com/nitro.schema.json",
+  "cxxNamespace": ["cardscanner"],
+  "ios": {
+    "iosModuleName": "CardScanner"
+  },
+  "android": {
+    "androidNamespace": ["cardscanner"],
+    "androidCxxLibName": "CardScanner"
+  },
+  "autolinking": {
+    "CardScannerPlugin": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridCardScannerPlugin"
+      }
+    }
+  },
+  "ignorePaths": ["**/node_modules", "**/lib", "**/android/build", "**/ios/build"]
+}

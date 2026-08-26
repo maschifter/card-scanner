@@ -1,0 +1,26 @@
+{
+  "name": "@cardnexus/card-scanner-core",
+  "version": "0.1.0",
+  "description": "Platform-agnostic card scanning pipeline. Ships C++ sources and headers only - each wrapper supplies its own inference runtime and binaries.",
+  "files": [
+    "src",
+    "third-party",
+    "CMakeLists.txt",
+    "objectbox-model.json",
+    "*.podspec",
+    "react-native.config.js",
+    "!**/.*"
+  ],
+  "keywords": [
+    "card-scanner",
+    "cpp",
+    "opencv"
+  ],
+  "author": "Card Nexus",
+  "license": "MIT",
+  "homepage": "https://github.com/cardnexus/card-scanner#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cardnexus/card-scanner.git"
+  }
+}

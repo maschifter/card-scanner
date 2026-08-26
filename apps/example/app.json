@@ -4,7 +4,9 @@
   "newArchEnabled": true,
   "version": "1.0.0",
   "orientation": "portrait",
-  "assetBundlePatterns": ["assets/**/*"],
+  "assetBundlePatterns": [
+    "assets/**/*"
+  ],
   "ios": {
     "supportsTablet": true,
     "bundleIdentifier": "com.cardnexus.cardscannerexample",
@@ -15,7 +17,15 @@
   },
   "android": {
     "package": "com.cardnexus.cardscannerexample",
-    "permissions": ["CAMERA"]
+    "permissions": [
+      "CAMERA"
+    ]
+  },
+  "extra": {
+    "cardScanner": {
+      "benchmark": true,
+      "benchmarkVerbose": true
+    }
   },
   "plugins": [
     [

@@ -11,7 +11,7 @@ Complete API reference for `@cardnexus/card-scanner`.
   - [Core Functions](#core-functions)
     - [initializeScanner](#initializescanner)
     - [releaseScanner](#releasescanner)
-    - [scanFrame](#scanframe)
+    - [Frame Scanning (scanFrame)](#frame-scanning-scanframe)
   - [Image Scanning](#image-scanning)
     - [scanImage](#scanimage)
   - [Database Management](#database-management)
@@ -22,6 +22,7 @@ Complete API reference for `@cardnexus/card-scanner`.
   - [Type Definitions](#type-definitions)
     - [ScannerConfig](#scannerconfig)
     - [Detection](#detection)
+    - [AsyncScanResult](#asyncscanresult)
     - [DetectedCard](#detectedcard)
     - [CapturedImage](#capturedimage)
     - [BoundingBox](#boundingbox)
@@ -60,8 +61,8 @@ function initializeScanner(
 
 ```typescript
 const result = await initializeScanner({
-  segmentationModelPath: '/path/to/segmentation_model.pte',
-  embeddingModelPath: '/path/to/embedding_model.pte',
+  segmentationModelPath: '/path/to/CardSegmentationModel.pte',
+  embeddingModelPath: '/path/to/CardRecognitionModel.pte',
   scanMode: 'single',
   segmentationThreshold: 0.7,
   iouThreshold: 0.7,
@@ -80,7 +81,7 @@ if (!result.success) {
 }
 ```
 
-**Implementation:** [`packages/react-native-card-scanner/common/rncardscanner/RnCardScannerInstaller.cpp:240-340`](../packages/react-native-card-scanner/common/rncardscanner/RnCardScannerInstaller.cpp)
+**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp:240-340`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
 
 ---
 
@@ -104,58 +105,88 @@ useEffect(() => {
 }, []);
 ```
 
-**Implementation:** [`packages/react-native-card-scanner/common/rncardscanner/RnCardScannerInstaller.cpp:97-113`](../packages/react-native-card-scanner/common/rncardscanner/RnCardScannerInstaller.cpp)
+**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp:97-113`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
 
 ---
 
-### scanFrame
+### Frame Scanning (scanFrame)
 
-Scans a Vision Camera frame for cards. Runs inside a worklet (synchronous, but executes ML asynchronously internally).
+Camera frames are scanned through the `cardScannerPlugin` Nitro HybridObject. `scanFrame` runs the pipeline synchronously on the calling thread - the frame worklet offloads it to a Vision Camera v5 `AsyncRunner` task, so the camera pipeline never blocks; results arrive on a detection listener registered from the JS thread.
 
 ```typescript
-function scanFrame(frame: Frame): Detection;
+cardScannerPlugin.scanFrame(frame: Frame, coordinateSnapshot: number[]): void;
+cardScannerPlugin.setDetectionListener(
+  listener: (result: AsyncScanResult) => void,
+): void;
+cardScannerPlugin.clearDetectionListener(): void;
 ```
 
-**Parameters:**
+**`scanFrame(frame, coordinateSnapshot)`** — synchronous scan, called from an `AsyncRunner` task:
 
-- `frame` - Vision Camera frame object
+- Runs the pipeline and sends the result to the listener, if one is registered. Frames are dropped silently before the pipeline runs when another scan is in progress, the throttle window opens later than the ~35ms accept margin, or the frame is unreadable
+- **Takes ownership of the Frame**: `scanFrame` disposes it on every path (dropped, failed, scanned). When scanned, the Frame is disposed right after the pixel copy - before the throttle-window wait and ML - so the camera gets its buffer back as early as possible. Never call `frame.dispose()` after `scanFrame` - the only Frames the worklet disposes are the ones it never handed over (e.g. `runAsync` returned `false`)
+- `coordinateSnapshot` - numbers passed through unchanged to the listener result; use it to snapshot frame→camera coordinate mapping while the frame is still alive
 
-**Returns:**
-
-- `Detection` - Scan result with detected cards (see [Detection](#detection))
+**`setDetectionListener(listener)`** — registers the single listener slot. Call from the JS thread (not a worklet); replaces any previous listener. **`clearDetectionListener()`** unregisters it; pending results are dropped.
 
 **Example:**
 
 ```typescript
-const frameProcessor = useFrameProcessor(
-  (frame) => {
+useEffect(() => {
+  cardScannerPlugin.setDetectionListener((res) => {
+    if (res.detection.success && res.detection.cards.length > 0) {
+      // boundingBox is in raw frame-buffer coordinates; map it to view
+      // space using res.frameWidth/frameHeight and res.coordinateSnapshot
+      processDetection(res.detection);
+    }
+  });
+  return () => cardScannerPlugin.clearDetectionListener();
+}, [processDetection]);
+
+const asyncRunner = useAsyncRunner();
+
+const onFrame = useCallback(
+  (frame: Frame) => {
     'worklet';
 
-    if (!isScanning) return;
-
-    runAsync(frame, () => {
-      'worklet';
-
-      const detection = scanFrame(frame);
-
-      if (detection.success && detection.cards.length > 0) {
-        // Move to JS thread to update state
-        processDetectionCallback(detection);
-      }
-    });
+    let scheduled = false;
+    try {
+      // Taken while the frame is alive (the listener runs after disposal), and
+      // inside the try so a throw here still hits the dispose in `finally`.
+      const snapshot = frameToCameraSnapshot(frame);
+      scheduled = asyncRunner.runAsync(() => {
+        'worklet';
+        // scanFrame owns the frame from here on and disposes it itself.
+        try {
+          cardScannerPlugin.scanFrame(frame, snapshot);
+        } catch {}
+      });
+    } finally {
+      // Runner busy (a scan is still running) - the frame never reached
+      // scanFrame, so it is still ours to drop.
+      if (!scheduled) frame.dispose();
+    }
   },
-  [isScanning, processDetectionCallback],
+  [asyncRunner],
 );
+
+const frameOutput = useFrameOutput({
+  pixelFormat: 'rgb',
+  targetResolution: CommonResolutions.FHD_16_9,
+  onFrame,
+});
 ```
 
 **Notes:**
 
-- Automatically throttles to `maxFrameRate` (default: 5 FPS)
+- One scan at a time: while a scan is running, newer frames are dropped (`runAsync` returns `false`; a concurrent `scanFrame` from another runner is rejected natively). The camera buffer is released as soon as the pixels are copied, so on Android (CameraX keep-only-latest) frames keep flowing during ML and the first frame after the scan ends is a fresh one
+- Automatically throttles to `maxFrameRate` (default: 5 FPS); frames are rejected without copying unless the window is open or opens within ~35ms - an early frame is copied, released, and the scan sleeps the gap, so it starts right at the window instead of waiting for another camera frame
 - Skips blurry frames based on `blurThreshold`
 - Low-light enhancement applied if `lowLightThreshold` exceeded
 - Multi-game search: no need to specify game name
+- Returned bounding boxes are in raw frame-buffer coordinates - map them to view coordinates with Vision Camera v5's `frame.convertFramePointToCameraPoint` + `cameraRef.convertCameraPointToViewPoint` (see [`apps/example/utils/cameraCoords.ts`](../apps/example/utils/cameraCoords.ts))
 
-**Implementation:** [`packages/react-native-card-scanner/common/rncardscanner/RnCardScannerInstaller.cpp:345-375`](../packages/react-native-card-scanner/common/rncardscanner/RnCardScannerInstaller.cpp)
+**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/HybridCardScannerPlugin.cpp`](../packages/mobile-card-scanner/common/rnbridge/HybridCardScannerPlugin.cpp)
 
 ---
 
@@ -166,12 +197,16 @@ const frameProcessor = useFrameProcessor(
 Scans a static image file for multiple cards. Useful for batch processing or scanning saved photos.
 
 ```typescript
-function scanImage(imagePath: string): Promise<Detection>;
+function scanImage(
+  imagePath: string,
+  mode?: 'single' | 'multiple',
+): Promise<Detection>;
 ```
 
 **Parameters:**
 
 - `imagePath` - Path to image file
+- `mode` - Optional per-call override of the configured `scanMode`; omit to keep it
 
 **Returns:**
 
@@ -180,6 +215,7 @@ function scanImage(imagePath: string): Promise<Detection>;
 **Example:**
 
 ```typescript
+// Scanned in the configured mode; pass 'multiple' to override it for this call
 const result = await scanImage('/path/to/photo.jpg');
 
 if (result.success && result.cards.length > 0) {
@@ -199,14 +235,15 @@ if (result.success && result.cards.length > 0) {
 
 - Runs full ML pipeline asynchronously (non-blocking)
 - Can detect multiple cards in a single image
-- Applies same quality filters as `scanFrame` (blur detection, low-light enhancement)
+- Serialized against `scanFrame`: camera frames are dropped while the scan runs, and the `maxFrameRate` throttle does not apply to it
+- Applies same quality filters as frame scanning (blur detection, low-light enhancement)
 - Captured card images (if enabled in config) are automatically saved to the cache directory
 - Game-specific processing (MTG set symbols, FAB colors) also runs if configured
 - **Images saved to cache directory** (temporary storage, auto-cleaned by OS):
   - iOS: `Library/Caches/card-images/`
   - Android: `cache/card-images/`
 
-**Implementation:** [`packages/react-native-card-scanner/common/rncardscanner/RnCardScannerInstaller.cpp:437-503`](../packages/react-native-card-scanner/common/rncardscanner/RnCardScannerInstaller.cpp)
+**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp:186-250`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
 
 ---
 
@@ -236,7 +273,7 @@ databases.forEach((db) => {
 });
 ```
 
-**Implementation:** [`packages/react-native-card-scanner/common/rncardscanner/RnCardScannerInstaller.cpp:500-576`](../packages/react-native-card-scanner/common/rncardscanner/RnCardScannerInstaller.cpp)
+**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp:500-576`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
 
 ---
 
@@ -265,7 +302,7 @@ if (info) {
 }
 ```
 
-**Implementation:** [`packages/react-native-card-scanner/common/rncardscanner/RnCardScannerInstaller.cpp:578-656`](../packages/react-native-card-scanner/common/rncardscanner/RnCardScannerInstaller.cpp)
+**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp:578-656`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
 
 ---
 
@@ -301,7 +338,7 @@ if (result.success) {
 }
 ```
 
-**Implementation:** [`packages/react-native-card-scanner/src/index.ts:256-270`](../packages/react-native-card-scanner/src/index.ts)
+**Implementation:** [`packages/mobile-card-scanner/src/index.ts:256-270`](../packages/mobile-card-scanner/src/index.ts)
 
 ---
 
@@ -339,7 +376,7 @@ if (result.success) {
 - Removes entire database directory
 - Cannot be undone
 
-**Implementation:** [`packages/react-native-card-scanner/common/rncardscanner/RnCardScannerInstaller.cpp:658-712`](../packages/react-native-card-scanner/common/rncardscanner/RnCardScannerInstaller.cpp)
+**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp:658-712`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
 
 ---
 
@@ -356,7 +393,7 @@ interface ScannerConfig {
   embeddingModelPath: string;
 
   // Required: Behavior
-  scanMode: 'single' | 'multiple';
+  scanMode: 'single' | 'multiple'; // scanImage can override this per call
 
   // Required: Thresholds
   segmentationThreshold: number; // YOLO confidence (default: 0.7)
@@ -370,6 +407,7 @@ interface ScannerConfig {
   // Optional: Features
   captureImage?: boolean; // Save cropped images
   disambiguationThreshold?: number; // Min score diff for game-specific detection (default: 0.02)
+  minGameConfidence?: number; // Min YOLO class confidence for a game's DB to be searched (default: 0.1)
 
   // Optional: Frame quality
   blurThreshold?: number; // Min blur score (default: 100, 0 = disabled)
@@ -378,8 +416,10 @@ interface ScannerConfig {
   maxFrameRate?: number; // Max FPS for ML (default: 5)
 
   // Required: Game class mapping
-  gameClassMapping: Record<number, string>; // YOLO class ID → game name
-  // Example: { 0: "fab", 1: "lorcana", 2: "mtg", 3: "onepiece", ... }
+  gameClassMapping: Record<number, string | string[]>; // YOLO class ID → game name(s)
+  // Example: { 0: "fab", 1: "lorcana", 2: ["pokemon", "pokemon-japan"], ... }
+  // Keys must be contiguous from 0 — the entry count is the model's class count.
+  // Use an array when one class covers several games (see "Adding New Games").
 
   // Optional: Game-specific configuration (per-game features and models)
   gameSpecificConfig?: Record<
@@ -387,6 +427,9 @@ interface ScannerConfig {
     {
       // Optional: Game-specific embedding model for improved accuracy
       embeddingModelPath?: string;
+
+      // Optional: Override the default confidence threshold for this game
+      confidenceThreshold?: number;
 
       // MTG-specific: Set symbol detection
       setSymbolDetection?: {
@@ -407,7 +450,7 @@ interface ScannerConfig {
 }
 ```
 
-**Implementation:** [`packages/react-native-card-scanner/src/index.ts:8-42`](../packages/react-native-card-scanner/src/index.ts)
+**Implementation:** [`packages/mobile-card-scanner/src/index.ts:8-42`](../packages/mobile-card-scanner/src/index.ts)
 
 ---
 
@@ -421,6 +464,21 @@ interface Detection {
   cards: DetectedCard[]; // Detected cards
   processingTime: number; // Processing time in ms
   error?: string; // Error message if failed
+}
+```
+
+---
+
+### AsyncScanResult
+
+Result delivered to the detection listener. The Frame is disposed by then, so buffer dimensions and the caller's `coordinateSnapshot` ride along for box mapping.
+
+```typescript
+interface AsyncScanResult {
+  detection: Detection;
+  frameWidth: number; // Frame buffer width in pixels
+  frameHeight: number; // Frame buffer height in pixels
+  coordinateSnapshot: number[]; // Values passed to scanFrame, unchanged
 }
 ```
 
@@ -483,7 +541,7 @@ interface BoundingBox {
   y1: number;
   x2: number;
   y2: number;
-  conf?: number; // Detection confidence
+  conf: number; // Detection confidence
 }
 ```
 
@@ -496,7 +554,6 @@ Alternative card match (lower confidence).
 ```typescript
 interface AlternativeMatch {
   cardId: string;
-  name: string;
   confidence: number;
 }
 ```
@@ -601,12 +658,14 @@ interface DeleteResult {
 
 ## Adding New Games
 
-The scanner supports adding new games without modifying native code by providing a custom `gameClassMapping`:
+Games are added by providing a `gameClassMapping` that matches the segmentation model's classes. No native code changes are needed — but the mapping is not a label list, it is part of the decode:
+
+> **The entry count is the model's class count**, which determines the stride into the prediction tensor (`4 + numClasses + 32` channels). Keys must be contiguous starting at 0. A mapping that disagrees with the model does not merely mislabel a class — it corrupts every box and mask coefficient. Both conditions are validated at init and throw.
 
 ```typescript
 const result = await initializeScanner({
-  segmentationModelPath: '/path/to/yolo_model.pte',
-  embeddingModelPath: '/path/to/embedding_model.pte',
+  segmentationModelPath: '/path/to/CardSegmentationModel.pte',
+  embeddingModelPath: '/path/to/CardRecognitionModel.pte',
   scanMode: 'single',
   segmentationThreshold: 0.7,
   iouThreshold: 0.7,
@@ -617,35 +676,73 @@ const result = await initializeScanner({
 
   // Custom game mapping for your new YOLO model
   gameClassMapping: {
-    0: "fab",
-    1: "lorcana",
-    2: "mtg",
-    3: "onepiece",
-    4: "pokemon",
-    5: "riftbound",
-    6: "rise",
-    7: "sorcery",
-    8: "your-new-game" // Add your new game here
-  }
+    0: 'fab',
+    1: 'lorcana',
+    2: 'mtg',
+    3: 'onepiece',
+    4: 'pokemon',
+    5: 'riftbound',
+    6: 'rise',
+    7: 'sorcery',
+    8: 'your-new-game', // Add your new game here
+  },
 });
 ```
 
 **Requirements:**
+
 1. Train a YOLO segmentation model that includes your new game as a class
 2. Create a database with card embeddings for the new game
 3. Provide the `gameClassMapping` matching your model's class IDs to game names
 
-**Standard Mapping (for existing games):**
+The export pipeline emits a `manifest.json` listing `class_names` in class order —
+copy that list rather than transcribing it. The example app keeps its copy at
+`apps/example/assets/model-manifest.json`.
+
+### Merged Classes (one class, several games)
+
+Some games are visually indistinguishable to the segmentation model — different regional printings of the same product, for instance. Those share a single model class, and the class maps to an **array** of database names:
+
+```typescript
+gameClassMapping: {
+  0: "fab",
+  1: "lorcana",
+  2: "mtg",
+  4: ["pokemon", "pokemon-japan"],       // model class "pokemon"
+  10: ["dbs-fusion", "dbs-masters"],     // model class "dbs"
+}
+```
+
+When such a class fires, **every listed database is searched** and the highest-scoring card decides the game — the sibling databases disambiguate what the model cannot. A plain string is shorthand for a one-element array, so existing mappings keep working unchanged.
+
+This is why the database count can exceed the model's class count: the current model has 17 classes but 19 databases.
+
+Two consequences worth knowing:
+
+- **The first name is canonical.** It is what `predictedGameName` reports, since the model only ever predicted the class. Which sibling actually wins is decided by score and surfaces as `gameName`, so the ordering is cosmetic.
+- **Databases searched per detection are capped at 4** (`MAX_GAME_DATABASES`), while the _class_ cap stays 3 (`MAX_TOP_PREDICTIONS`). Each database costs a full embedding pass plus a vector search, so when two merged classes both land in the top 3, the lowest-ranked names are dropped rather than searched.
+
+**Current Mapping (17 classes → 19 databases):**
+
 ```typescript
 gameClassMapping: {
   0: "fab",
   1: "lorcana",
   2: "mtg",
   3: "onepiece",
-  4: "pokemon",
+  4: ["pokemon", "pokemon-japan"], // merged
   5: "riftbound",
   6: "rise",
-  7: "sorcery"
+  7: "sorcery",
+  8: "chrono-core",
+  9: "cyberpunk",
+  10: ["dbs-fusion", "dbs-masters"], // merged
+  11: "eoa",
+  12: "grand-archive",
+  13: "gundam",
+  14: "naruto-mythos",
+  15: "palworld",
+  16: "swu"
 }
 ```
 
@@ -670,7 +767,7 @@ For improved accuracy, you can provide game-specific embedding models that are f
 ```typescript
 const result = await initializeScanner({
   segmentationModelPath: '/path/to/yolo_model.pte',
-  embeddingModelPath: '/path/to/default_embedding_model.pte', // Fallback for all games
+  embeddingModelPath: '/path/to/CardRecognitionModel.pte', // Fallback for all games
 
   scanMode: 'single',
   segmentationThreshold: 0.7,
@@ -681,14 +778,14 @@ const result = await initializeScanner({
   captureImage: true,
 
   gameClassMapping: {
-    0: "fab",
-    1: "lorcana",
-    2: "mtg",
-    3: "onepiece",
-    4: "pokemon",
-    5: "riftbound",
-    6: "rise",
-    7: "sorcery"
+    0: 'fab',
+    1: 'lorcana',
+    2: 'mtg',
+    3: 'onepiece',
+    4: 'pokemon',
+    5: 'riftbound',
+    6: 'rise',
+    7: 'sorcery',
   },
 
   gameSpecificConfig: {
@@ -696,8 +793,8 @@ const result = await initializeScanner({
     mtg: {
       embeddingModelPath: '/path/to/mtg_embedding_model.pte', // MTG-specific embedder
       setSymbolDetection: {
-        detectionModelPath: '/path/to/mtg/set_symbol_detection.pte',
-        embeddingModelPath: '/path/to/mtg/set_symbol_embedder.pte',
+        detectionModelPath: '/path/to/mtg/SetSymbolDetectionModel.pte',
+        embeddingModelPath: '/path/to/mtg/SetSymbolRecognitionModel.pte',
         detectionThreshold: 0.3,
         confidenceThreshold: 0.6,
       },
@@ -712,7 +809,7 @@ const result = await initializeScanner({
     fab: {
       embeddingModelPath: '/path/to/fab_embedding_model.pte', // FAB-specific embedder
       colorDetection: {
-        modelPath: '/path/to/fab/fab_color_classifier.pte',
+        modelPath: '/path/to/fab/ColorBarModel.pte',
       },
     },
 
@@ -731,20 +828,25 @@ const result = await initializeScanner({
 
 ### Implementation Details
 
-The per-game embedding computation happens in [`SearchStrategy.cpp:76-89`](../packages/react-native-card-scanner/common/rncardscanner/core/SearchStrategy.cpp):
+The per-game embedding computation happens in [`SearchStrategy.cpp:100-125`](../packages/card-scanner-core/src/core/SearchStrategy.cpp).
+The embedders are passed down as a `GameEmbedders` map rather than fetched from a
+registry, so the search has no global state to reach for:
 
 ```cpp
 // For each probable game:
 for (const auto &gameToSearch : topGames) {
   // Select game-specific embedder or fall back to default
-  rncardscanner::CardEmbeddingModel *embedder = defaultEmbedder;
-  auto gameSpecificModel = CardScannerInstaller::getEmbeddingModelForGame(gameToSearch);
-  if (gameSpecificModel) {
-    embedder = gameSpecificModel.get();
+  cardscanner::CardEmbeddingModel *embedder = defaultEmbedder;
+  if (gameEmbedders != nullptr) {
+    const auto it = gameEmbedders->find(gameToSearch);
+    if (it != gameEmbedders->end() && it->second) {
+      embedder = it->second.get();
+    }
   }
 
   // Compute embedding with the selected model for this game
-  auto embeddingResult = embedder->computeEmbedding(cardImage);
+  CardEmbeddingResult embeddingResult = embedder->computeEmbedding(cardImage);
+  const auto &embedding = embeddingResult.embedding;
 
   // Search this game's database with its specialized embedding
   auto gameResults = gameDb->search_similar_cards(embedding, config.searchCandidates);
@@ -764,11 +866,12 @@ if (!result.success) {
 }
 ```
 
-For `scanFrame` (worklet context), check the `Detection.success` field:
+For frame scanning, check the `Detection.success` field on the listener result:
 
 ```typescript
-const detection = scanFrame(frame);
-if (!detection.success) {
-  console.error('Scan failed:', detection.error);
-}
+cardScannerPlugin.setDetectionListener((res) => {
+  if (!res.detection.success) {
+    console.error('Scan failed:', res.detection.error);
+  }
+});
 ```

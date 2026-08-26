@@ -1,0 +1,26 @@
+import { Platform } from 'react-native';
+import { type Spec as CardScannerInstallerInterface } from './NativeCardScanner';
+
+const LINKING_ERROR =
+  `The package '@cardnexus/card-scanner' doesn't seem to be linked. Make sure: \n\n` +
+  Platform.select({ ios: "- You have run 'pod install'\n", default: '' }) +
+  '- You rebuilt the app after installing the package\n' +
+  '- You are not using Expo Go\n';
+
+function returnSpecOrThrowLinkingError(spec: any) {
+  return spec
+    ? spec
+    : new Proxy(
+        {},
+        {
+          get() {
+            throw new Error(LINKING_ERROR);
+          },
+        },
+      );
+}
+
+const CardScannerInstallerNativeModule: CardScannerInstallerInterface =
+  returnSpecOrThrowLinkingError(require('./NativeCardScanner').default);
+
+export { CardScannerInstallerNativeModule };

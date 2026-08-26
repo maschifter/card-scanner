@@ -94,4 +94,9 @@ apps/*/android/
 *.tgz
 Makefile
 
+# local tooling for benchmark ground truth; only its output (utils/benchmarkImages.ts) is committed
+apps/example/scripts/
+
 .claude
+apps/example/assets/reference_check/
+scripts/benchmark-ids/

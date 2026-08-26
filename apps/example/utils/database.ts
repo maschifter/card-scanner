@@ -13,11 +13,22 @@ export const GAME_DATABASES = [
   { name: 'lorcana', asset: require('../assets/lorcana.mdb') },
   { name: 'mtg', asset: require('../assets/mtg.mdb') },
   { name: 'pokemon', asset: require('../assets/pokemon.mdb') },
+  { name: 'pokemon-japan', asset: require('../assets/pokemon-japan.mdb') },
   { name: 'onepiece', asset: require('../assets/onepiece.mdb') },
   { name: 'riftbound', asset: require('../assets/riftbound.mdb') },
   { name: 'rise', asset: require('../assets/rise.mdb') },
   { name: 'sorcery', asset: require('../assets/sorcery.mdb') },
   { name: 'fab', asset: require('../assets/fab.mdb') },
+  { name: 'cyberpunk', asset: require('../assets/cyberpunk.mdb') },
+  { name: 'dbs-masters', asset: require('../assets/dbs-masters.mdb') },
+  { name: 'dbs-fusion', asset: require('../assets/dbs-fusion.mdb') },
+  { name: 'eoa', asset: require('../assets/eoa.mdb') },
+  { name: 'grand-archive', asset: require('../assets/grand-archive.mdb') },
+  { name: 'gundam', asset: require('../assets/gundam.mdb') },
+  { name: 'naruto-mythos', asset: require('../assets/naruto-mythos.mdb') },
+  { name: 'swu', asset: require('../assets/swu.mdb') },
+  { name: 'chrono-core', asset: require('../assets/chrono-core.mdb') },
+  { name: 'palworld', asset: require('../assets/palworld.mdb') },
 ];
 
 // Set symbol database (for MTG)
@@ -25,6 +36,23 @@ const SET_SYMBOL_DATABASE = {
   name: 'set-symbols',
   asset: require('../assets/mtg/mtg-sets.mdb'),
 };
+
+// Bump whenever the bundled .mdb files change. An installed database is
+// otherwise kept forever, so a card-recognition model swap would leave old
+// embeddings in place and every similarity score would collapse.
+const DB_BUNDLE_VERSION = '0.0.11';
+const DB_VERSION_MARKER = `${FileSystem.documentDirectory}db-bundle-version.txt`;
+
+async function bundledDatabasesChanged(): Promise<boolean> {
+  try {
+    const info = await FileSystem.getInfoAsync(DB_VERSION_MARKER);
+    if (!info.exists) return true;
+    const seen = await FileSystem.readAsStringAsync(DB_VERSION_MARKER);
+    return seen.trim() !== DB_BUNDLE_VERSION;
+  } catch {
+    return true;
+  }
+}
 
 export interface DatabaseStats {
   cardCount: number;
@@ -119,6 +147,12 @@ export async function loadAllDatabases(): Promise<GameDatabaseStatus[]> {
   console.log('Loading all game databases...');
 
   const results: GameDatabaseStatus[] = [];
+  const forceReload = await bundledDatabasesChanged();
+  if (forceReload) {
+    console.log(
+      `Bundled databases changed (${DB_BUNDLE_VERSION}); replacing installed ones`,
+    );
+  }
 
   // Load set symbol database first (for MTG)
   try {
@@ -134,7 +168,7 @@ export async function loadAllDatabases(): Promise<GameDatabaseStatus[]> {
       // Check if already loaded
       const stats = await checkDatabaseStatus(game.name);
 
-      if (stats.isLoaded) {
+      if (stats.isLoaded && !forceReload) {
         console.log(
           `${game.name} database already loaded with ${stats.cardCount} cards`,
         );
@@ -176,6 +210,14 @@ export async function loadAllDatabases(): Promise<GameDatabaseStatus[]> {
   console.log(
     `Database loading complete: ${successCount}/${totalCount} games loaded`,
   );
+
+  if (forceReload) {
+    try {
+      await FileSystem.writeAsStringAsync(DB_VERSION_MARKER, DB_BUNDLE_VERSION);
+    } catch (error) {
+      console.error('Failed to record database bundle version:', error);
+    }
+  }
 
   return results;
 }

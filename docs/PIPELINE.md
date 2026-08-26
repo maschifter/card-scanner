@@ -58,9 +58,10 @@ The scanner processes camera frames through a **5-stage pipeline**:
 ├─────────────────────────────────────────────────────────────┤
 │  • Detect cards → bounding boxes                            │
 │  • Predict top game → predictedGameName                     │
-│  • Predict games → top 3 game predictions                   │
+│  • Predict games → top 3 classes → databases to search      │
 │  • Optional: Dewarped images                                │
-│  • Scan mode filter: single/multiple                        │
+│  • NMS + group-box filter → drop duplicates                 │
+│  • Selection: center-most (single mode)                     │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
@@ -132,26 +133,36 @@ The scanner processes camera frames through a **5-stage pipeline**:
 
 ## Entry Point
 
+### Async frame path: `HybridCardScannerPlugin::scanFrame`
+
+**Source:** [`packages/mobile-card-scanner/common/rnbridge/HybridCardScannerPlugin.cpp`](../packages/mobile-card-scanner/common/rnbridge/HybridCardScannerPlugin.cpp)
+
+Camera frames enter through the Nitro plugin. The Vision Camera v5 frame worklet snapshots the coordinate mapping while the frame is alive, then offloads to an `AsyncRunner` task ([`apps/example/utils/scanOnFrame.ts`](../apps/example/utils/scanOnFrame.ts)), which calls `scanFrame` on the runner's thread:
+
+1. `scanFrame(frame, coordinateSnapshot)` runs the whole scan synchronously on the calling thread and owns the Frame from the call on. Frames are rejected up front (no pixel copy) when another scan is in progress (`tryClaimScan`, which gives up rather than queue) or the `maxFrameRate` throttle window opens later than a ~35ms margin. A frame due earlier is copied and released first, then the scan sleeps the gap, so it starts right when the window opens instead of waiting for the next camera frame.
+2. The frame is converted to an RGB `cv::Mat` and rotated upright according to `frame.orientation` ([`utils/FrameTransform.cpp`](../packages/mobile-card-scanner/common/rnbridge/FrameTransform.cpp)) - a copy that never aliases the camera buffer - and the Frame is disposed right there, before the window wait and `ScannerPipeline::processFrame`. Dropped and failed frames are disposed on their exit path too (an RAII guard in `scanFrame`), so the Frame is disposed exactly once and the worklet must not dispose a Frame it handed to `scanFrame`.
+3. Resulting bounding boxes are inverse-mapped back to raw frame-buffer coordinates and delivered to the JS detection listener.
+
+`scanImage` and the benchmark runner call the same pipeline directly with a decoded image. `scanImage` runs on a detached thread and takes the same exclusivity as step 1 through `claimScan` - it queues for it rather than dropping - so a camera frame and an image scan never overlap. Being user-initiated, it bypasses the `maxFrameRate` throttle the way the benchmark runner does, and so never consumes the camera's throttle window.
+
 ### `ScannerPipeline::processFrame`
 
-**Source:** [`packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp:16`](../packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp)
+**Source:** [`packages/card-scanner-core/src/core/ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 ```cpp
-dto::ScanResult ScannerPipeline::processFrame(
-    const cv::Mat &frameImage,
-    const dto::ScannerConfig &config,
-    DatabaseManager *dbManager,
-    YoloSegmentationModel *yoloModel,
-    CardEmbeddingModel *embeddingModel,
-    SetSymbolYoloModel *setSymbolYolo,
-    SetSymbolEmbedder *setSymbolEmbedder,
-    FABColorClassifier *fabColorClassifier
-)
+static dto::ScanResult
+processFrame(const cv::Mat &frameImage, const dto::ScannerConfig &config,
+             cardscanner::DatabaseManager &dbManager,
+             cardscanner::YoloSegmentationModel *yoloModel,
+             cardscanner::CardEmbeddingModel *embeddingModel,
+             cardscanner::SetSymbolYoloModel *setSymbolYolo,
+             cardscanner::SetSymbolEmbedder *setSymbolEmbedder,
+             cardscanner::FABColorClassifier *fabColorClassifier);
 ```
 
 **Parameters:**
 
-- `frameImage` - RGB camera frame (cv::Mat)
+- `frameImage` - RGB, upright-rotated camera frame (cv::Mat)
 - `config` - Scanner configuration
 - `dbManager` - Database manager for card lookups
 - Models - ML models (YOLO, embedder, etc.)
@@ -166,7 +177,7 @@ dto::ScanResult ScannerPipeline::processFrame(
 
 ### 1. Blur Detection
 
-**Source:** [`ScannerPipeline.cpp:29-41`](../packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp)
+**Source:** [`ScannerPipeline.cpp:29-41`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 **Purpose:** Skip blurry frames to save ML compute
 
@@ -179,7 +190,7 @@ if (config.blurThreshold > 0.0) {
 }
 ```
 
-**Method:** [`ImageUtils::calculateBlurScore`](../packages/react-native-card-scanner/common/rncardscanner/utils/ImageUtils.h)
+**Method:** [`ImageUtils::calculateBlurScore`](../packages/card-scanner-core/src/utils/ImageUtils.h)
 
 - Computes Laplacian variance
 - Higher score = sharper image
@@ -189,7 +200,7 @@ if (config.blurThreshold > 0.0) {
 
 ### 2. Frame Rate Throttling
 
-**Source:** [`ScannerPipeline.cpp:43-62`](../packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp)
+**Source:** [`ScannerPipeline.cpp:43-62`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 **Purpose:** Limit ML pipeline to max N FPS (configurable)
 
@@ -218,13 +229,13 @@ if (config.maxFrameRate > 0) {
 
 ### STAGE 1: Card Segmentation
 
-**Source:** [`ScannerPipeline.cpp:64-65`](../packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp)
+**Source:** [`ScannerPipeline.cpp:64-65`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 ```cpp
 auto segmentation = performSegmentation(frameImage, config, yoloModel);
 ```
 
-**Implementation:** [`ScannerPipeline.cpp:92-109`](../packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp)
+**Implementation:** [`ScannerPipeline.cpp:92-109`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 #### Step 1.1: YOLO Detection
 
@@ -237,34 +248,32 @@ std::vector<Detection> rawDetections = yoloModel->detect(frameImage);
 
 - Bounding boxes
 - Confidence scores
-- Top game prediction (`predictedGameName`)
-- Game predictions (top 3 for multi-database search)
+- Top game prediction (`predictedGameName`) — the canonical name of the winning class
+- Game predictions: the top 3 classes expanded into database names for the
+  multi-database search (a class covering several games contributes all of them)
 - Optional dewarped images
 
-**Reference:** [`models/YoloSegmentationModel.cpp`](../packages/react-native-card-scanner/common/rncardscanner/models/YoloSegmentationModel.cpp)
+Postprocessing prunes raw boxes before any mask or dewarp work, so discarded boxes never cost anything:
 
-#### Step 1.2: Scan Mode Filter
+- **NMS** - suppresses by IoU and by mutual containment, so near-duplicate boxes of one card are gone before masks are generated
+- **Group box filter** - a box containing several cards, or one clearly larger with a different aspect ratio than the card inside it, is dropped as a YOLO "group box"
 
-```cpp
-if (config.scanMode == "single") {
-  // Keep only highest confidence detection
-  if (!rawDetections.empty()) {
-    auto best = std::max_element(/* ... */);
-    rawDetections = {*best};
-  }
-}
-```
+**Reference:** [`models/YoloSegmentationModel.cpp`](../packages/card-scanner-core/src/models/YoloSegmentationModel.cpp)
 
-**Modes:**
+#### Step 1.2: Detection Selection
 
-- `"single"` - Returns only best detection
-- `"multiple"` - Returns all detections
+**Source:** [`models/YoloSegmentationModel.cpp`](../packages/card-scanner-core/src/models/YoloSegmentationModel.cpp)
+
+The surviving detections are then narrowed by scan mode:
+
+- **`"single"` mode** - returns the detection closest to the frame center (quad centroid), with sticky selection (the tracked card wins over rivals unless one is clearly more central)
+- **`"multiple"` mode** - returns all remaining detections
 
 ---
 
 ### STAGE 2: Image Extraction
 
-**Source:** [`ScannerPipeline.cpp:202-206`](../packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp)
+**Source:** [`ScannerPipeline.cpp:202-206`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 ```cpp
 card.croppedImage = utils::ImageUtils::extractCardImage(frameImage, detection);
@@ -273,7 +282,7 @@ if (card.croppedImage.empty()) {
 }
 ```
 
-**Method:** [`ImageUtils::extractCardImage`](../packages/react-native-card-scanner/common/rncardscanner/utils/ImageUtils.h)
+**Method:** [`ImageUtils::extractCardImage`](../packages/card-scanner-core/src/utils/ImageUtils.h)
 
 **Logic:**
 
@@ -286,7 +295,7 @@ if (card.croppedImage.empty()) {
 
 ### STAGE 3: Low-Light Enhancement
 
-**Source:** [`ScannerPipeline.cpp:208-217`](../packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp)
+**Source:** [`ScannerPipeline.cpp:208-217`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 **Condition:** `lowLightThreshold > 0` AND image is dark
 
@@ -302,7 +311,7 @@ if (config.lowLightThreshold > 0.0 &&
 }
 ```
 
-**Detection:** [`ImageUtils::isLowLight`](../packages/react-native-card-scanner/common/rncardscanner/utils/ImageUtils.h)
+**Detection:** [`ImageUtils::isLowLight`](../packages/card-scanner-core/src/utils/ImageUtils.h)
 
 - Computes average luminance
 - Returns true if average < threshold
@@ -313,14 +322,14 @@ if (config.lowLightThreshold > 0.0 &&
 
 ### STAGE 4: Card Recognition
 
-**Source:** [`ScannerPipeline.cpp:220-222`](../packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp)
+**Source:** [`ScannerPipeline.cpp:220-222`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 ```cpp
 card.matches = recognizeCard(processingImage, detection, config,
                              dbManager, embeddingModel);
 ```
 
-**Implementation:** [`ScannerPipeline.cpp:125`](../packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp) → [`SearchStrategy.cpp`](../packages/react-native-card-scanner/common/rncardscanner/core/SearchStrategy.cpp)
+**Implementation:** [`ScannerPipeline.cpp:125`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp) → [`SearchStrategy.cpp`](../packages/card-scanner-core/src/core/SearchStrategy.cpp)
 
 #### Step 4.1: Compute Embedding
 
@@ -333,25 +342,41 @@ std::vector<float> embedding = embeddingModel->computeEmbedding(cardImage);
 
 #### Step 4.2: Extract Top Games
 
-**Source:** [`SearchStrategy.cpp:27`](../packages/react-native-card-scanner/common/rncardscanner/core/SearchStrategy.cpp)
+**Source:** [`SearchStrategy.cpp`](../packages/card-scanner-core/src/core/SearchStrategy.cpp) (`extractTopGames`)
 
 ```cpp
 std::vector<std::string> extractTopGames(
-    const std::vector<GamePrediction> &gamePredictions
+    const cardscanner::Detection &detection,
+    const dto::ScannerConfig &config
 ) {
-  // Filter by MIN_YOLO_GAME_CONFIDENCE (0.1)
-  // Take top MAX_GAME_PREDICTIONS (3)
+  // Drop predictions below config.minGameConfidence (default 0.1)
+  // Cap the survivors at MAX_GAME_DATABASES (4), de-duplicating names
 }
 ```
 
+`SearchStrategy::extractTopGames` walks the detection's per-class confidences in
+descending order and expands each class through `config.gameClassMapping`, so a
+class covering several games (e.g. `4: ["pokemon", "pokemon-japan"]`) contributes
+one database per game. An unmapped class does not consume one of the
+`MAX_TOP_PREDICTIONS` slots, and the result is capped at `MAX_GAME_DATABASES`.
+See [`SearchStrategy.cpp:50-85`](../packages/card-scanner-core/src/core/SearchStrategy.cpp).
+
 **Constants:**
 
-- `MIN_YOLO_GAME_CONFIDENCE` = 0.1
-- `MAX_GAME_PREDICTIONS` = 3
+- `config.minGameConfidence` = 0.1 by default, runtime-configurable. It depends
+  on the detection head's confidence scale, which differs sharply between
+  one-to-many and one-to-one heads — retune it whenever the model changes.
+- `MAX_TOP_PREDICTIONS` = 3 — cap on YOLO **classes**.
+- `MAX_GAME_DATABASES` = 4 — cap on **databases** actually searched. Larger than
+  the class cap because a merged class contributes two names, but bounded
+  because each database costs a full embedding pass plus a vector search.
+
+Two merged classes in the top 3 would expand to 6 names; the cap drops the
+lowest-ranked ones rather than searching them.
 
 #### Step 4.3: Multi-Database Search (Adaptive)
 
-**Source:** [`SearchStrategy.cpp:57-112`](../packages/react-native-card-scanner/common/rncardscanner/core/SearchStrategy.cpp)
+**Source:** [`SearchStrategy.cpp:57-112`](../packages/card-scanner-core/src/core/SearchStrategy.cpp)
 
 ```cpp
 std::vector<CardSearchResult> searchMultipleDatabases(
@@ -418,7 +443,7 @@ std::vector<CardSearchResult> searchMultipleDatabases(
 
 #### Step 4.4: Filter to Best Game
 
-**Source:** [`SearchStrategy.cpp:114-156`](../packages/react-native-card-scanner/common/rncardscanner/core/SearchStrategy.cpp)
+**Source:** [`SearchStrategy.cpp:114-156`](../packages/card-scanner-core/src/core/SearchStrategy.cpp)
 
 ```cpp
 std::vector<dto::CardMatch> filterToBestGame(
@@ -434,9 +459,12 @@ std::vector<dto::CardMatch> filterToBestGame(
               return a.score > b.score;
             });
 
-  // Find the best match game (highest similarity score)
+  // Find the best match game (highest similarity score).
+  // Each game may override the scanner-wide threshold via
+  // gameSpecificConfig[game].confidenceThreshold.
   std::string bestMatchGame = "";
-  if (sortedResults[0].score >= config.confidenceThreshold) {
+  if (sortedResults[0].score >=
+      getEffectiveConfidenceThreshold(sortedResults[0].gameName, config)) {
     bestMatchGame = sortedResults[0].gameName;
   }
 
@@ -448,7 +476,7 @@ std::vector<dto::CardMatch> filterToBestGame(
   std::vector<dto::CardMatch> filteredMatches;
   for (const auto &result : sortedResults) {
     if (result.gameName == bestMatchGame &&
-        result.score >= config.confidenceThreshold) {
+        result.score >= getEffectiveConfidenceThreshold(result.gameName, config)) {
       filteredMatches.push_back(convertToCardMatch(result));
 
       if (filteredMatches.size() >= static_cast<size_t>(config.maxMatches)) {
@@ -461,10 +489,17 @@ std::vector<dto::CardMatch> filterToBestGame(
 }
 ```
 
-**Result:** Up to `config.maxMatches` cards from best game above `config.confidenceThreshold`
+**Result:** Up to `config.maxMatches` cards from best game above that game's effective threshold
+
+This step is also what disambiguates a merged class: `pokemon` and
+`pokemon-japan` were both searched, their results are ranked together here, and
+whichever database produced the better match decides the game.
 
 **Note on `predictedGameName` vs. `gameName`:**
 The `predictedGameName` from Stage 1 is always returned for a detection. However, the `gameName` field on a `DetectedCard` is only populated if a successful match is found in a database during this stage. This allows the application to know the likely game of a card even if it's not in the database.
+
+**Note on sideways cards:**
+When the mask quad indicates a sideways card (e.g. phone held flat, stale device orientation), recognition retries with a cached/180° flip and the winning orientation is used for the matches and the saved crop.
 
 **Note on `predictedGameConfidence`:**
 The `predictedGameConfidence` field contains the YOLO model's confidence score (0.0-1.0) for the predicted game. This can be used to filter out low-confidence predictions and prevent false positive database download prompts. For example, requiring 60%+ confidence and multiple consecutive frames before prompting users to download a missing database.
@@ -473,7 +508,7 @@ The `predictedGameConfidence` field contains the YOLO model's confidence score (
 
 ### STAGE 5: Game-Specific Metadata
 
-**Source:** [`ScannerPipeline.cpp:224-233`](../packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp)
+**Source:** [`ScannerPipeline.cpp:224-233`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 Only runs if `card.hasMatches()` returns true.
 
@@ -483,11 +518,11 @@ Only runs if `card.hasMatches()` returns true.
 
 ### 5A. MTG Set Symbol Detection
 
-**Source:** [`ScannerPipeline.cpp:142-157`](../packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp) → [`SetSymbolProcessor.cpp`](../packages/react-native-card-scanner/common/rncardscanner/core/SetSymbolProcessor.cpp)
+**Source:** [`ScannerPipeline.cpp:142-157`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp) → [`SetSymbolProcessor.cpp`](../packages/card-scanner-core/src/core/SetSymbolProcessor.cpp)
 
 #### Conditions
 
-**Source:** [`SetSymbolProcessor.cpp:15-38`](../packages/react-native-card-scanner/common/rncardscanner/core/SetSymbolProcessor.cpp)
+**Source:** [`SetSymbolProcessor.cpp:15-38`](../packages/card-scanner-core/src/core/SetSymbolProcessor.cpp)
 
 ```cpp
 // 1. Card is MTG
@@ -509,7 +544,7 @@ if (cardMatches.size() >= 2) {
 
 #### Processing Steps
 
-**Source:** [`SetSymbolProcessor.cpp:40-55`](../packages/react-native-card-scanner/common/rncardscanner/core/SetSymbolProcessor.cpp)
+**Source:** [`SetSymbolProcessor.cpp:40-55`](../packages/card-scanner-core/src/core/SetSymbolProcessor.cpp)
 
 ```cpp
 // Step 1: Detect symbol bounding box
@@ -535,17 +570,17 @@ if (!results.empty() && results[0].score >= confidenceThreshold) {
 - `SetSymbolEmbedder` - Generates symbol embedding
 - `ObjectBoxDB` - Set symbol database
 
-**Reference:** [`models/mtg/SetSymbolYoloModel.cpp`](../packages/react-native-card-scanner/common/rncardscanner/models/mtg/SetSymbolYoloModel.cpp)
+**Reference:** [`models/mtg/SetSymbolYoloModel.cpp`](../packages/card-scanner-core/src/models/mtg/SetSymbolYoloModel.cpp)
 
 ---
 
 ### 5B. FAB Color Variant Detection
 
-**Source:** [`ScannerPipeline.cpp:159-184`](../packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp) → [`FABColorProcessor.cpp`](../packages/react-native-card-scannerr/common/rncardscanner/core/FABColorProcessor.cpp)
+**Source:** [`ScannerPipeline.cpp:159-184`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp) → [`FABColorProcessor.cpp`](../packages/card-scanner-core/src/core/FABColorProcessor.cpp)
 
 #### Conditions
 
-**Source:** [`FABColorProcessor.cpp:15-38`](../packages/react-native-card-scanner/common/rncardscanner/core/FABColorProcessor.cpp)
+**Source:** [`FABColorProcessor.cpp:15-38`](../packages/card-scanner-core/src/core/FABColorProcessor.cpp)
 
 ```cpp
 // 1. Card is FAB
@@ -565,7 +600,7 @@ if (cardMatches.size() >= 2) {
 
 #### Processing Steps
 
-**Source:** [`FABColorProcessor.cpp:40-54`](../packages/react-native-card-scanner/common/rncardscanner/core/FABColorProcessor.cpp)
+**Source:** [`FABColorProcessor.cpp:40-54`](../packages/card-scanner-core/src/core/FABColorProcessor.cpp)
 
 ```cpp
 // Step 1: Extract dots region (top-left corner)
@@ -575,7 +610,7 @@ cv::Mat dotsRegion = extractDotsRegion(cardImage, dotsRegionRatio, minDotsRegion
 return fabClassifier->classifyColor(dotsRegion);
 ```
 
-**Extract Dots Region:** [`FABColorProcessor.cpp:57-76`](../packages/react-native-card-scanner/common/rncardscanner/core/FABColorProcessor.cpp)
+**Extract Dots Region:** [`FABColorProcessor.cpp:57-76`](../packages/card-scanner-core/src/core/FABColorProcessor.cpp)
 
 ```cpp
 cv::Mat extractDotsRegion(const cv::Mat &cardImage,
@@ -591,7 +626,7 @@ cv::Mat extractDotsRegion(const cv::Mat &cardImage,
 }
 ```
 
-**Model:** [`FABColorClassifier.cpp`](../packages/react-native-card-scanner/common/rncardscanner/models/fab/FABColorClassifier.cpp)
+**Model:** [`FABColorClassifier.cpp`](../packages/card-scanner-core/src/models/fab/FABColorClassifier.cpp)
 
 - Input: Top-left square region
 - Output: Color ("red", "yellow", "blue") + similarity
@@ -602,22 +637,22 @@ cv::Mat extractDotsRegion(const cv::Mat &cardImage,
 
 ### 1. Blur Filtering
 
-- **Where:** [`ScannerPipeline.cpp:29-41`](../packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp)
+- **Where:** [`ScannerPipeline.cpp:29-41`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 - **Impact:** Skips ML on bad frames (~1-2ms blur check vs ~200ms ML)
 
 ### 2. Frame Throttling
 
-- **Where:** [`ScannerPipeline.cpp:43-62`](../packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp)
+- **Where:** [`ScannerPipeline.cpp:43-62`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 - **Impact:** Limits to 5 FPS max (configurable)
 
-### 3. Scan Mode Filtering
+### 3. Detection Selection
 
-- **Where:** [`ScannerPipeline.cpp:104-109`](../packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp)
-- **Impact:** Single mode processes 1 detection instead of N
+- **Where:** [`models/YoloSegmentationModel.cpp`](../packages/card-scanner-core/src/models/YoloSegmentationModel.cpp)
+- **Impact:** Single mode processes 1 detection instead of N; boxes dropped in postprocessing skip mask generation, dewarp, embedding and DB search
 
 ### 4. Early Database Exit
 
-- **Where:** [`SearchStrategy.cpp:76-80`](../packages/react-native-card-scanner/common/rncardscanner/core/SearchStrategy.cpp)
+- **Where:** [`SearchStrategy.cpp:76-80`](../packages/card-scanner-core/src/core/SearchStrategy.cpp)
 - **Impact:** Stops after first database if high confidence
 
 ### 5. Disambiguation Gating
@@ -631,7 +666,7 @@ cv::Mat extractDotsRegion(const cv::Mat &cardImage,
 
 ### Model Access
 
-**Source:** [`RnCardScannerInstaller.cpp:45`](../packages/react-native-card-scanner/common/rncardscanner/RnCardScannerInstaller.cpp)
+**Source:** [`CardScannerInstaller.cpp:45`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
 
 ```cpp
 static std::mutex modelMutex_;
@@ -641,18 +676,24 @@ All model initialization/access protected by mutex.
 
 ### Frame Throttling
 
-**Source:** [`ScannerPipeline.cpp:12-13`](../packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp)
+**Source:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 ```cpp
 static std::chrono::steady_clock::time_point lastMLProcessTime;
 static std::mutex mlThrottleMutex;
 ```
 
-Thread-safe timestamp checking for frame rate limiting.
+Thread-safe timestamp checking for frame rate limiting. `scanFrame` pre-checks the same throttle window (`mlWindowOpensAt`, atomic `maxFrameRate_`) so out-of-window frames are dropped before any copy, then sleeps out the last <=35ms until the window opens before extracting.
+
+### Async Frame Scans
+
+**Source:** [`HybridCardScannerPlugin.cpp`](../packages/mobile-card-scanner/common/rnbridge/HybridCardScannerPlugin.cpp)
+
+`scanFrame` runs on the calling `AsyncRunner`'s thread. A `try_lock` scan mutex serializes concurrent callers (each screen owns a runner; the loser drops its frame), because the pipeline's single model instances are not reentrant. The camera buffer is held only for the pixel copy, then disposed before the window wait and ML - this matters on Android, where CameraX's keep-only-latest `ImageAnalysis` does not deliver the next frame while one is still open; the detection listener is snapshotted under its own mutex and invoked outside it.
 
 ### Database Manager
 
-**Source:** [`database/DatabaseManager.cpp`](../packages/react-native-card-scanner/common/rncardscanner/database/DatabaseManager.cpp)
+**Source:** [`database/DatabaseManager.cpp`](../packages/card-scanner-core/src/database/DatabaseManager.cpp)
 
 All database operations are thread-safe via internal locking.
 
@@ -697,7 +738,7 @@ if (card.croppedImage.empty()) {
 
 - [API Reference](API.md) - Complete API documentation
 - Source Code:
-  - [`ScannerPipeline.cpp`](../packages/react-native-card-scanner/common/rncardscanner/core/ScannerPipeline.cpp) - Main pipeline
-  - [`SearchStrategy.cpp`](../packages/react-native-card-scanner/common/rncardscanner/core/SearchStrategy.cpp) - Database search
-  - [`SetSymbolProcessor.cpp`](../packages/react-native-card-scanner/common/rncardscanner/core/SetSymbolProcessor.cpp) - MTG set symbols
-  - [`FABColorProcessor.cpp`](../packages/react-native-card-scanner/common/rncardscanner/core/FABColorProcessor.cpp) - FAB colors
+  - [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp) - Main pipeline
+  - [`SearchStrategy.cpp`](../packages/card-scanner-core/src/core/SearchStrategy.cpp) - Database search
+  - [`SetSymbolProcessor.cpp`](../packages/card-scanner-core/src/core/SetSymbolProcessor.cpp) - MTG set symbols
+  - [`FABColorProcessor.cpp`](../packages/card-scanner-core/src/core/FABColorProcessor.cpp) - FAB colors

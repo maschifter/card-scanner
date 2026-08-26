@@ -1,52 +1,50 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
   Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
 import {
   Camera,
-  runAsync,
+  CommonResolutions,
+  useAsyncRunner,
   useCameraDevice,
-  useCameraFormat,
   useCameraPermission,
-  useFrameProcessor,
+  useFrameOutput,
+  type CameraRef,
 } from 'react-native-vision-camera';
-import {
-  scanFrame,
-  type Detection,
-  type DetectedCard,
-} from '@cardnexus/card-scanner';
+import { type Detection, type DetectedCard } from '@cardnexus/card-scanner';
 import Svg, { Rect } from 'react-native-svg';
-import { useRunOnJS } from 'react-native-worklets-core';
+import { createSynchronizable } from 'react-native-worklets';
+import { useDetectionListener } from '../hooks/useDetectionListener';
 import { useScannerLoader } from '../hooks/useScannerLoader';
 import { checkDatabaseStatus } from '../utils/database';
+import {
+  cameraSpaceBoxToViewBox,
+  snapshotBoxToCameraSpace,
+  type CameraSpaceBox,
+  type ViewBox,
+} from '../utils/cameraCoords';
+import { createScanOnFrame } from '../utils/scanOnFrame';
 
-const screenWidth = Dimensions.get('window').width;
-const screenHeight = Dimensions.get('window').height;
+const isScanningSync = createSynchronizable(false);
 
 export default function VisionCameraDebug() {
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
-  const format = useCameraFormat(device, [
-    { fps: 30 },
-    { videoResolution: { width: 1080, height: 1920 } },
-    { videoStabilizationMode: 'off' },
-  ]);
-
+  const cameraRef = useRef<CameraRef>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [detection, setDetection] = useState<Detection | null>(null);
-  const [frameSize, setFrameSize] = useState({ width: 1080, height: 1920 });
+  // Boxes already mapped into preview-view points (see utils/cameraCoords.ts).
+  const [viewBoxes, setViewBoxes] = useState<ViewBox[]>([]);
   const [croppedImagePath, setCroppedImagePath] = useState<string | null>(null);
-  const [cameraLayout, setCameraLayout] = useState({ width: 0, height: 0 });
 
   const [currentCard, setCurrentCard] = useState<DetectedCard | null>(null);
   const [missingGameAlerts, setMissingGameAlerts] = useState<
@@ -54,77 +52,106 @@ export default function VisionCameraDebug() {
   >({});
   const [emptyDatabases, setEmptyDatabases] = useState<Set<string>>(new Set());
 
-  const { isLoading, error } = useScannerLoader('single');
+  const { isLoading, error, retry } = useScannerLoader();
 
-  const processDetectionCallback = useRunOnJS((detection: Detection) => {
-    setFrameSize({ width: 1080, height: 1920 });
-    setDetection(detection);
-    if (detection.success && detection.cards.length > 0) {
-      const firstCard = detection.cards[0];
-      setCurrentCard(firstCard);
+  useEffect(() => {
+    isScanningSync.setBlocking(isScanning);
+  }, [isScanning]);
 
-      if (firstCard.capturedImage) {
-        setCroppedImagePath(firstCard.capturedImage.uri);
-      }
-
-      // Track missing database detections with debouncing
-      if (firstCard.predictedGameName && !firstCard.gameName) {
-        // No match found - might be missing database
-        setMissingGameAlerts((prev) => {
-          const game = firstCard.predictedGameName!;
-          const count = (prev[game] || 0) + 1;
-          const confidence = firstCard.predictedGameConfidence || 0;
-
-          // Alert if: 3+ consecutive frames AND confidence >= 60%
-          if (count >= 3 && confidence >= 0.6) {
-            // Verify database is actually missing before alerting
-            checkDatabaseStatus(game).then((status) => {
-              if (!status.isLoaded) {
-                console.warn(
-                  `Missing database detected: ${game.toUpperCase()} ` +
-                    `(confidence: ${(confidence * 100).toFixed(1)}%, frames: ${count})`,
-                );
-                // Mark this game as having empty database
-                setEmptyDatabases((prev) => new Set(prev).add(game));
-                // Could show Alert/Modal here: Alert.alert(...)
-              }
-            });
-          }
-
-          return { ...prev, [game]: count };
-        });
-      } else {
-        // Reset counters on successful match
-        setMissingGameAlerts({});
-        setEmptyDatabases(new Set());
-      }
-    } else {
-      setCurrentCard(null);
+  // Runs on the JS thread (via the Nitro detection listener). Finishes the
+  // bounding-box mapping here: the camera->view conversion needs the
+  // PreviewView ref, which only exists on the JS thread.
+  const processDetection = (
+    result: Detection,
+    cameraBoxes: CameraSpaceBox[],
+  ) => {
+    const rects: ViewBox[] = [];
+    for (const box of cameraBoxes) {
+      const rect = cameraSpaceBoxToViewBox(cameraRef.current, box);
+      if (rect != null) rects.push(rect);
     }
-  }, []);
+    setViewBoxes(rects);
+    setDetection(result);
+    const firstCard = result.cards[0];
+    setCurrentCard(firstCard);
 
-  const frameProcessor = useFrameProcessor(
-    (frame) => {
-      'worklet';
+    if (firstCard.capturedImage) {
+      setCroppedImagePath(firstCard.capturedImage.uri);
+    }
 
-      if (!isScanning) {
-        return;
-      }
+    // Track missing database detections with debouncing
+    if (firstCard.predictedGameName && !firstCard.gameName) {
+      // No match found - might be missing database
+      setMissingGameAlerts((prev) => {
+        const game = firstCard.predictedGameName!;
+        const count = (prev[game] || 0) + 1;
+        const confidence = firstCard.predictedGameConfidence || 0;
 
-      runAsync(frame, () => {
-        'worklet';
-
-        const detection = scanFrame(frame);
-        if (detection.success && detection.cards.length > 0) {
-          processDetectionCallback(detection);
+        // Alert if: 3+ consecutive frames AND confidence >= 60%
+        if (count >= 3 && confidence >= 0.6) {
+          // Verify database is actually missing before alerting
+          checkDatabaseStatus(game).then((status) => {
+            if (!status.isLoaded) {
+              console.warn(
+                `Missing database detected: ${game.toUpperCase()} ` +
+                  `(confidence: ${(confidence * 100).toFixed(1)}%, frames: ${count})`,
+              );
+              // Mark this game as having empty database
+              setEmptyDatabases((prev) => new Set(prev).add(game));
+              // Could show Alert/Modal here: Alert.alert(...)
+            }
+          });
         }
+
+        return { ...prev, [game]: count };
       });
-    },
-    [isScanning, processDetectionCallback],
+    } else {
+      // Reset counters on successful match
+      setMissingGameAlerts({});
+      setEmptyDatabases(new Set());
+    }
+  };
+
+  useDetectionListener((res) => {
+    const result = res.detection;
+    if (!result.success || result.cards.length === 0) {
+      return;
+    }
+    const cameraBoxes: CameraSpaceBox[] = [];
+    for (const card of result.cards) {
+      const box = snapshotBoxToCameraSpace(
+        card.boundingBox,
+        res.frameWidth,
+        res.frameHeight,
+        res.coordinateSnapshot,
+      );
+      if (box != null) cameraBoxes.push(box);
+    }
+    processDetection(result, cameraBoxes);
+  });
+
+  const asyncRunner = useAsyncRunner();
+
+  const onFrame = useMemo(
+    () => createScanOnFrame(asyncRunner, isScanningSync),
+    [asyncRunner],
   );
 
+  // The native pipeline consumes interleaved RGB; was the Camera's
+  // pixelFormat prop in v4.
+  const frameOutput = useFrameOutput({
+    pixelFormat: 'rgb',
+    // Only a target - session negotiates across outputs and
+    // picks the closest natively supported sensor stream.
+    //
+    // Nothing is scaled, and the box mapping (coordinate-conversion from v5)
+    // does not depend on this value. FHD matches what v4 requested.
+    targetResolution: CommonResolutions.FHD_16_9,
+    onFrame,
+  });
+
   const toggleScanning = () => {
-    setIsScanning(!isScanning);
+    setIsScanning((prev) => !prev);
   };
 
   if (!hasPermission) {
@@ -152,6 +179,9 @@ export default function VisionCameraDebug() {
       <View style={styles.container}>
         <Text style={styles.errorText}>Failed to load models:</Text>
         <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={retry}>
+          <Text style={styles.retryButtonText}>Try Again</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -166,71 +196,33 @@ export default function VisionCameraDebug() {
 
   return (
     <View style={styles.container}>
-      <Camera
-        style={StyleSheet.absoluteFill}
-        device={device}
-        format={format}
-        isActive={isFocused}
-        frameProcessor={frameProcessor}
-        fps={30}
-        videoStabilizationMode="off"
-        pixelFormat="rgb"
-        enableBufferCompression={false}
-        preview={true}
-        onLayout={(event) => {
-          const { width, height } = event.nativeEvent.layout;
-          setCameraLayout({ width, height });
-        }}
-      />
+      {isFocused && (
+        <Camera
+          ref={cameraRef}
+          style={StyleSheet.absoluteFill}
+          device={device}
+          isActive={true}
+          outputs={[frameOutput]}
+          constraints={[{ fps: 30 }, { videoStabilizationMode: 'off' }]}
+        />
+      )}
 
-      {/* Bounding box overlay */}
+      {/* Bounding box overlay - rects already in view points */}
       {detection && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Svg style={StyleSheet.absoluteFill}>
-            {detection.cards.map((card, index) => {
-              const box = card.boundingBox;
-
-              const cameraWidth = cameraLayout.width || screenWidth;
-              const cameraHeight = cameraLayout.height || screenHeight;
-
-              const frameAspectRatio = frameSize.width / frameSize.height;
-              const cameraAspectRatio = cameraWidth / cameraHeight;
-
-              let previewWidth, previewHeight, offsetX, offsetY;
-
-              if (cameraAspectRatio > frameAspectRatio) {
-                previewHeight = cameraHeight;
-                previewWidth = cameraHeight * frameAspectRatio;
-                offsetX = (cameraWidth - previewWidth) / 2;
-                offsetY = 0;
-              } else {
-                previewWidth = cameraWidth;
-                previewHeight = cameraWidth / frameAspectRatio;
-                offsetX = 0;
-                offsetY = (cameraHeight - previewHeight) / 2;
-              }
-
-              const scaleX = previewWidth / frameSize.width;
-              const scaleY = previewHeight / frameSize.height;
-
-              const x = box.x1 * scaleX + offsetX;
-              const y = box.y1 * scaleY + offsetY;
-              const width = (box.x2 - box.x1) * scaleX;
-              const height = (box.y2 - box.y1) * scaleY;
-
-              return (
-                <Rect
-                  key={`identified-${index}`}
-                  x={x}
-                  y={y}
-                  width={width}
-                  height={height}
-                  stroke="#00ff00"
-                  strokeWidth="4"
-                  fill="none"
-                />
-              );
-            })}
+            {viewBoxes.map((rect, index) => (
+              <Rect
+                key={`identified-${index}`}
+                x={rect.x}
+                y={rect.y}
+                width={rect.width}
+                height={rect.height}
+                stroke="#00ff00"
+                strokeWidth="4"
+                fill="none"
+              />
+            ))}
           </Svg>
 
           {/* Debug info */}
@@ -471,5 +463,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     padding: 20,
     fontSize: 16,
+  },
+  retryButton: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

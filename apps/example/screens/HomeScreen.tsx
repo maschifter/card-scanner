@@ -438,18 +438,6 @@ const styles = StyleSheet.create({
     color: '#2e7d32',
     fontSize: 14,
   },
-  refreshButton: {
-    backgroundColor: '#2196F3',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  refreshButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
   featuresCard: {
     backgroundColor: '#fff',
     borderRadius: 12,

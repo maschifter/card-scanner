@@ -1,0 +1,846 @@
+{
+  "schema_version": 1,
+  "exports": [
+    {
+      "schema_version": 1,
+      "model": "CardRecognitionModel",
+      "format": "onnx",
+      "path": "home/bartekobrochta/card-scanner/artifacts/exports/CardRecognitionModel.onnx",
+      "file": "CardRecognitionModel.onnx",
+      "sha256": "198ff03760a6df06aa554feab06e1c00130eee026dd8e9277bf755295cb2bad5",
+      "bytes": 288795,
+      "input_shape": [
+        1,
+        3,
+        224,
+        224
+      ],
+      "input_names": [
+        "input"
+      ],
+      "output_names": [
+        "embedding"
+      ],
+      "preprocessing": {
+        "resize": [
+          224,
+          224
+        ],
+        "normalize": "imagenet",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "channel_order": "RGB"
+      },
+      "end2end": null,
+      "class_names": null,
+      "source_checkpoint": {
+        "path": "/home/bartekobrochta/card-scanner/best_models/CardRecognitionModel.pth",
+        "sha256": "74f4a9a3d34b6a476e7290f8f7a7b4ff4e7877c3d4374ff37ce35a8eac4fd92a"
+      },
+      "notes": "L2-normalised; compare with a dot product",
+      "exported_at": "2026-08-07T09:40:26+00:00",
+      "env": {
+        "torch": "2.12.1",
+        "torchvision": "0.27.1",
+        "ultralytics": "8.4.108",
+        "executorch": "1.3.1",
+        "onnx": "1.22.0",
+        "safetensors": "0.6.2",
+        "python": "3.11.5"
+      },
+      "verification": {
+        "checked": false,
+        "max_abs_diff": null,
+        "tolerance": 0.0,
+        "passed": false,
+        "method": "regenerated from existing export files; not re-verified against eager"
+      }
+    },
+    {
+      "schema_version": 1,
+      "model": "CardRecognitionModel",
+      "format": "pte",
+      "path": "home/bartekobrochta/card-scanner/artifacts/exports/CardRecognitionModel.pte",
+      "file": "CardRecognitionModel.pte",
+      "sha256": "14eeb890206de4e44f5a4516aa4281c395e4f277852805f43a08507ab6592931",
+      "bytes": 11271808,
+      "input_shape": [
+        1,
+        3,
+        224,
+        224
+      ],
+      "input_names": [
+        "input"
+      ],
+      "output_names": [
+        "embedding"
+      ],
+      "preprocessing": {
+        "resize": [
+          224,
+          224
+        ],
+        "normalize": "imagenet",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "channel_order": "RGB"
+      },
+      "end2end": null,
+      "class_names": null,
+      "source_checkpoint": {
+        "path": "/home/bartekobrochta/card-scanner/best_models/CardRecognitionModel.pth",
+        "sha256": "74f4a9a3d34b6a476e7290f8f7a7b4ff4e7877c3d4374ff37ce35a8eac4fd92a"
+      },
+      "notes": "L2-normalised; compare with a dot product",
+      "exported_at": "2026-08-07T09:40:26+00:00",
+      "env": {
+        "torch": "2.12.1",
+        "torchvision": "0.27.1",
+        "ultralytics": "8.4.108",
+        "executorch": "1.3.1",
+        "onnx": "1.22.0",
+        "safetensors": "0.6.2",
+        "python": "3.11.5"
+      },
+      "verification": {
+        "checked": false,
+        "max_abs_diff": null,
+        "tolerance": 0.0,
+        "passed": false,
+        "method": "regenerated from existing export files; not re-verified against eager"
+      }
+    },
+    {
+      "schema_version": 1,
+      "model": "CardRecognitionModel",
+      "format": "safetensors",
+      "path": "home/bartekobrochta/card-scanner/artifacts/exports/CardRecognitionModel.safetensors",
+      "file": "CardRecognitionModel.safetensors",
+      "sha256": "ac4b1b544ca96ab171c2f2eb46ea24433045f9aea704f27e58dfa55c85f63b16",
+      "bytes": 11417856,
+      "input_shape": [
+        1,
+        3,
+        224,
+        224
+      ],
+      "input_names": [
+        "input"
+      ],
+      "output_names": [
+        "embedding"
+      ],
+      "preprocessing": {
+        "resize": [
+          224,
+          224
+        ],
+        "normalize": "imagenet",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "channel_order": "RGB"
+      },
+      "end2end": null,
+      "class_names": null,
+      "source_checkpoint": {
+        "path": "/home/bartekobrochta/card-scanner/best_models/CardRecognitionModel.pth",
+        "sha256": "74f4a9a3d34b6a476e7290f8f7a7b4ff4e7877c3d4374ff37ce35a8eac4fd92a"
+      },
+      "notes": "L2-normalised; compare with a dot product",
+      "exported_at": "2026-08-07T09:40:26+00:00",
+      "env": {
+        "torch": "2.12.1",
+        "torchvision": "0.27.1",
+        "ultralytics": "8.4.108",
+        "executorch": "1.3.1",
+        "onnx": "1.22.0",
+        "safetensors": "0.6.2",
+        "python": "3.11.5"
+      },
+      "verification": {
+        "checked": false,
+        "max_abs_diff": null,
+        "tolerance": 0.0,
+        "passed": false,
+        "method": "regenerated from existing export files; not re-verified against eager"
+      }
+    },
+    {
+      "schema_version": 1,
+      "model": "CardSegmentationModel",
+      "format": "onnx",
+      "path": "CardSegmentationModel.onnx",
+      "file": "CardSegmentationModel.onnx",
+      "sha256": "b2e054a550b5329ad283386dbedf7f3d8f8789059fb425f61d4d9692978a1ef6",
+      "bytes": 10972477,
+      "sidecars": [],
+      "input_shape": [
+        1,
+        3,
+        384,
+        384
+      ],
+      "input_names": [
+        "images"
+      ],
+      "output_names": [
+        "output0",
+        "output1"
+      ],
+      "preprocessing": {
+        "resize": [
+          384,
+          384
+        ],
+        "normalize": "divide_by_255",
+        "channel_order": "RGB",
+        "letterbox": true,
+        "pad_value": 114
+      },
+      "end2end": false,
+      "class_names": [
+        "fab",
+        "lorcana",
+        "mtg",
+        "onepiece",
+        "pokemon",
+        "riftbound",
+        "rise",
+        "sorcery",
+        "chrono-core",
+        "cyberpunk",
+        "dbs",
+        "eoa",
+        "grand-archive",
+        "gundam",
+        "naruto-mythos",
+        "palworld",
+        "swu"
+      ],
+      "source_checkpoint": {
+        "path": "/home/bartekobrochta/card-scanner/best_models/CardSegmentationModel.pt",
+        "sha256": "7337331df5aa33fbe5539881fad0a796c5f00b549a7733126bbb25e0b804acf5"
+      },
+      "notes": "output0 is predictions, output1 the mask prototypes",
+      "exported_at": "2026-08-21T09:27:55+00:00",
+      "env": {
+        "torch": "2.12.1",
+        "torchvision": "0.27.1",
+        "ultralytics": "8.4.108",
+        "numpy": "2.2.6",
+        "timm": "1.0.20",
+        "executorch": "1.3.1",
+        "onnx": "1.22.0",
+        "safetensors": "0.6.2",
+        "device": "cuda",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "driver": "580.126.09",
+        "python": "3.11.5"
+      },
+      "verification": {
+        "checked": true,
+        "max_abs_diff": 0.000152587890625,
+        "tolerance": 0.001,
+        "passed": true,
+        "method": "reload-and-compare vs eager (onnx)"
+      }
+    },
+    {
+      "schema_version": 1,
+      "model": "CardSegmentationModel",
+      "format": "pte",
+      "path": "CardSegmentationModel.pte",
+      "file": "CardSegmentationModel.pte",
+      "sha256": "1f413d90fead0cd273146b56b2aa31898c95bdfc31d3ab58504501a91ec0f2d7",
+      "bytes": 10956288,
+      "sidecars": [],
+      "input_shape": [
+        1,
+        3,
+        384,
+        384
+      ],
+      "input_names": [
+        "images"
+      ],
+      "output_names": [
+        "output0",
+        "output1"
+      ],
+      "preprocessing": {
+        "resize": [
+          384,
+          384
+        ],
+        "normalize": "divide_by_255",
+        "channel_order": "RGB",
+        "letterbox": true,
+        "pad_value": 114
+      },
+      "end2end": false,
+      "class_names": [
+        "fab",
+        "lorcana",
+        "mtg",
+        "onepiece",
+        "pokemon",
+        "riftbound",
+        "rise",
+        "sorcery",
+        "chrono-core",
+        "cyberpunk",
+        "dbs",
+        "eoa",
+        "grand-archive",
+        "gundam",
+        "naruto-mythos",
+        "palworld",
+        "swu"
+      ],
+      "source_checkpoint": {
+        "path": "/home/bartekobrochta/card-scanner/best_models/CardSegmentationModel.pt",
+        "sha256": "7337331df5aa33fbe5539881fad0a796c5f00b549a7733126bbb25e0b804acf5"
+      },
+      "notes": "output0 is predictions, output1 the mask prototypes",
+      "exported_at": "2026-08-21T09:27:53+00:00",
+      "env": {
+        "torch": "2.12.1",
+        "torchvision": "0.27.1",
+        "ultralytics": "8.4.108",
+        "numpy": "2.2.6",
+        "timm": "1.0.20",
+        "executorch": "1.3.1",
+        "onnx": "1.22.0",
+        "safetensors": "0.6.2",
+        "device": "cuda",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "driver": "580.126.09",
+        "python": "3.11.5"
+      },
+      "verification": {
+        "checked": true,
+        "max_abs_diff": 0.0003662109375,
+        "tolerance": 0.001,
+        "passed": true,
+        "method": "reload-and-compare vs eager (pte)"
+      }
+    },
+    {
+      "schema_version": 1,
+      "model": "ColorBarModel",
+      "format": "onnx",
+      "path": "home/bartekobrochta/card-scanner/artifacts/exports/ColorBarModel.onnx",
+      "file": "ColorBarModel.onnx",
+      "sha256": "0ccae803e5e29017c81e45e93cd35721d1b95f8f647f003e41d1d55dc22f6eee",
+      "bytes": 53882,
+      "input_shape": [
+        1,
+        3,
+        100,
+        100
+      ],
+      "input_names": [
+        "input"
+      ],
+      "output_names": [
+        "logits"
+      ],
+      "preprocessing": {
+        "resize": [
+          100,
+          100
+        ],
+        "normalize": "imagenet",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "channel_order": "RGB"
+      },
+      "end2end": null,
+      "class_names": null,
+      "source_checkpoint": {
+        "path": "/home/bartekobrochta/card-scanner/best_models/fab/ColorBarModel.pth",
+        "sha256": "88926351cae8739c6fffaf0074aed549ebbc589d2f347b29b50021d07611ef84"
+      },
+      "notes": "logits; apply softmax for probabilities",
+      "exported_at": "2026-08-07T09:40:26+00:00",
+      "env": {
+        "torch": "2.12.1",
+        "torchvision": "0.27.1",
+        "ultralytics": "8.4.108",
+        "executorch": "1.3.1",
+        "onnx": "1.22.0",
+        "safetensors": "0.6.2",
+        "python": "3.11.5"
+      },
+      "verification": {
+        "checked": false,
+        "max_abs_diff": null,
+        "tolerance": 0.0,
+        "passed": false,
+        "method": "regenerated from existing export files; not re-verified against eager"
+      }
+    },
+    {
+      "schema_version": 1,
+      "model": "ColorBarModel",
+      "format": "pte",
+      "path": "home/bartekobrochta/card-scanner/artifacts/exports/ColorBarModel.pte",
+      "file": "ColorBarModel.pte",
+      "sha256": "dbcb6c12b102852b296cc3e83efed32b02d3fb85bf007113a6fe13723c2818b6",
+      "bytes": 503180,
+      "input_shape": [
+        1,
+        3,
+        100,
+        100
+      ],
+      "input_names": [
+        "input"
+      ],
+      "output_names": [
+        "logits"
+      ],
+      "preprocessing": {
+        "resize": [
+          100,
+          100
+        ],
+        "normalize": "imagenet",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "channel_order": "RGB"
+      },
+      "end2end": null,
+      "class_names": null,
+      "source_checkpoint": {
+        "path": "/home/bartekobrochta/card-scanner/best_models/fab/ColorBarModel.pth",
+        "sha256": "88926351cae8739c6fffaf0074aed549ebbc589d2f347b29b50021d07611ef84"
+      },
+      "notes": "logits; apply softmax for probabilities",
+      "exported_at": "2026-08-07T09:40:26+00:00",
+      "env": {
+        "torch": "2.12.1",
+        "torchvision": "0.27.1",
+        "ultralytics": "8.4.108",
+        "executorch": "1.3.1",
+        "onnx": "1.22.0",
+        "safetensors": "0.6.2",
+        "python": "3.11.5"
+      },
+      "verification": {
+        "checked": false,
+        "max_abs_diff": null,
+        "tolerance": 0.0,
+        "passed": false,
+        "method": "regenerated from existing export files; not re-verified against eager"
+      }
+    },
+    {
+      "schema_version": 1,
+      "model": "ColorBarModel",
+      "format": "safetensors",
+      "path": "home/bartekobrochta/card-scanner/artifacts/exports/ColorBarModel.safetensors",
+      "file": "ColorBarModel.safetensors",
+      "sha256": "23cf3c6a1a108e0e270b8e6b97a23b0646ff3f469cfc5ff14a869f2f9ddc1db0",
+      "bytes": 501900,
+      "input_shape": [
+        1,
+        3,
+        100,
+        100
+      ],
+      "input_names": [
+        "input"
+      ],
+      "output_names": [
+        "logits"
+      ],
+      "preprocessing": {
+        "resize": [
+          100,
+          100
+        ],
+        "normalize": "imagenet",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "channel_order": "RGB"
+      },
+      "end2end": null,
+      "class_names": null,
+      "source_checkpoint": {
+        "path": "/home/bartekobrochta/card-scanner/best_models/fab/ColorBarModel.pth",
+        "sha256": "88926351cae8739c6fffaf0074aed549ebbc589d2f347b29b50021d07611ef84"
+      },
+      "notes": "logits; apply softmax for probabilities",
+      "exported_at": "2026-08-07T09:40:26+00:00",
+      "env": {
+        "torch": "2.12.1",
+        "torchvision": "0.27.1",
+        "ultralytics": "8.4.108",
+        "executorch": "1.3.1",
+        "onnx": "1.22.0",
+        "safetensors": "0.6.2",
+        "python": "3.11.5"
+      },
+      "verification": {
+        "checked": false,
+        "max_abs_diff": null,
+        "tolerance": 0.0,
+        "passed": false,
+        "method": "regenerated from existing export files; not re-verified against eager"
+      }
+    },
+    {
+      "schema_version": 1,
+      "model": "SetSymbolDetectionModel",
+      "format": "onnx",
+      "path": "home/bartekobrochta/card-scanner/artifacts/exports/SetSymbolDetectionModel.onnx",
+      "file": "SetSymbolDetectionModel.onnx",
+      "sha256": "117303a3f7f0bc2a137403f7bb486b4a59f9a4a40f313565da484ae3e0191638",
+      "bytes": 9685947,
+      "input_shape": [
+        1,
+        3,
+        384,
+        384
+      ],
+      "input_names": [
+        "images"
+      ],
+      "output_names": [
+        "output0"
+      ],
+      "preprocessing": {
+        "resize": [
+          384,
+          384
+        ],
+        "normalize": "divide_by_255",
+        "channel_order": "RGB",
+        "letterbox": true,
+        "pad_value": 114
+      },
+      "end2end": false,
+      "class_names": [
+        "symbol"
+      ],
+      "source_checkpoint": {
+        "path": "/home/bartekobrochta/card-scanner/best_models/mtg/SetSymbolDetectionModel.pt",
+        "sha256": "b7af3b14dea38be7cf9ef8b347b087999629eb6b67ae31a2406a654038082c24"
+      },
+      "notes": "",
+      "exported_at": "2026-08-07T09:40:26+00:00",
+      "env": {
+        "torch": "2.12.1",
+        "torchvision": "0.27.1",
+        "ultralytics": "8.4.108",
+        "executorch": "1.3.1",
+        "onnx": "1.22.0",
+        "safetensors": "0.6.2",
+        "python": "3.11.5"
+      },
+      "verification": {
+        "checked": false,
+        "max_abs_diff": null,
+        "tolerance": 0.0,
+        "passed": false,
+        "method": "regenerated from existing export files; not re-verified against eager"
+      }
+    },
+    {
+      "schema_version": 1,
+      "model": "SetSymbolDetectionModel",
+      "format": "pte",
+      "path": "home/bartekobrochta/card-scanner/artifacts/exports/SetSymbolDetectionModel.pte",
+      "file": "SetSymbolDetectionModel.pte",
+      "sha256": "82844b621be2f6f75e9f1e01f841d9e26d9e48e1beb1ea4e6d972936db8cf512",
+      "bytes": 9671812,
+      "input_shape": [
+        1,
+        3,
+        384,
+        384
+      ],
+      "input_names": [
+        "images"
+      ],
+      "output_names": [
+        "output0"
+      ],
+      "preprocessing": {
+        "resize": [
+          384,
+          384
+        ],
+        "normalize": "divide_by_255",
+        "channel_order": "RGB",
+        "letterbox": true,
+        "pad_value": 114
+      },
+      "end2end": false,
+      "class_names": [
+        "symbol"
+      ],
+      "source_checkpoint": {
+        "path": "/home/bartekobrochta/card-scanner/best_models/mtg/SetSymbolDetectionModel.pt",
+        "sha256": "b7af3b14dea38be7cf9ef8b347b087999629eb6b67ae31a2406a654038082c24"
+      },
+      "notes": "",
+      "exported_at": "2026-08-07T09:40:26+00:00",
+      "env": {
+        "torch": "2.12.1",
+        "torchvision": "0.27.1",
+        "ultralytics": "8.4.108",
+        "executorch": "1.3.1",
+        "onnx": "1.22.0",
+        "safetensors": "0.6.2",
+        "python": "3.11.5"
+      },
+      "verification": {
+        "checked": false,
+        "max_abs_diff": null,
+        "tolerance": 0.0,
+        "passed": false,
+        "method": "regenerated from existing export files; not re-verified against eager"
+      }
+    },
+    {
+      "schema_version": 1,
+      "model": "SetSymbolRecognitionModel",
+      "format": "onnx",
+      "path": "home/bartekobrochta/card-scanner/artifacts/exports/SetSymbolRecognitionModel.onnx",
+      "file": "SetSymbolRecognitionModel.onnx",
+      "sha256": "7f20bfe3cf67b89c3e598b99f1659fe263dc56e9bec362aa71754659f9bbb023",
+      "bytes": 356553,
+      "input_shape": [
+        1,
+        3,
+        96,
+        96
+      ],
+      "input_names": [
+        "input"
+      ],
+      "output_names": [
+        "embedding"
+      ],
+      "preprocessing": {
+        "resize": [
+          96,
+          96
+        ],
+        "normalize": "imagenet",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "channel_order": "RGB"
+      },
+      "end2end": null,
+      "class_names": null,
+      "source_checkpoint": {
+        "path": "/home/bartekobrochta/card-scanner/best_models/mtg/SetSymbolRecognitionModel.pth",
+        "sha256": "a2d8001791858f616cef2b4d2dcfdf843a33bab04b66f3ddd4f62259e58e8b85"
+      },
+      "notes": "L2-normalised; compare with a dot product",
+      "exported_at": "2026-08-07T09:40:26+00:00",
+      "env": {
+        "torch": "2.12.1",
+        "torchvision": "0.27.1",
+        "ultralytics": "8.4.108",
+        "executorch": "1.3.1",
+        "onnx": "1.22.0",
+        "safetensors": "0.6.2",
+        "python": "3.11.5"
+      },
+      "verification": {
+        "checked": false,
+        "max_abs_diff": null,
+        "tolerance": 0.0,
+        "passed": false,
+        "method": "regenerated from existing export files; not re-verified against eager"
+      }
+    },
+    {
+      "schema_version": 1,
+      "model": "SetSymbolRecognitionModel",
+      "format": "pte",
+      "path": "home/bartekobrochta/card-scanner/artifacts/exports/SetSymbolRecognitionModel.pte",
+      "file": "SetSymbolRecognitionModel.pte",
+      "sha256": "6213f60032d9f3043598d1279b078e25a404c893abd33ed098e3bddfd70599a5",
+      "bytes": 4632064,
+      "input_shape": [
+        1,
+        3,
+        96,
+        96
+      ],
+      "input_names": [
+        "input"
+      ],
+      "output_names": [
+        "embedding"
+      ],
+      "preprocessing": {
+        "resize": [
+          96,
+          96
+        ],
+        "normalize": "imagenet",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "channel_order": "RGB"
+      },
+      "end2end": null,
+      "class_names": null,
+      "source_checkpoint": {
+        "path": "/home/bartekobrochta/card-scanner/best_models/mtg/SetSymbolRecognitionModel.pth",
+        "sha256": "a2d8001791858f616cef2b4d2dcfdf843a33bab04b66f3ddd4f62259e58e8b85"
+      },
+      "notes": "L2-normalised; compare with a dot product",
+      "exported_at": "2026-08-07T09:40:26+00:00",
+      "env": {
+        "torch": "2.12.1",
+        "torchvision": "0.27.1",
+        "ultralytics": "8.4.108",
+        "executorch": "1.3.1",
+        "onnx": "1.22.0",
+        "safetensors": "0.6.2",
+        "python": "3.11.5"
+      },
+      "verification": {
+        "checked": false,
+        "max_abs_diff": null,
+        "tolerance": 0.0,
+        "passed": false,
+        "method": "regenerated from existing export files; not re-verified against eager"
+      }
+    },
+    {
+      "schema_version": 1,
+      "model": "SetSymbolRecognitionModel",
+      "format": "safetensors",
+      "path": "home/bartekobrochta/card-scanner/artifacts/exports/SetSymbolRecognitionModel.safetensors",
+      "file": "SetSymbolRecognitionModel.safetensors",
+      "sha256": "477263ecd40802ce961caf704c3685643803116b12c461ee65e5a02ffcaaf4bb",
+      "bytes": 4657728,
+      "input_shape": [
+        1,
+        3,
+        96,
+        96
+      ],
+      "input_names": [
+        "input"
+      ],
+      "output_names": [
+        "embedding"
+      ],
+      "preprocessing": {
+        "resize": [
+          96,
+          96
+        ],
+        "normalize": "imagenet",
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "channel_order": "RGB"
+      },
+      "end2end": null,
+      "class_names": null,
+      "source_checkpoint": {
+        "path": "/home/bartekobrochta/card-scanner/best_models/mtg/SetSymbolRecognitionModel.pth",
+        "sha256": "a2d8001791858f616cef2b4d2dcfdf843a33bab04b66f3ddd4f62259e58e8b85"
+      },
+      "notes": "L2-normalised; compare with a dot product",
+      "exported_at": "2026-08-07T09:40:26+00:00",
+      "env": {
+        "torch": "2.12.1",
+        "torchvision": "0.27.1",
+        "ultralytics": "8.4.108",
+        "executorch": "1.3.1",
+        "onnx": "1.22.0",
+        "safetensors": "0.6.2",
+        "python": "3.11.5"
+      },
+      "verification": {
+        "checked": false,
+        "max_abs_diff": null,
+        "tolerance": 0.0,
+        "passed": false,
+        "method": "regenerated from existing export files; not re-verified against eager"
+      }
+    }
+  ]
+}

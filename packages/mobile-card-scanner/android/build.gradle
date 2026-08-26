@@ -1,0 +1,288 @@
+import org.apache.tools.ant.taskdefs.condition.Os
+
+buildscript {
+  ext {
+    agp_version = '8.4.2'
+    objectboxVersion = '5.0.1'
+  }
+
+  // Buildscript is evaluated before everything else so we can't use getExtOrDefault
+  def kotlin_version = rootProject.ext.has("kotlinVersion") ? rootProject.ext.get("kotlinVersion") : project.properties["CardScanner_kotlinVersion"]
+
+  repositories {
+    google()
+    mavenCentral()
+  }
+
+  dependencies {
+    classpath "com.android.tools.build:gradle:$agp_version"
+    // noinspection DifferentKotlinGradleVersion
+    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    classpath "io.objectbox:objectbox-gradle-plugin:$objectboxVersion"
+  }
+}
+
+def reactNativeArchitectures() {
+  def value = rootProject.getProperties().get("reactNativeArchitectures")
+  // For simplicity, we'll support the most common architectures.
+  // Adjust this list if your pre-built .so files support fewer/more.
+  def defaultArchitectures = ["x86_64", "arm64-v8a"]
+  if(!value) {
+    return defaultArchitectures
+  }
+  def architectures = value.split(",")
+  return architectures.findAll { it in defaultArchitectures }
+}
+
+apply plugin: "com.android.library"
+apply plugin: "kotlin-android"
+apply plugin: "com.facebook.react"
+apply plugin: "io.objectbox"
+
+
+def getExtOrDefault(name) {
+  return rootProject.ext.has(name) ? rootProject.ext.get(name) : project.properties["CardScanner_" + name]
+}
+
+def getExtOrIntegerDefault(name) {
+  return rootProject.ext.has(name) ? rootProject.ext.get(name) : (project.properties["CardScanner_" + name]).toInteger()
+}
+
+def supportsNamespace() {
+  def parsed = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION.tokenize('.')
+  def major = parsed[0].toInteger()
+  def minor = parsed[1].toInteger()
+
+  // Namespace support was added in 7.3.0
+  return (major == 7 && minor >= 3) || major >= 8
+}
+
+def safeAppExtGet(prop, fallback) {
+  def appProject = rootProject.allprojects.find { it.plugins.hasPlugin('com.android.application') }
+  appProject?.ext?.has(prop) ? appProject.ext.get(prop) : fallback
+}
+
+def toPlatformFileString(String path) {
+  if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+      path = path.replace(File.separatorChar, '/' as char)
+  }
+  return path
+}
+
+// @cardnexus/card-scanner-core ships C++ sources only; resolve it the same way
+// RN resolves its own root so this works from node_modules and from the
+// monorepo workspace symlink alike.
+def resolveCardScannerCoreDirectory() {
+  def searchDir = rootProject.projectDir.toPath().toAbsolutePath()
+  def result = providers.exec {
+    workingDir(searchDir)
+    commandLine("node", "--print", "require.resolve('@cardnexus/card-scanner-core/package.json')")
+  }.standardOutput.asText.get().trim()
+  return new File(result).getParent()
+}
+
+def resolveReactNativeDirectory() {
+  def reactNativeLocation = safeAppExtGet("REACT_NATIVE_NODE_MODULES_DIR", null)
+
+  if (reactNativeLocation !== null) {
+    return file(reactNativeLocation)
+  }
+
+  // Fallback to node resolver for custom directory structures like monorepos.
+  def reactNativePackage = file(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim())
+  if(reactNativePackage.exists()) {
+      return reactNativePackage.parentFile
+  }
+
+  throw new GradleException(
+      "[CardScanner] Unable to resolve react-native location in node_modules. You should project extension property (in `app/build.gradle`) `REACT_NATIVE_NODE_MODULES_DIR` with path to react-native."
+  )
+}
+
+// Benchmark settings are opt-in per app, via app.json:
+//   "extra": { "cardScanner": { "benchmark": true, "benchmarkVerbose": true } }
+// Compile-time, so changing either needs a native rebuild.
+def cardScannerSetting(String name) {
+  def appJson = new File(rootProject.projectDir.parentFile, "app.json")
+  if (!appJson.exists()) {
+    return 0
+  }
+
+  try {
+    def config = new groovy.json.JsonSlurper().parse(appJson)
+    return config?.extra?.cardScanner?.get(name) ? 1 : 0
+  } catch (Exception ignored) {
+    return 0
+  }
+}
+
+def reactNativeRootDir = resolveReactNativeDirectory()
+
+// ObjectBox's FindObjectBoxGenerator.cmake gates the ".exe" suffix on WIN32 (the *target),
+// so cross-compiling for Android from a Windows *host* extracts objectbox-generator.exe but
+// then file(COPY) looks for the extension-less name and fails. Pre-provide the host generator
+// so find_program() short-circuits the buggy fetch path. Windows-host only; no-op elsewhere.
+def objectBoxGeneratorExecutable = null
+if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+  def obxGenVersion = "4.0.0"
+  def obxGenDir = new File("${rootProject.projectDir.toPath().getRoot()}cn-cxx/obx-generator")
+  def obxGenExe = new File(obxGenDir, "objectbox-generator.exe")
+  if (!obxGenExe.exists()) {
+    obxGenDir.mkdirs()
+    def obxGenZip = new File(obxGenDir, "objectbox-generator-Windows.zip")
+    ant.get(
+      src: "https://github.com/objectbox/objectbox-generator/releases/download/v${obxGenVersion}/objectbox-generator-Windows.zip",
+      dest: obxGenZip,
+      skipexisting: true
+    )
+    ant.unzip(src: obxGenZip, dest: obxGenDir)
+  }
+  objectBoxGeneratorExecutable = toPlatformFileString(obxGenExe.absolutePath)
+}
+
+
+android {
+  if (supportsNamespace()) {
+    namespace "com.cardnexus.cardscanner"
+  }
+
+    buildFeatures {
+    prefab true
+    prefabPublishing true
+    buildConfig true
+  }
+
+  prefab {
+    CardScanner {
+      headers "src/main/cpp"
+    }
+  }
+
+  compileSdkVersion getExtOrIntegerDefault("compileSdkVersion")
+
+  defaultConfig {
+    minSdkVersion getExtOrIntegerDefault("minSdkVersion")
+    targetSdkVersion getExtOrIntegerDefault("targetSdkVersion")
+    externalNativeBuild {
+      cmake {
+          cppFlags "-O3 -DNDEBUG -frtti -fexceptions -Wall -fstack-protector-all -fopenmp -static-openmp -funroll-loops -ffast-math"
+          abiFilters (*reactNativeArchitectures())
+          def cmakeArguments = ["-DANDROID_STL=c++_shared",
+                    "-DCORE_DIR=${resolveCardScannerCoreDirectory()}".toString(),
+                    "-DREACT_NATIVE_DIR=${resolveReactNativeDirectory()}",
+                    "-DCMAKE_BUILD_TYPE=Release",
+                    "-DANDROID_ARM_NEON=TRUE",
+                    "-DCARDSCANNER_BENCHMARK=${cardScannerSetting('benchmark')}".toString(),
+                    "-DCARDSCANNER_BENCHMARK_VERBOSE=${cardScannerSetting('benchmarkVerbose')}".toString()]
+          if (objectBoxGeneratorExecutable != null) {
+            cmakeArguments.add("-DObjectBoxGenerator_EXECUTABLE=${objectBoxGeneratorExecutable}".toString())
+          }
+          arguments (*cmakeArguments)
+      }
+    }
+    ndk {
+      abiFilters (*reactNativeArchitectures())
+    }
+  }
+
+  externalNativeBuild {
+    cmake {
+      path "CMakeLists.txt"
+      // Windows MAX_PATH (260): ObjectBox FetchContent nests build paths deep enough
+      // to overflow ninja's Stat() under the module-local .cxx. Relocate to a short root.
+      if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+        buildStagingDirectory "${rootProject.projectDir.toPath().getRoot()}cn-cxx/card-scanner"
+      }
+    }
+  }
+
+  buildTypes {
+    release {
+      minifyEnabled false
+    }
+  }
+
+  lintOptions {
+    disable "GradleCompatible"
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_1_8
+    targetCompatibility JavaVersion.VERSION_1_8
+  }
+
+  sourceSets {
+      main {
+          jniLibs.srcDirs = ["src/main/jniLibs"]
+      }
+  }
+
+  // These libraries are owned by other modules and linked via prefab. Bundling
+  // them here too makes the app's mergeDebugNativeLibs fail on duplicate paths.
+  packagingOptions {
+    excludes = [
+            "**/libc++_shared.so",
+            "**/libfbjni.so",
+            "**/libjsi.so",
+            "**/libreactnative.so",
+            "**/libNitroModules.so",
+            "**/libVisionCamera.so",
+    ]
+  }
+}
+
+// Adds the nitrogen-generated Kotlin loader for HybridCardScannerPlugin.
+apply from: '../nitrogen/generated/android/CardScanner+autolinking.gradle'
+
+repositories {
+  mavenCentral()
+  google()
+}
+
+def kotlin_version = getExtOrDefault("kotlinVersion")
+
+dependencies {
+  // Standard React Native dependencies
+  implementation "com.facebook.react:react-android"
+  implementation "com.facebook.react:react-native:+"
+  implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+  // Add fbjni, which is required for the JNI bridge
+  implementation 'com.facebook.fbjni:fbjni:0.6.0'
+  implementation 'com.facebook.fbjni:fbjni:0.6.0'
+  implementation "io.objectbox:objectbox-android:$objectboxVersion"
+  implementation files('libs/classes.jar')
+  // Prefabs consumed by the Nitro frame-processor plugin's CMake.
+  implementation project(':react-native-nitro-modules')
+  implementation project(':react-native-vision-camera')
+}
+
+task extractSo(type: Copy) {
+    doFirst {
+        println 'Extracting *.so file(s)....'
+
+        def objectboxAarFile = fileTree(dir: gradle.gradleUserHomeDir).include("caches/modules-2/files-2.1/io.objectbox/objectbox-android/${objectboxVersion}/**/*.aar").singleFile
+
+        if (objectboxAarFile == null || !objectboxAarFile.exists()) {
+            throw new GradleException("Could not find objectbox-android AAR file in Gradle caches. Searched in: ${gradle.gradleUserHomeDir}/caches/modules-2/files-2.1/io.objectbox/objectbox-android/${objectboxVersion}/")
+        }
+
+        from zipTree(objectboxAarFile)
+    }
+
+    into "${project.projectDir}/src/main/jniLibs/"
+    include "jni/**/*.so"
+
+    eachFile {
+        def segments = it.getRelativePath().getSegments() as List
+        println segments
+        it.setPath(segments.tail().join("/"))
+        return it
+    }
+    includeEmptyDirs = false
+
+    doLast {
+        println "Extracted .so files to: ${project.projectDir}/src/main/jniLibs/"
+    }
+}
+
+preBuild.dependsOn extractSo

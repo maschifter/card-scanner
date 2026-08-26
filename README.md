@@ -11,13 +11,13 @@ A React Native card scanner package with ML-powered card recognition for trading
 
 - [API Reference](docs/API.md) - Complete API documentation
 - [Pipeline Architecture](docs/PIPELINE.md) - Detailed scanner pipeline explanation
-- [Package README](packages/react-native-card-scanner/README.md) - ObjectBox integration & technical details
+- [Package README](packages/mobile-card-scanner/README.md) - ObjectBox integration & technical details
 
 ## Quick Start - Example App
 
 ### Prerequisites
 
-- Node.js (v18+)
+- Node.js (v20.19.4+)
 - Yarn (v4.1.1)
 - Git LFS
 - CMake (v3.18+) - Required for native code generation

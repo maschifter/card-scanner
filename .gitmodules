@@ -1,3 +1,0 @@
-[submodule "packages/react-native-card-scanner/third-party/objectbox-c"]
-	path = packages/react-native-card-scanner/third-party/objectbox-c
-	url = https://github.com/objectbox/objectbox-c.git

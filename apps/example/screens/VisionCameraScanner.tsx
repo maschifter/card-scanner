@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
   Image,
   ScrollView,
 } from 'react-native';
@@ -13,23 +12,34 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
 import {
   Camera,
-  runAsync,
+  CommonResolutions,
+  useAsyncRunner,
   useCameraDevice,
-  useCameraFormat,
   useCameraPermission,
-  useFrameProcessor,
+  useFrameOutput,
+  type CameraRef,
 } from 'react-native-vision-camera';
-import {
-  scanFrame,
-  type Detection,
-  type DetectedCard,
-} from '@cardnexus/card-scanner';
-import Svg, { Rect } from 'react-native-svg';
-import { useRunOnJS } from 'react-native-worklets-core';
+import { type Detection } from '@cardnexus/card-scanner';
+import { useSharedValue } from 'react-native-reanimated';
+import { createSynchronizable } from 'react-native-worklets';
+import { BoundingBox } from '../components/BoundingBox';
+import { useCardConfirmation } from '../hooks/useCardConfirmation';
+import { useDetectionListener } from '../hooks/useDetectionListener';
 import { useScannerLoader } from '../hooks/useScannerLoader';
+import {
+  snapshotBoxToCameraSpace,
+  cameraSpaceBoxToViewBox,
+  type CameraSpaceBox,
+  type ViewBox,
+} from '../utils/cameraCoords';
+import { createScanOnFrame } from '../utils/scanOnFrame';
+import { cardLabel } from '../utils/cardNames';
+import { pct } from '../utils/format';
 
-const screenWidth = Dimensions.get('window').width;
-const screenHeight = Dimensions.get('window').height;
+// Whether frame worklet should scan. Thread-safe, only mutated via setBlocking() from the JS thread.
+// Read via getDirty() inside `onFrame` instead of capturing React state.
+const isScanningSync = createSynchronizable(false);
+const BOX_CLEAR_GRACE_MS = 400;
 
 export default function VisionCameraScanner() {
   const insets = useSafeAreaInsets();
@@ -37,193 +47,87 @@ export default function VisionCameraScanner() {
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
 
-  const format = useCameraFormat(device, [
-    { fps: 30 },
-    { videoResolution: { width: 1080, height: 1920 } },
-    { videoStabilizationMode: 'off' },
-  ]);
-
   const [isScanning, setIsScanning] = useState(false);
-  const [detection, setDetection] = useState<Detection | null>(null);
-  const [frameSize, setFrameSize] = useState({ width: 1080, height: 1920 });
-  const [cameraLayout, setCameraLayout] = useState({ width: 0, height: 0 });
-  const [lastScannedCardId, setLastScannedCardId] = useState<string | null>(
-    null,
-  );
-  const [consecutiveDetections, setConsecutiveDetections] = useState<number>(0);
-  const [scannedCardsHistory, setScannedCardsHistory] = useState<
-    DetectedCard[]
-  >([]);
-
-  const [pendingSetSymbols, setPendingSetSymbols] = useState<
-    Array<{
-      setCode: string;
-      similarity: number;
-    }>
-  >([]);
+  const cameraRef = useRef<CameraRef>(null);
+  const box = useSharedValue<ViewBox | null>(null);
 
   const [torchEnabled, setTorchEnabled] = useState(false);
 
-  const headerHeight = 100 + insets.top;
-  const bottomHeight = 190;
+  useEffect(() => {
+    isScanningSync.setBlocking(isScanning);
+    if (!isScanning) {
+      box.value = null;
+    }
+  }, [isScanning, box]);
 
-  const { isLoading, error } = useScannerLoader('single');
+  const [isCameraRunning, setIsCameraRunning] = useState(false);
+  const { scannedCardsHistory, confirmDetection, removeCard } =
+    useCardConfirmation();
 
-  // Process raw scan result and transform to rich Detection type
-  const processDetectionCallback = useRunOnJS(
-    (
-      detection: Detection,
-      lastCardId: string | null,
-      currentCount: number,
-      currentSetSymbols: Array<any>,
-    ) => {
-      setFrameSize({ width: 1080, height: 1920 });
+  const { isLoading, error, retry } = useScannerLoader();
 
-      // Always show detection for real-time feedback
-      setDetection(detection);
+  // JS thread (via the Nitro listener). Finishes the box mapping - camera->
+  // view needs the PreviewView ref - then feeds the confirmation bookkeeping.
+  const lastDetectionAtRef = useRef(0);
+  const processDetection = (
+    result: Detection,
+    cameraBox: CameraSpaceBox | null,
+  ) => {
+    if (cameraBox != null) {
+      box.value = cameraSpaceBoxToViewBox(cameraRef.current, cameraBox);
+      lastDetectionAtRef.current = Date.now();
+    } else if (Date.now() - lastDetectionAtRef.current > BOX_CLEAR_GRACE_MS) {
+      box.value = null;
+    }
+    // A detection with no cardId means the card was found but not recognised —
+    // the bounding box still shows, but it is not tracked or added to the
+    // carousel.
+    const identified = result.cards.filter((c) => c.cardId);
+    if (identified.length > 0) {
+      confirmDetection({ ...result, cards: identified });
+    }
+  };
 
-      // Update UI with first identified card's info
-      if (detection.success && detection.cards.length > 0) {
-        const firstCard = detection.cards[0];
+  // Scan results arrive through the plugin's single native listener slot.
+  useDetectionListener((res) => {
+    const cameraBox =
+      res.detection.success && res.detection.cards.length > 0
+        ? snapshotBoxToCameraSpace(
+            res.detection.cards[0].boundingBox,
+            res.frameWidth,
+            res.frameHeight,
+            res.coordinateSnapshot,
+          )
+        : null;
+    processDetection(res.detection, cameraBox);
+  });
 
-        // Check if this is a new card (different from last scanned)
-        if (firstCard.cardId !== lastCardId) {
-          // Different card - reset counter and start tracking
-          setLastScannedCardId(firstCard.cardId);
-          setConsecutiveDetections(1); // First detection of this card
+  const asyncRunner = useAsyncRunner();
 
-          // Reset set symbol tracking for new card
-          setPendingSetSymbols(
-            firstCard.setSymbol ? [firstCard.setSymbol] : [],
-          );
-
-          // Don't add to history yet - wait for confirmation (2nd detection)
-        } else {
-          // Same card as before - increment counter
-          const newCount = currentCount + 1;
-          setConsecutiveDetections(newCount);
-
-          // Collect set symbol if detected
-          if (firstCard.setSymbol) {
-            setPendingSetSymbols((prev) => [...prev, firstCard.setSymbol!]);
-          }
-
-          // Confirmation logic:
-          // - If top 2 matches are close (≤1% difference): confirm after 4 detections (need more certainty)
-          // - If top match is clear winner (>1% difference): confirm after 2 detections
-          const isMTG = firstCard.gameName === 'mtg';
-
-          // Check if top 2 matches are close
-          const hasCloseMatches =
-            firstCard.alternativeCards &&
-            firstCard.alternativeCards.length > 0 &&
-            firstCard.confidenceScore -
-              firstCard.alternativeCards[0].confidence <=
-              0.01; // 1% difference
-
-          // Pick the best set symbol from all detections (highest similarity)
-          let bestSetSymbol = firstCard.setSymbol;
-          if (currentSetSymbols.length > 0) {
-            bestSetSymbol = currentSetSymbols.reduce((best, current) => {
-              return current.similarity > best.similarity ? current : best;
-            });
-          }
-
-          const hasSetSymbolMatch = bestSetSymbol?.setCode ? true : false;
-
-          // Require 4 detections if:
-          // - MTG card without set symbol OR
-          // - Top 2 matches are very close (ambiguous)
-          const requiredDetections =
-            (isMTG && !hasSetSymbolMatch) || hasCloseMatches ? 4 : 2;
-
-          if (newCount === requiredDetections) {
-            // Required consecutive detections reached - confirm and add to history!
-
-            // Create final card with best set symbol
-            const finalCard = {
-              ...firstCard,
-              setSymbol: bestSetSymbol,
-            };
-
-            const reason = hasCloseMatches
-              ? ' (close matches)'
-              : isMTG && !hasSetSymbolMatch
-                ? ' (no set symbol)'
-                : '';
-            console.log(`Card confirmed after ${newCount} detections${reason}`);
-
-            // Card fully identified - add to history (check for duplicates)
-            setScannedCardsHistory((prev) => {
-              // Check if this card is already in the history (avoid duplicates)
-              const isDuplicate = prev.some(
-                (card) => card.cardId === finalCard.cardId,
-              );
-              if (isDuplicate) {
-                console.log('Card already in history, skipping duplicate');
-                return prev;
-              }
-              const newHistory = [finalCard, ...prev];
-              return newHistory.slice(0, 10); // Keep only last 10
-            });
-
-            setPendingSetSymbols([]);
-
-            setLastScannedCardId(null);
-            setConsecutiveDetections(0);
-          }
-        }
-      }
-    },
-    [],
+  const onFrame = useMemo(
+    () => createScanOnFrame(asyncRunner, isScanningSync),
+    [asyncRunner],
   );
 
-  // Frame processor (runs on separate thread)
-  const frameProcessor = useFrameProcessor(
-    (frame) => {
-      'worklet';
-
-      if (!isScanning) {
-        return;
-      }
-
-      // Run the heavy processing asynchronously to avoid blocking the camera
-      runAsync(frame, () => {
-        'worklet';
-        const detection = scanFrame(frame);
-
-        // Only update UI when cards are detected (to avoid constant refreshing)
-        if (detection.success && detection.cards.length > 0) {
-          processDetectionCallback(
-            detection,
-            lastScannedCardId,
-            consecutiveDetections,
-            pendingSetSymbols,
-          );
-        }
-      });
-    },
-    [
-      isScanning,
-      processDetectionCallback,
-      lastScannedCardId,
-      consecutiveDetections,
-      pendingSetSymbols,
-    ],
-  );
+  // The native pipeline consumes interleaved RGB; was the Camera's
+  // pixelFormat prop in v4.
+  const frameOutput = useFrameOutput({
+    pixelFormat: 'rgb',
+    // Only a target - session negotiates across outputs and
+    // picks the closest natively supported sensor stream.
+    //
+    // Nothing is scaled, and the box mapping (coordinate-conversion from v5)
+    // does not depend on this value. FHD matches what v4 requested.
+    targetResolution: CommonResolutions.FHD_16_9,
+    onFrame,
+  });
 
   const toggleScanning = () => {
-    setIsScanning(!isScanning);
-    if (isScanning) {
-    }
+    setIsScanning((prev) => !prev);
   };
 
   const toggleTorch = () => {
     setTorchEnabled(!torchEnabled);
-  };
-
-  const removeCard = (index: number) => {
-    setScannedCardsHistory((prev) => prev.filter((_, i) => i !== index));
   };
 
   if (!hasPermission) {
@@ -251,6 +155,9 @@ export default function VisionCameraScanner() {
       <View style={styles.container}>
         <Text style={styles.errorText}>Failed to load models:</Text>
         <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={retry}>
+          <Text style={styles.retryButtonText}>Try Again</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -290,73 +197,26 @@ export default function VisionCameraScanner() {
 
       {/* Camera View - fills remaining space with flexbox */}
       <View style={styles.cameraContainer}>
-        <Camera
-          style={styles.camera}
-          device={device}
-          format={format}
-          isActive={isFocused}
-          frameProcessor={frameProcessor}
-          pixelFormat="rgb"
-          fps={30}
-          videoStabilizationMode="off"
-          enableBufferCompression={false}
-          preview={true}
-          torch={torchEnabled ? 'on' : 'off'}
-          onLayout={(event) => {
-            const { width, height } = event.nativeEvent.layout;
-            setCameraLayout({ width, height });
-          }}
-        />
-
-        {/* Bounding box overlay - positioned within camera */}
-        {detection?.cards && detection.cards.length > 0 && (
-          <View style={styles.boundingBoxOverlay} pointerEvents="none">
-            <Svg style={StyleSheet.absoluteFill}>
-              {detection.cards.map((det: DetectedCard, index: number) => {
-                const box = det.boundingBox;
-
-                // Camera fills the screen width in portrait mode
-                // The frame aspect ratio is 1080:1920 (9:16)
-                const cameraWidth = screenWidth;
-
-                // Calculate height based on frame aspect ratio
-                // Camera should maintain the same aspect ratio as the frame
-                const frameAspectRatio = frameSize.width / frameSize.height; // 1080/1920 = 0.5625
-                const cameraHeight = cameraWidth / frameAspectRatio; // e.g., 393 / 0.5625 = 698
-
-                // The camera container might be taller than the camera preview
-                // Calculate the actual container height
-                const containerHeight =
-                  cameraLayout.height ||
-                  screenHeight - headerHeight - bottomHeight;
-
-                // Calculate vertical offset (letterboxing - black bars on top/bottom)
-                const offsetY = (containerHeight - cameraHeight) / 2;
-
-                // Simple direct scaling
-                const scale = cameraWidth / frameSize.width;
-
-                const x = box.x1 * scale;
-                const y = box.y1 * scale + offsetY;
-                const width = (box.x2 - box.x1) * scale;
-                const height = (box.y2 - box.y1) * scale;
-
-                return (
-                  <Rect
-                    key={`detection-${index}`}
-                    x={x}
-                    y={y}
-                    width={width}
-                    height={height}
-                    stroke={'#00ff00'}
-                    strokeWidth="4"
-                    fill="none"
-                  />
-                );
-              })}
-            </Svg>
-          </View>
+        {isFocused && (
+          <Camera
+            ref={cameraRef}
+            style={styles.camera}
+            device={device}
+            isActive={true}
+            outputs={[frameOutput]}
+            constraints={[{ fps: 30 }, { videoStabilizationMode: 'off' }]}
+            torchMode={
+              isCameraRunning ? (torchEnabled ? 'on' : 'off') : undefined
+            }
+            onStarted={() => setIsCameraRunning(true)}
+            onStopped={() => setIsCameraRunning(false)}
+          />
         )}
+
+        {/* Bounding box overlay - positioned within camera. */}
+        <View style={styles.boundingBoxOverlay} pointerEvents="none">
+          <BoundingBox box={box} />
+        </View>
       </View>
 
       {/* Bottom Overlay Container */}
@@ -423,7 +283,7 @@ export default function VisionCameraScanner() {
                   {/* Card Name */}
                   <View style={styles.cardNameContainer}>
                     <Text style={styles.cardNameText} numberOfLines={2}>
-                      {card.cardId} {(card.confidenceScore * 100).toFixed(1)}%
+                      {cardLabel(card.cardId)} {pct(card.confidenceScore)}
                     </Text>
                     <Text style={styles.cardIdText} numberOfLines={1}>
                       {card.cardId}
@@ -668,5 +528,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     padding: 20,
     fontSize: 16,
+  },
+  retryButton: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
