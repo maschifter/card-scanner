@@ -1,0 +1,188 @@
+{
+  "summary": "Old vs new card-recognition benchmark. The new benchmark covers 11 more supported trading card games than the old one.",
+  "summary-note": "Between the two run two photos were replaced.",
+  "ios_model": "iPhone 16",
+  "android_model": "Samsung Galaxy S24 (SM-S921B)",
+  "methodology": {
+    "unit_of_test": "1 card",
+    "runs_per_card": 10,
+    "warmup_iterations_per_card": 2,
+    "warmup_handling": "The first 2 iterations per card are flagged isWarmup:true and are excluded from every average reported. Only the 10 measured (non-warmup) iterations per card are averaged.",
+    "note_on_coverage": "Every game has 5 cards tested, except 'cyberpunk' in the new benchmark, which has only 2 cards tested.",
+    "note_on_accuracy": "On main a match now counts as correct if it hits any of several accepted IDs for a card, because the same card often exists in the database more than once, differing only by edition or printing.",
+    "note_on_images": "2 photos were replaced between runs. Restricted to 8 games, the new code reaches 92.5% accuracy (37 of 40 cards) against 80.0% (32 of 40) for the old code, identical on Android and iOS."
+  },
+  "sample_sizes": {
+    "old": {
+      "games_covered": 8,
+      "unique_cards_tested": 40,
+      "measured_runs": 400
+    },
+    "new": {
+      "games_covered": 19,
+      "unique_cards_tested": 92,
+      "measured_runs": 920
+    }
+  },
+  "games": {
+    "old_games": [
+      "fab",
+      "lorcana",
+      "mtg",
+      "onepiece",
+      "pokemon",
+      "riftbound",
+      "rise",
+      "sorcery"
+    ],
+    "new_games": [
+      "chrono-core",
+      "cyberpunk",
+      "dbs-fusion",
+      "dbs-masters",
+      "eoa",
+      "fab",
+      "grand-archive",
+      "gundam",
+      "lorcana",
+      "mtg",
+      "naruto-mythos",
+      "onepiece",
+      "palworld",
+      "pokemon",
+      "pokemon-japan",
+      "riftbound",
+      "rise",
+      "sorcery",
+      "swu"
+    ],
+    "games_added_in_new": [
+      "chrono-core",
+      "cyberpunk",
+      "dbs-fusion",
+      "dbs-masters",
+      "eoa",
+      "grand-archive",
+      "gundam",
+      "naruto-mythos",
+      "palworld",
+      "pokemon-japan",
+      "swu"
+    ]
+  },
+  "recognition_accuracy": {
+    "old": {
+      "correct": 320,
+      "below_threshold": 70,
+      "no_detection": 10,
+      "wrong_match": 0,
+      "accuracy_pct": 80.0
+    },
+    "new": {
+      "correct": 810,
+      "below_threshold": 50,
+      "no_detection": 50,
+      "wrong_match": 10,
+      "accuracy_pct": 88.0
+    },
+    "old_games_only": {
+      "scope": "The 8 games present in both runs (fab, lorcana, mtg, onepiece, pokemon, riftbound, rise, sorcery): 40 cards, 400 measured runs per platform.",
+      "old": {
+        "correct_cards": 32,
+        "total_cards": 40,
+        "below_threshold": 7,
+        "no_detection": 1,
+        "wrong_match": 0,
+        "accuracy_pct": 80.0
+      },
+      "new": {
+        "correct_cards": 37,
+        "total_cards": 40,
+        "below_threshold": 3,
+        "no_detection": 0,
+        "wrong_match": 0,
+        "accuracy_pct": 92.5
+      },
+      "new_per_game_result": {
+        "fab": "5/5",
+        "lorcana": "5/5",
+        "mtg": "5/5",
+        "onepiece": "5/5",
+        "pokemon": "5/5",
+        "riftbound": "4/5",
+        "rise": "3/5",
+        "sorcery": "5/5"
+      }
+    }
+  },
+  "platform_timing_results_ms": {
+    "note": "New version searches through more games, so the db_search time is expected to be higher. Total time contains evetything (optional save included etc).",
+    "android": {
+      "total_ms": {
+        "old": 56.389,
+        "new": 51.035,
+        "diff": -5.354,
+        "diff_pct": -9.5
+      },
+      "yolo_ms": {
+        "old": 45.82,
+        "new": 39.363,
+        "diff": -6.457,
+        "diff_pct": -14.1
+      },
+      "preproc_ms": {
+        "old": 0.196,
+        "new": 0.202,
+        "diff": 0.007,
+        "diff_pct": 3.5
+      },
+      "embed_ms": {
+        "old": 3.909,
+        "new": 3.408,
+        "diff": -0.501,
+        "diff_pct": -12.8
+      },
+      "db_search_ms": {
+        "old": 0.663,
+        "new": 1.908,
+        "diff": 1.245,
+        "diff_pct": 187.8
+      }
+    },
+    "ios": {
+      "total_ms": {
+        "old": 41.22,
+        "new": 22.86,
+        "diff_ms": -18.37,
+        "diff_pct": -44.6
+      },
+      "yolo_ms": {
+        "old": 33.92,
+        "new": 16.12,
+        "diff_ms": -17.8,
+        "diff_pct": -52.5
+      },
+      "preproc_ms": {
+        "old": 0.12,
+        "new": 0.11,
+        "diff_ms": -0.01,
+        "diff_pct": -8.3
+      },
+      "embedder_ms": {
+        "old": 1.97,
+        "new": 1.36,
+        "diff_ms": -0.6,
+        "diff_pct": -30.5
+      },
+      "db_search_ms": {
+        "old": 0.3,
+        "new": 0.91,
+        "diff_ms": 0.61,
+        "diff_pct": 203.8
+      }
+    }
+  },
+  "benchmark_input_changes_on_shared_games": {
+    "photos_replaced": ["riftbound/card_4.jpg", "rise/card_4.jpg"]
+  }
+}

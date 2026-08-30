@@ -1,0 +1,47 @@
+{
+  "note": "New benchmark has and searches through more games, so DbSearchMs is expected to be higher.",
+  "source": [
+    "benchmark_old.json",
+    "benchmark_new.json"
+  ],
+  "sample_size": {
+    "old_records_excl_warmup": 400,
+    "new_records_excl_warmup": 920
+  },
+  "TotalMs": {
+    "old": 56.389,
+    "new": 51.035,
+    "diff": -5.354,
+    "diff_pct": -9.5
+  },
+  "YoloMs": {
+    "old": 45.82,
+    "new": 39.363,
+    "diff": -6.457,
+    "diff_pct": -14.1
+  },
+  "PreprocMs": {
+    "old": 0.196,
+    "new": 0.202,
+    "diff": 0.007,
+    "diff_pct": 3.5
+  },
+  "SaveMs": {
+    "old": 5.395,
+    "new": 5.902,
+    "diff": 0.507,
+    "diff_pct": 9.4
+  },
+  "EmbedMs": {
+    "old": 3.909,
+    "new": 3.408,
+    "diff": -0.501,
+    "diff_pct": -12.8
+  },
+  "DbSearchMs": {
+    "old": 0.663,
+    "new": 1.908,
+    "diff": 1.245,
+    "diff_pct": 187.8
+  }
+}

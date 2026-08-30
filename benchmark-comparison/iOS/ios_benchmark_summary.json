@@ -1,0 +1,46 @@
+{
+  "comparison": "benchmark_old vs benchmark_new (average times, warmup iterations excluded)",
+  "note": "New version searches through more games, so db_search_ms is expected to be higher.",
+  "metrics": {
+    "total_ms": {
+      "old": 41.22,
+      "new": 22.86,
+      "diff_ms": -18.37,
+      "diff_pct": -44.6
+    },
+    "yolo_ms": {
+      "old": 33.92,
+      "new": 16.12,
+      "diff_ms": -17.8,
+      "diff_pct": -52.5
+    },
+    "preproc_ms": {
+      "old": 0.12,
+      "new": 0.11,
+      "diff_ms": -0.01,
+      "diff_pct": -8.3
+    },
+    "save_ms": {
+      "old": 4.63,
+      "new": 4.3,
+      "diff_ms": -0.33,
+      "diff_pct": -7.0
+    },
+    "embedder_ms": {
+      "old": 1.97,
+      "new": 1.36,
+      "diff_ms": -0.6,
+      "diff_pct": -30.5
+    },
+    "db_search_ms": {
+      "old": 0.3,
+      "new": 0.91,
+      "diff_ms": 0.61,
+      "diff_pct": 203.8
+    }
+  },
+  "sample_size": {
+    "old_records_excl_warmup": 400,
+    "new_records_excl_warmup": 920
+  }
+}
