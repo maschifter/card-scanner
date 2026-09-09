@@ -60,6 +60,14 @@ public:
                cardscanner::FABColorClassifier *fabColorClassifier,
                const cardscanner::GameEmbedders *gameEmbedders);
 
+  /**
+   * @brief Writes each card's pending capture image to disk (if enabled).
+   *
+   * Call after processFrame, once the scan lease is released, so disk I/O
+   * doesn't extend the scan.
+   */
+  static void saveCardImages(ScanResult &result, const ScannerConfig &config);
+
 private:
   /**
    * @brief Stage 1: Run YOLO segmentation and select reportable detections
@@ -74,18 +82,6 @@ private:
   performSegmentation(const cv::Mat &frameImage,
                       const ScannerConfig &config,
                       cardscanner::YoloSegmentationModel *yoloModel);
-
-  /**
-   * @brief Stage 2: Save card image to disk (if enabled)
-   *
-   * @param cardImage Cropped card image
-   * @param config Scan configuration
-   * @param index Card index
-   * @return File path (empty if disabled or failed)
-   */
-  static std::string saveCardImage(const cv::Mat &cardImage,
-                                   const ScannerConfig &config,
-                                   size_t index);
 
   /**
    * @brief Stage 3: Recognize card using embedding and database search
@@ -119,7 +115,7 @@ private:
                   const ScannerConfig &config,
                   cardscanner::SetSymbolYoloModel *setSymbolYolo,
                   cardscanner::SetSymbolEmbedder *setSymbolEmbedder,
-                  ObjectBoxDB *setSymbolDb);
+                  cardscanner::DatabaseManager &dbManager);
 
   /**
    * @brief Stage 5: Detect FAB color variant

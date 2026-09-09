@@ -227,11 +227,16 @@ export interface BenchmarkRecord {
 
 declare global {
   // Core scanner functions
-  var initializeScanner: (config: ScannerConfig) => InitializationResult;
-  var releaseScanner: () => void;
+  var initializeScanner: (
+    config: ScannerConfig,
+  ) => Promise<InitializationResult>;
+  var releaseScanner: () => Promise<boolean>;
 
   // Database management (new CRUD-like interface)
-  var swapDatabase: (sourcePath: string, gameName: string) => SwapResult;
+  var swapDatabase: (
+    gameName: string,
+    sourcePath: string,
+  ) => Promise<SwapResult>;
   var listDatabases: () => Promise<DatabaseInfo[]>;
   var getDatabaseInfo: (gameName: string) => Promise<DatabaseInfo>;
   var deleteDatabase: (gameName: string) => Promise<DeleteResult>;
@@ -308,8 +313,15 @@ export async function initializeScanner(
 /**
  * Release scanner resources and cleanup
  */
-export function releaseScanner(): void {
-  global.releaseScanner();
+export async function releaseScanner(): Promise<void> {
+  try {
+    const released = await global.releaseScanner();
+    if (!released) {
+      console.error('Scanner still busy after 1s; release skipped.');
+    }
+  } catch (error) {
+    console.error('Failed to release scanner:', error);
+  }
 }
 
 /**
@@ -324,7 +336,7 @@ export async function swapDatabase(
 ): Promise<SwapResult> {
   try {
     // Native function returns a Promise that runs on background thread
-    const result = await global.swapDatabase(newDatabasePath, gameName);
+    const result = await global.swapDatabase(gameName, newDatabasePath);
     return result;
   } catch (error) {
     return {

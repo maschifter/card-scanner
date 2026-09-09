@@ -84,8 +84,12 @@ public:
   // Initialize models with configuration
   static void initializeModels();
 
-  // Release models and free resources
-  static void releaseModels();
+  /**
+   * @brief Releases models and frees resources. Waits up to one second for
+   * in-flight scans; returns false without releasing when the scanner stays
+   * busy (for example, a running benchmark).
+   */
+  static bool releaseModels();
 
   /**
    * @brief Runs the full pipeline over an image file. The file is read as BGR

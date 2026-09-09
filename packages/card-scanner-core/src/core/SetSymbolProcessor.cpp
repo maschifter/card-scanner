@@ -44,7 +44,7 @@ SetSymbolInfo SetSymbolProcessor::processSetSymbol(
   try {
     log(LOG_LEVEL::Debug,
         "[CardScanner] Detecting set symbol for MTG card with disambiguation "
-        "threshold: %.2f",
+        "threshold:",
         disambiguationThreshold);
 
     // Detect set symbol bounding box
@@ -146,15 +146,15 @@ SetSymbolInfo SetSymbolProcessor::matchSetSymbol(
   // If below threshold, return empty info
   if (symbolMatches[0].similarity < effectiveConfidenceThreshold) {
     log(LOG_LEVEL::Debug,
-        "[CardScanner] Set symbol match below confidence threshold: %.4f "
-        "(threshold: %.4f)",
-        symbolMatches[0].similarity, effectiveConfidenceThreshold);
+        "[CardScanner] Set symbol match below confidence threshold:",
+        symbolMatches[0].similarity,
+        "(threshold:", effectiveConfidenceThreshold, ")");
     return SetSymbolInfo();
   }
 
-  log(LOG_LEVEL::Debug,
-      "[CardScanner] Matched set symbol: %s (similarity: %.4f)",
-      symbolMatches[0].setCode.c_str(), symbolMatches[0].similarity);
+  log(LOG_LEVEL::Debug, "[CardScanner] Matched set symbol:",
+      symbolMatches[0].setCode,
+      "(similarity:", symbolMatches[0].similarity, ")");
   // Return matched set symbol info
   return SetSymbolInfo(symbolMatches[0].setCode,
                             symbolMatches[0].similarity);

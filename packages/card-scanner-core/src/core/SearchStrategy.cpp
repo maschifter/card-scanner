@@ -16,17 +16,7 @@ std::vector<CardMatch> SearchStrategy::searchCard(
     const cardscanner::GameEmbedders *gameEmbedders) {
   // Extract top game predictions from YOLO
   auto topGames = extractTopGames(detection, config);
-  log(LOG_LEVEL::Debug,
-      "[CardScanner] Top YOLO game predictions: %s",
-      topGames.empty() ? "None"
-                       : [&topGames]() {
-                           std::string gamesList;
-                           for (const auto &game : topGames) {
-                             gamesList += game + " ";
-                           }
-                           return gamesList;
-                         }()
-                           .c_str());
+  log(LOG_LEVEL::Debug, "[CardScanner] Top YOLO game predictions:", topGames);
   // Yolo predicted games
   for (const auto &game : topGames) {
     benchmark::BenchmarkCollector::appendStringWithSpace(
@@ -88,13 +78,41 @@ SearchStrategy::extractTopGames(const cardscanner::Detection &detection,
   return databases;
 }
 
+namespace {
+float getEffectiveConfidenceThreshold(const std::string &gameName,
+                                      const ScannerConfig &config) {
+  auto gameIt = config.gameSpecificConfig.find(gameName);
+  if (gameIt != config.gameSpecificConfig.end() &&
+      gameIt->second.confidenceThreshold.has_value()) {
+    return *gameIt->second.confidenceThreshold;
+  }
+
+  return config.confidenceThreshold;
+}
+
+// True when both games come from one YOLO class (pokemon and pokemon-japan,
+// dbs-fusion and dbs-masters). Such databases can hold the same art, so the
+// search must finish the whole group before an early exit is considered, or
+// a confident hit on the wrong print hides the right one.
+bool shareYoloClass(const std::string &a, const std::string &b,
+                    const ScannerConfig &config) {
+  for (const auto &[classId, names] : config.gameClassMapping) {
+    if (std::find(names.begin(), names.end(), a) != names.end() &&
+        std::find(names.begin(), names.end(), b) != names.end()) {
+      return true;
+    }
+  }
+  return false;
+}
+} // namespace
+
 std::vector<CardSearchResult> SearchStrategy::searchMultipleDatabases(
     const cv::Mat &cardImage, const std::vector<std::string> &topGames,
     const ScannerConfig &config, cardscanner::DatabaseManager &dbManager,
     cardscanner::CardEmbeddingModel &defaultEmbedder,
     const cardscanner::GameEmbedders *gameEmbedders) {
   std::vector<CardSearchResult> allResults;
-  bool shouldSearchMore = false;
+  bool confidentMatch = false;
 
   auto computeEmbedding = [&cardImage](cardscanner::CardEmbeddingModel &model) {
     benchmark::BenchmarkCollector::ScopedTimer timer(benchmark::Stage::Embed);
@@ -120,8 +138,7 @@ std::vector<CardSearchResult> SearchStrategy::searchMultipleDatabases(
         if (it != gameEmbedders->end() && it->second) {
           gameEmbedder = it->second;
           log(LOG_LEVEL::Debug,
-              "[CardScanner] Using game-specific embedder for %s",
-              gameToSearch.c_str());
+              "[CardScanner] Using game-specific embedder for", gameToSearch);
         }
       }
 
@@ -152,52 +169,37 @@ std::vector<CardSearchResult> SearchStrategy::searchMultipleDatabases(
         allResults.push_back(result);
       }
 
-      // Optimization: only search more games if first search is uncertain
-      if (i == 0 && !gameResults.empty()) {
-        float topScore = gameResults[0].score;
-
-        // Search additional games if:
-        // 1. Top score below confidence threshold + delta OR
-        // 2. Multiple high-confidence games predicted by YOLO
-        if (topScore < config.confidenceThreshold +
-                           ScannerConfig::SEARCH_MORE_THRESHOLD_DELTA ||
-            topGames.size() > 1) {
-          shouldSearchMore = true;
-        } else {
-          // High confidence match in first game, skip remaining searches
-          break;
-        }
-      }
-
-      // After first search, only continue if needed
-      if (i > 0 && !shouldSearchMore) {
-        break;
-      }
-
+      confidentMatch =
+          confidentMatch ||
+          (!gameResults.empty() &&
+           gameResults[0].score >=
+               getEffectiveConfidenceThreshold(gameToSearch, config) +
+                   ScannerConfig::EARLY_EXIT_SCORE_MARGIN);
     } catch (const std::exception &e) {
-      // Skip failed game database
-      log(LOG_LEVEL::Error,
-          "[CardScanner] Failed to search database for %s: %s",
-          gameToSearch.c_str(), e.what());
-      continue;
+      // Skip failed game database; a failure never triggers the early exit.
+      log(LOG_LEVEL::Error, "[CardScanner] Failed to search database for",
+          gameToSearch, ":", e.what());
+    }
+
+    // Early exit on a positive signal only, and only once every database of
+    // the current YOLO class has been searched: a confident match already
+    // wins filterToBestGame unless a lower-ranked class were to beat it,
+    // which YOLO's ordering makes rare enough to trade for the skipped
+    // embedding and search cost.
+    const bool classGroupDone =
+        i + 1 >= topGames.size() ||
+        !shareYoloClass(gameToSearch, topGames[i + 1], config);
+    if (confidentMatch && classGroupDone) {
+      if (i + 1 < topGames.size()) {
+        log(LOG_LEVEL::Debug, "[CardScanner] Confident match in", gameToSearch,
+            "- skipping", topGames.size() - i - 1, "remaining games");
+      }
+      break;
     }
   }
 
   return allResults;
 }
-
-namespace {
-float getEffectiveConfidenceThreshold(const std::string &gameName,
-                                      const ScannerConfig &config) {
-  auto gameIt = config.gameSpecificConfig.find(gameName);
-  if (gameIt != config.gameSpecificConfig.end() &&
-      gameIt->second.confidenceThreshold.has_value()) {
-    return *gameIt->second.confidenceThreshold;
-  }
-
-  return config.confidenceThreshold;
-}
-} // namespace
 
 std::vector<CardMatch> SearchStrategy::filterToBestGame(
     const std::vector<CardSearchResult> &allResults,
@@ -220,17 +222,22 @@ std::vector<CardMatch> SearchStrategy::filterToBestGame(
   benchmark::BenchmarkCollector::set(benchmark::Label::RawTopCardId,
                                      sortedResults[0].card_id);
 
-  // Find the best match game (highest similarity score)
-  std::string bestMatchGame = "";
-  float effectiveThreshold =
-      getEffectiveConfidenceThreshold(sortedResults[0].gameName, config);
-  if (sortedResults[0].score >= effectiveThreshold) {
-    bestMatchGame = sortedResults[0].gameName;
+  // Best match game: highest-scoring result that clears its own game's
+  // threshold, so a strict game's near-miss cannot mask another game's hit.
+  std::string bestMatchGame;
+  float bestMatchScore = 0.0f;
+  for (const auto &result : sortedResults) {
+    if (result.score >=
+        getEffectiveConfidenceThreshold(result.gameName, config)) {
+      bestMatchGame = result.gameName;
+      bestMatchScore = result.score;
+      break;
+    }
   }
 
-  log(LOG_LEVEL::Debug, "[CardScanner] Best match game: %s (score: %.4f)",
-      bestMatchGame.empty() ? "None" : bestMatchGame.c_str(),
-      sortedResults[0].score);
+  log(LOG_LEVEL::Debug, "[CardScanner] Best match game:",
+      bestMatchGame.empty() ? "None" : bestMatchGame,
+      "(score:", bestMatchScore, ")");
 
   if (bestMatchGame.empty()) {
     return {}; // No confident match

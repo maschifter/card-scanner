@@ -42,7 +42,7 @@ FABColorInfo FABColorProcessor::processColorVariant(
   try {
     log(LOG_LEVEL::Debug,
         "[CardScanner] Detecting FAB color variant with disambiguation "
-        "threshold: %.2f",
+        "threshold:",
         disambiguationThreshold);
 
     // Extract 3-dots region from top-left corner

@@ -64,7 +64,7 @@ std::vector<int> SetSymbolYoloModel::nonMaxSuppression(
 
 std::vector<SetSymbolBBox>
 SetSymbolYoloModel::postprocess(const cv::Mat &originalImg,
-                                const std::vector<float> &preds,
+                                std::span<const float> preds,
                                 const std::vector<long long> &outputShape) {
 
   // YOLO output format for object detection can be:
@@ -204,7 +204,7 @@ SetSymbolDetectionResult SetSymbolYoloModel::detect(const cv::Mat &image) {
   // postprocess sniffs [1,5,N] vs [1,N,5] from these dims
   const std::vector<long long> outputShape(output.shape.begin(),
                                            output.shape.end());
-  const std::vector<float> &preds = output.data;
+  const std::span<const float> preds = output.data;
 
   // Postprocessing
   result.detections = postprocess(image, preds, outputShape);

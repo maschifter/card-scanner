@@ -38,10 +38,7 @@ std::set<std::string> DatabaseManager::getKnownGames() const {
 
 GameStorePtr DatabaseManager::getOrCreateStore(const std::string &gameName) {
   std::lock_guard<std::mutex> lock(mutex_);
-
-  if (knownGames_.find(gameName) == knownGames_.end()) {
-    knownGames_.insert(gameName);
-  }
+  knownGames_.insert(gameName);
   auto it = activeStores_.find(gameName);
   if (it != activeStores_.end()) {
     return it->second; // Store found in activeStores - Return it
@@ -51,32 +48,6 @@ GameStorePtr DatabaseManager::getOrCreateStore(const std::string &gameName) {
   GameStorePtr newGameStore = std::make_shared<ObjectBoxDB>(path);
   activeStores_.emplace(gameName, newGameStore);
   return newGameStore;
-}
-
-void DatabaseManager::openStore(const std::string &gameName) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (knownGames_.find(gameName) == knownGames_.end()) {
-    knownGames_.insert(gameName);
-  }
-  if (activeStores_.find(gameName) == activeStores_.end()) {
-    const std::string path = resolvePathFor(gameName);
-    GameStorePtr newGameStore = std::make_shared<ObjectBoxDB>(path);
-    activeStores_.emplace(gameName, std::move(newGameStore));
-  }
-}
-
-void DatabaseManager::closeStore(const std::string &gameName) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  auto it = activeStores_.find(gameName);
-  if (it != activeStores_.end()) {
-    activeStores_.erase(it); // Closed once the last holder releases it
-  }
-}
-
-bool DatabaseManager::isClosedAndSwappable(const std::string &gameName) const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  // If the gameName is NOT in the map, the store is closed (not active).
-  return activeStores_.find(gameName) == activeStores_.end();
 }
 
 void DatabaseManager::scanForExistingStores() {
@@ -108,8 +79,6 @@ void DatabaseManager::scanForExistingStores() {
         if (fs::exists(dataFilePath) && fs::is_regular_file(dataFilePath)) {
 
           knownGames_.insert(gameName);
-
-          // openStore(gameName); - we might not need to open it right away!
         }
       }
     }
@@ -154,25 +123,23 @@ void DatabaseManager::closeSetSymbolStore() {
   }
 }
 
-// --- UPDATED SWAP LOGIC ---
-
+// Held under mutex_ for the whole close -> rename -> reopen sequence, so a
+// concurrent getOrCreateStore cannot reopen the old file mid-swap.
 bool DatabaseManager::swapDatabaseFile(const std::string &gameName,
                                        const std::string &sourcePath) {
+  std::lock_guard<std::mutex> lock(mutex_);
 
-  // Handle Special Case: Set Symbols
-  if (gameName == database::SET_SYMBOL_DB_NAME) {
-    closeSetSymbolStore();
+  const bool isSetSymbols = (gameName == database::SET_SYMBOL_DB_NAME);
+  if (isSetSymbols) {
+    setSymbolStore_.reset();
   } else {
-    if (!isClosedAndSwappable(gameName)) {
-      closeStore(gameName);
-    }
+    activeStores_.erase(gameName);
   }
 
   fs::path source = fs::path(utils::PathUtils::stripFilePrefix(sourcePath));
 
-  // Determine target path
   fs::path target;
-  if (gameName == database::SET_SYMBOL_DB_NAME) {
+  if (isSetSymbols) {
     target = fs::path(baseDbPath_) / database::SET_SYMBOL_DB_NAME /
              database::DB_FILENAME;
   } else {
@@ -182,38 +149,46 @@ bool DatabaseManager::swapDatabaseFile(const std::string &gameName,
   try {
     fs::create_directories(target.parent_path());
 
-    // Basic copy/swap logic
     if (!fs::exists(source)) {
       std::cerr << "Source file does not exist: " << source << std::endl;
       return false;
     }
 
-    // If target doesn't exist, simple move
-    if (!fs::exists(target)) {
+    // The old file survives as a backup until the new one opens, so a
+    // corrupt download rolls back to a working database. After a rollback
+    // the store stays closed and reopens lazily on the next access.
+    const fs::path backup =
+        target.parent_path() /
+        (std::string(database::TEMP_SWAP_PREFIX) + target.filename().string());
+    const bool hadOld = fs::exists(target);
+    if (hadOld) {
+      fs::rename(target, backup);
+    }
+    try {
       fs::rename(source, target);
-    } else {
-      // Atomic swap attempt
-      fs::path tempPath =
-          target.parent_path() / (std::string(database::TEMP_SWAP_PREFIX) +
-                                  target.filename().string());
-      fs::rename(target, tempPath); // Backup old
-      try {
-        fs::rename(source, target); // Move new in
-        fs::remove(tempPath);       // Delete backup
-      } catch (...) {
-        // Rollback if move fails
-        fs::rename(tempPath, target);
-        throw;
+      const std::string storeDir = target.parent_path().string();
+      if (isSetSymbols) {
+        setSymbolStore_ = std::make_shared<ObjectBoxDB>(storeDir);
+      } else {
+        activeStores_[gameName] = std::make_shared<ObjectBoxDB>(storeDir);
       }
+    } catch (...) {
+      if (hadOld) {
+        try {
+          fs::rename(backup, target);
+        } catch (const std::exception &e) {
+          std::cerr << "Swap rollback failed for " << gameName << ": "
+                    << e.what() << std::endl;
+        }
+      }
+      throw;
     }
-
-    // Re-open logic
-    if (gameName == database::SET_SYMBOL_DB_NAME) {
-      getSetSymbolStore(); // Re-initializes
-    } else {
-      openStore(gameName);
+    if (hadOld) {
+      fs::remove(backup);
     }
-
+    if (!isSetSymbols) {
+      knownGames_.insert(gameName);
+    }
     return true;
 
   } catch (const std::exception &e) {
@@ -233,10 +208,8 @@ bool DatabaseManager::cardIdExists(const std::string &gameName,
 }
 
 bool DatabaseManager::deleteDatabaseDirectory(const std::string &gameName) {
-  // Close the store if it's currently open
-  if (!isClosedAndSwappable(gameName)) {
-    closeStore(gameName);
-  }
+  std::lock_guard<std::mutex> lock(mutex_);
+  activeStores_.erase(gameName);
 
   fs::path dbDirectory = fs::path(baseDbPath_) / gameName;
 
@@ -252,11 +225,7 @@ bool DatabaseManager::deleteDatabaseDirectory(const std::string &gameName) {
       return false;
     }
 
-    // Remove entire directory and all contents
     fs::remove_all(dbDirectory);
-
-    // Remove from known games
-    std::lock_guard<std::mutex> lock(mutex_);
     knownGames_.erase(gameName);
 
     return true;

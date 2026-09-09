@@ -2,19 +2,32 @@
 
 namespace cardscanner {
 
-Promise::Promise(jsi::Runtime &runtime,
-                 std::shared_ptr<react::CallInvoker> callInvoker,
-                 jsi::Value resolver, jsi::Value rejecter)
-    : runtime(runtime), callInvoker(callInvoker),
-      _resolver(std::move(resolver)), _rejecter(std::move(rejecter)) {}
-
-void Promise::resolve(jsi::Value &&result) {
-  _resolver.asObject(runtime).asFunction(runtime).call(runtime, result);
+void Promise::resolve(jsi::Runtime &runtime, jsi::Value &&result) {
+  auto resolver = _resolver.lock();
+  if (!resolver) {
+    return; // Runtime torn down, or already settled.
+  }
+  resolver->callback().call(runtime, result);
+  release();
 }
 
-void Promise::reject(std::string message) {
-  jsi::JSError error(runtime, message);
-  _rejecter.asObject(runtime).asFunction(runtime).call(runtime, error.value());
+void Promise::reject(jsi::Runtime &runtime, std::string message) {
+  auto rejecter = _rejecter.lock();
+  if (!rejecter) {
+    return;
+  }
+  jsi::JSError error(runtime, std::move(message));
+  rejecter->callback().call(runtime, error.value());
+  release();
+}
+
+void Promise::release() {
+  if (auto resolver = _resolver.lock()) {
+    resolver->destroy();
+  }
+  if (auto rejecter = _rejecter.lock()) {
+    rejecter->destroy();
+  }
 }
 
 } // namespace cardscanner

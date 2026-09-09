@@ -169,15 +169,6 @@ constexpr int RESHAPE_SINGLE_CHANNEL = 1;
 } // namespace matrix
 
 // ============================================================================
-// MTG-Specific Configuration
-// ============================================================================
-namespace mtg {
-// Default thresholds for MTG card detection
-constexpr float DEFAULT_DETECTION_THRESHOLD = 0.3f;
-constexpr float DEFAULT_CONFIDENCE_THRESHOLD = 0.6f;
-} // namespace mtg
-
-// ============================================================================
 // File/Path Constants
 // ============================================================================
 namespace file {

@@ -5,6 +5,7 @@
 
 #include <ReactCommon/CallInvoker.h>
 #include <jsi/jsi.h>
+#include <react/bridging/CallbackWrapper.h>
 
 namespace cardscanner {
 
@@ -21,20 +22,30 @@ concept PromiseRunFn =
     std::invocable<T, std::shared_ptr<Promise>> &&
     std::same_as<std::invoke_result_t<T, std::shared_ptr<Promise>>, void>;
 
+/**
+ * Settles a JS Promise from native. Holds the resolver/rejecter only as weak
+ * CallbackWrapper handles registered in the runtime's LongLivedObjectCollection,
+ * which React Native clears on the JS thread at instance teardown - so worker
+ * threads never own jsi state and a settle after teardown is a no-op.
+ * resolve()/reject() must be called on the JS thread (via the CallInvoker).
+ */
 class Promise {
 public:
   Promise(jsi::Runtime &runtime,
-          std::shared_ptr<react::CallInvoker> callInvoker, jsi::Value resolver,
-          jsi::Value rejecter);
+          std::shared_ptr<react::CallInvoker> callInvoker,
+          jsi::Function resolver, jsi::Function rejecter)
+      : callInvoker(std::move(callInvoker)),
+        _resolver(react::CallbackWrapper::createWeak(std::move(resolver),
+                                                     runtime, this->callInvoker)),
+        _rejecter(react::CallbackWrapper::createWeak(std::move(rejecter),
+                                                     runtime, this->callInvoker)) {}
 
   Promise(const Promise &) = delete;
   Promise &operator=(const Promise &) = delete;
 
-  void resolve(jsi::Value &&result);
-  void reject(std::string error);
+  void resolve(jsi::Runtime &runtime, jsi::Value &&result);
+  void reject(jsi::Runtime &runtime, std::string error);
 
-  // Public accessors for runtime and callInvoker
-  jsi::Runtime &getRuntime() { return runtime; }
   std::shared_ptr<react::CallInvoker> getCallInvoker() { return callInvoker; }
 
   /**
@@ -55,10 +66,10 @@ public:
         [run = std::move(run),
          callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
                       const jsi::Value *arguments, size_t count) -> jsi::Value {
-          // Call function
           auto promise = std::make_shared<Promise>(
-              runtime, callInvoker, arguments[0].asObject(runtime),
-              arguments[1].asObject(runtime));
+              runtime, callInvoker,
+              arguments[0].asObject(runtime).asFunction(runtime),
+              arguments[1].asObject(runtime).asFunction(runtime));
           run(promise);
 
           return jsi::Value::undefined();
@@ -68,10 +79,11 @@ public:
   }
 
 private:
-  jsi::Runtime &runtime;
+  void release();
+
   std::shared_ptr<react::CallInvoker> callInvoker;
-  jsi::Value _resolver;
-  jsi::Value _rejecter;
+  std::weak_ptr<react::CallbackWrapper> _resolver;
+  std::weak_ptr<react::CallbackWrapper> _rejecter;
 };
 
 } // namespace cardscanner

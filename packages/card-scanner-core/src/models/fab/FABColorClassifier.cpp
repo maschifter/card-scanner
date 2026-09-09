@@ -43,7 +43,12 @@ FABColorClassifier::classifyColor(const cv::Mat &dotsRegion) {
                                  {1, fab_color::CHANNELS,
                                   fab_color::INPUT_SIZE,
                                   fab_color::INPUT_SIZE});
-    const float *outputData = outputs.at(0).data.data();
+    const auto &output = outputs.at(0).data;
+    if (output.size() < fab_color::NUM_CLASSES) {
+      throw std::runtime_error("Color model returned " +
+                               std::to_string(output.size()) + " logits");
+    }
+    const float *outputData = output.data();
 
     // Apply softmax to get probabilities
     std::vector<float> logits(fab_color::NUM_CLASSES);

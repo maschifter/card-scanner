@@ -334,12 +334,11 @@ export function useDatabaseManager() {
           `[downloadAndSwap] Database downloaded to temporary path: ${downloadedPath}`,
         );
 
-        const targetPath = `${dbName}`;
         console.log(
-          `[downloadAndSwap] Calling native swapDatabase with sourcePath: ${downloadedPath}, gameName: ${targetPath}`,
+          `[downloadAndSwap] Calling swapDatabase with gameName: ${dbName}, sourcePath: ${downloadedPath}`,
         );
 
-        const result = await swapDatabase(downloadedPath, targetPath);
+        const result = await swapDatabase(dbName, downloadedPath);
         if (result.success) {
           setDownloadSuccess(`Successfully swapped database for ${dbName}`);
           console.log(

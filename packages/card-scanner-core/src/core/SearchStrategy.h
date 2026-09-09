@@ -67,7 +67,11 @@ private:
   /**
    * @brief Perform adaptive multi-database search
    *
-   * Searches databases sequentially with early exit optimization.
+   * Searches candidate databases in YOLO-confidence order. Databases that
+   * share one YOLO class are always searched together; after a group, a
+   * match clearing its game's threshold by EARLY_EXIT_SCORE_MARGIN skips the
+   * remaining classes. A failing database is skipped and never ends the
+   * search.
    * The default embedder runs once and is reused by every game that falls
    * back to it; game-specific embedders are one instance per game.
    *

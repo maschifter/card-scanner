@@ -87,10 +87,10 @@ if (!result.success) {
 
 ### releaseScanner
 
-Releases all scanner resources (models, databases). Should be called in cleanup (e.g., `useEffect` return).
+Releases all scanner resources (models, databases) on a background thread. Waits up to one second for in-flight work; if the scanner stays busy (for example, a running benchmark), the release is skipped and logged. Call it in cleanup (e.g., `useEffect` return); awaiting the result is optional.
 
 ```typescript
-function releaseScanner(): void;
+function releaseScanner(): Promise<void>;
 ```
 
 **Example:**
@@ -821,7 +821,7 @@ const result = await initializeScanner({
 ### Benefits
 
 - **Optimal Accuracy:** Each game database is searched with its own specialized embedding model
-- **Maintains Adaptive Search:** Preserves the multi-database search strategy for uncertain predictions
+- **Works with multi-database search:** Every candidate game is searched with the right embedder for it
 - **Flexible Architecture:** Mix game-specific and default models as needed
 - **Scalability:** Add specialized models incrementally without changing code
 - **Backward Compatible:** If no game-specific model is provided, falls back to the default

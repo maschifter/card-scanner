@@ -15,6 +15,16 @@ add_compile_options(${folly_FLAGS})
 
 string(APPEND CMAKE_CXX_FLAGS " -DRCT_NEW_ARCH_ENABLED")
 
+# Optimization for release builds. AGP configures a release variant as
+# RelWithDebInfo (CMake default -O2 -g), so both configurations get the flags;
+# the trailing -O3 overrides -O2. Set here, before the subdirectories, so the
+# core pipeline picks them up too. No -ffast-math: iOS builds without it, so
+# FP semantics stay identical across platforms.
+foreach(cfg RELEASE RELWITHDEBINFO)
+  string(APPEND CMAKE_CXX_FLAGS_${cfg} " -O3 -funroll-loops")
+  string(APPEND CMAKE_C_FLAGS_${cfg} " -O3 -funroll-loops")
+endforeach()
+
 set(ANDROID_CPP_DIR "${CMAKE_SOURCE_DIR}/src/main/cpp")
 set(JNI_LIBS_DIR "${CMAKE_SOURCE_DIR}/src/main/jniLibs")
 set(COMMON_CPP_DIR "${CMAKE_SOURCE_DIR}/../common")

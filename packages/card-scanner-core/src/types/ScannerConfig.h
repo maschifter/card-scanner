@@ -1,7 +1,5 @@
 #pragma once
 
-#include "../Constants.h"
-
 #include <map>
 #include <optional>
 #include <string>
@@ -27,28 +25,34 @@ struct ScannerConfig {
   std::string scanMode; // "single" or "multiple"
 
   // Thresholds
-  float segmentationThreshold;    // YOLO confidence threshold (e.g., 0.7)
-  float iouThreshold;             // NMS IOU threshold (e.g., 0.7)
-  float confidenceThreshold;      // Database match threshold (e.g., 0.6)
-  float disambiguationThreshold;  // Min score difference to skip game-specific detection (e.g., 0.02 = 2%)
-  float minGameConfidence; // Min YOLO class confidence to search a game's DB
+  float segmentationThreshold = 0.7f; // YOLO confidence threshold
+  float iouThreshold = 0.7f;          // NMS IOU threshold
+  float confidenceThreshold = 0.6f;   // Database match threshold
+  // Min score difference to skip game-specific detection (0.02 = 2%)
+  float disambiguationThreshold = DEFAULT_DISAMBIGUATION_THRESHOLD;
+  // Min YOLO class confidence to search a game's DB
+  float minGameConfidence = DEFAULT_MIN_GAME_CONFIDENCE;
 
   // Search parameters
-  int maxMatches;       // Max matches to return per detection
-  int searchCandidates; // DB fetch size for approximate search
+  int maxMatches = 5;         // Max matches to return per detection
+  int searchCandidates = 100; // DB fetch size for approximate search
 
   // Optional features
-  bool captureImage; // Save cropped card images to disk
+  bool captureImage = false; // Save cropped card images to disk
 
   // Pipeline behavior (C++-side defaults; benchmark runs override them)
   bool useDetectionSelection = true; // Center-most pick in "single" scan mode
   bool useSidewaysFlipCache = true;  // Remember resolved 180-deg flip across frames
 
   // Frame quality
-  double blurThreshold;     // Minimum blur score (higher = sharper, 0 = disabled)
-  double lowLightThreshold; // Minimum brightness for gamma correction (0-255, 0 = disabled)
-  double lowLightGamma;     // Gamma correction value for low-light enhancement (default: 2.0)
-  int maxFrameRate;         // Maximum frame rate for ML pipeline in FPS (default: 5)
+  // Minimum blur score (higher = sharper, 0 = disabled)
+  double blurThreshold = DEFAULT_BLUR_THRESHOLD;
+  // Minimum brightness for gamma correction (0-255, 0 = disabled)
+  double lowLightThreshold = DEFAULT_LOW_LIGHT_THRESHOLD;
+  // Gamma correction value for low-light enhancement
+  double lowLightGamma = DEFAULT_LOW_LIGHT_GAMMA;
+  // Maximum frame rate for the ML pipeline in FPS
+  int maxFrameRate = DEFAULT_MAX_FRAME_RATE;
 
   std::string segmentationModelPath;
   std::string embeddingModelPath;
@@ -68,10 +72,8 @@ struct ScannerConfig {
     // MTG-specific: Set symbol detection
     std::string setSymbolDetectionModelPath;
     std::string setSymbolEmbedderModelPath;
-    float setSymbolDetectionThreshold =
-        constants::mtg::DEFAULT_DETECTION_THRESHOLD;
-    float setSymbolConfidenceThreshold =
-        constants::mtg::DEFAULT_CONFIDENCE_THRESHOLD;
+    float setSymbolDetectionThreshold = 0.3f;  // Set symbol YOLO threshold
+    float setSymbolConfidenceThreshold = 0.6f; // Set symbol match threshold
     // Must match the exported model's input_shape or inference fails
     int setSymbolImageSize = DEFAULT_SET_SYMBOL_IMAGE_SIZE;
 
@@ -95,7 +97,10 @@ struct ScannerConfig {
   static constexpr float DEFAULT_MIN_GAME_CONFIDENCE = 0.1f;
   // Cap on databases searched per detection; a merged class contributes two
   static constexpr int MAX_GAME_DATABASES = 4;
-  static constexpr float SEARCH_MORE_THRESHOLD_DELTA = 0.1f;
+  // Margin above a game's effective confidence threshold at which a match is
+  // confident enough to skip the remaining candidate YOLO classes. Databases
+  // that share one class are always searched together first.
+  static constexpr float EARLY_EXIT_SCORE_MARGIN = 0.2f;
   static constexpr int JPEG_QUALITY = 90;
   static constexpr double DEFAULT_BLUR_THRESHOLD = 100.0;
   static constexpr double DEFAULT_LOW_LIGHT_THRESHOLD = 65.0;

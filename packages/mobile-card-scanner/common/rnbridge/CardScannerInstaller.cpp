@@ -10,12 +10,15 @@
 #include "JSISerializer.h"
 #include <Log.h>
 #include <chrono>
-#include <iostream>
+#include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <opencv2/opencv.hpp>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "../backends/executorch/ThreadUtils.h"
 
@@ -27,18 +30,89 @@ using namespace cardscanner::constants;
 
 namespace cardscanner {
 
+namespace {
+
+using SettleFn = std::function<void(jsi::Runtime &, Promise &)>;
+
+/**
+ * Runs `work` on a worker thread, then settles the promise on the JS thread.
+ * The worker owns no jsi state - only the Promise's weak callback handles -
+ * so a runtime teardown while it runs makes the settle a no-op instead of a
+ * use-after-free. Any exception escaping `work` rejects the promise.
+ */
+void runAsync(std::shared_ptr<Promise> promise, std::function<SettleFn()> work) {
+  std::thread([promise = std::move(promise), work = std::move(work)]() {
+    SettleFn settle;
+    try {
+      settle = work();
+    } catch (const std::exception &e) {
+      settle = [msg = std::string(e.what())](jsi::Runtime &rt, Promise &p) {
+        p.reject(rt, msg);
+      };
+    } catch (...) {
+      settle = [](jsi::Runtime &rt, Promise &p) {
+        p.reject(rt, "Unknown native error");
+      };
+    }
+    auto invoker = promise->getCallInvoker();
+    invoker->invokeAsync(
+        [promise = std::move(promise),
+         settle = std::move(settle)](jsi::Runtime &rt) {
+          try {
+            settle(rt, *promise);
+          } catch (const std::exception &e) {
+            // No-op if the promise already settled.
+            promise->reject(rt, e.what());
+          } catch (...) {
+            promise->reject(rt, "Failed to deliver native result");
+          }
+        });
+  }).detach();
+}
+
+SettleFn settleOperationResult(bool success, std::string error) {
+  return [success, error = std::move(error)](jsi::Runtime &rt, Promise &p) {
+    p.resolve(rt, utils::JSISerializer::serializeOperationResult(rt, success,
+                                                                 error));
+  };
+}
+
+struct GameDbInfo {
+  std::string name;
+  std::string path;
+  uint64_t cardCount = 0;
+  std::string creationTimestamp;
+  long fileSize = 0;
+};
+
+GameDbInfo readGameDbInfo(DatabaseManager &dbManager,
+                          const std::string &gameName) {
+  GameDbInfo info;
+  info.name = gameName;
+  info.path = dbManager.getStorePath(gameName);
+  if (GameStorePtr db = dbManager.getOrCreateStore(gameName)) {
+    info.cardCount = db->get_card_count();
+    info.creationTimestamp = db->get_metadata_value("creation_timestamp");
+  }
+  info.fileSize = utils::ImageUtils::getFileSize(info.path);
+  if (info.fileSize < 0) {
+    info.fileSize = 0;
+  }
+  return info;
+}
+
+} // namespace
+
 void CardScannerInstaller::injectJSIBindings(
     jsi::Runtime *jsiRuntime, std::shared_ptr<react::CallInvoker> callInvoker) {
 
   cardscanner::DatabaseManager &dbManager =
       cardscanner::DatabaseManager::getInstance();
 
-  // Create the 'initializeScannerNative' host function (returns Promise)
   auto initializeScannerFunc = jsi::Function::createFromHostFunction(
       *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "initializeScanner"),
       1,
-      [&dbManager,
-       callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
+      [callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
                     const jsi::Value *args, size_t count) -> jsi::Value {
         if (count < 1 || !args[0].isObject()) {
           throw jsi::JSError(runtime,
@@ -54,56 +128,40 @@ void CardScannerInstaller::injectJSIBindings(
         ScannerRegistry::setConfig(
             utils::JSISerializer::parseScannerConfig(runtime, configObj));
 
-        // Return a Promise that runs initialization on background thread
         return Promise::createPromise(
-            runtime, callInvoker,
-            [&dbManager](std::shared_ptr<Promise> promise) {
-              // Run initialization on background thread
-              std::thread([&dbManager, promise]() {
-                try {
-                  ScannerRegistry::initializeModels();
-
-                  // Resolve promise on JS thread
-                  promise->getCallInvoker()->invokeAsync([promise]() {
-                    jsi::Object result(promise->getRuntime());
-                    result.setProperty(promise->getRuntime(), "success",
-                                       jsi::Value(true));
-                    promise->resolve(std::move(result));
-                  });
-                } catch (const std::exception &e) {
-                  // Reject promise on JS thread
-                  promise->getCallInvoker()->invokeAsync(
-                      [promise, errorMsg = std::string(e.what())]() {
-                        jsi::Object result(promise->getRuntime());
-                        result.setProperty(promise->getRuntime(), "success",
-                                           jsi::Value(false));
-                        result.setProperty(
-                            promise->getRuntime(), "error",
-                            jsi::String::createFromUtf8(promise->getRuntime(),
-                                                        errorMsg));
-                        promise->resolve(std::move(result));
-                      });
-                }
-              }).detach();
+            runtime, callInvoker, [](std::shared_ptr<Promise> promise) {
+              runAsync(std::move(promise), []() -> SettleFn {
+                ScannerRegistry::initializeModels();
+                return [](jsi::Runtime &rt, Promise &p) {
+                  jsi::Object result(rt);
+                  result.setProperty(rt, "success", jsi::Value(true));
+                  p.resolve(rt, std::move(result));
+                };
+              });
             });
       });
 
   jsiRuntime->global().setProperty(*jsiRuntime, "initializeScanner",
                                    std::move(initializeScannerFunc));
 
-  // Create the 'releaseScanner' host function
   auto releaseScannerFunc = jsi::Function::createFromHostFunction(
       *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "releaseScanner"), 0,
-      [](jsi::Runtime &runtime, const jsi::Value &thisValue,
-         const jsi::Value *args, size_t count) -> jsi::Value {
-        ScannerRegistry::releaseModels();
-        return jsi::Value(true);
+      [callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
+                    const jsi::Value *args, size_t count) -> jsi::Value {
+        return Promise::createPromise(
+            runtime, callInvoker, [](std::shared_ptr<Promise> promise) {
+              runAsync(std::move(promise), []() -> SettleFn {
+                const bool released = ScannerRegistry::releaseModels();
+                return [released](jsi::Runtime &rt, Promise &p) {
+                  p.resolve(rt, jsi::Value(released));
+                };
+              });
+            });
       });
 
   jsiRuntime->global().setProperty(*jsiRuntime, "releaseScanner",
                                    std::move(releaseScannerFunc));
 
-  // Create the 'swapDatabaseNative' host function (returns Promise)
   auto swapDatabaseFunc = jsi::Function::createFromHostFunction(
       *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "swapDatabase"), 2,
       [&dbManager,
@@ -112,77 +170,44 @@ void CardScannerInstaller::injectJSIBindings(
         if (count != 2 || !args[0].isString() || !args[1].isString()) {
           throw jsi::JSError(
               runtime,
-              "swapDatabase expects (sourcePath: string, gameName: string)");
+              "swapDatabase expects (gameName: string, sourcePath: string)");
         }
 
-        std::string sourcePath = args[0].asString(runtime).utf8(runtime);
-        std::string gameName = args[1].asString(runtime).utf8(runtime);
+        std::string gameName = args[0].asString(runtime).utf8(runtime);
+        std::string sourcePath = args[1].asString(runtime).utf8(runtime);
 
-        // Return a Promise that runs database swap on background thread
         return Promise::createPromise(
             runtime, callInvoker,
-            [sourcePath, gameName,
+            [gameName, sourcePath,
              &dbManager](std::shared_ptr<Promise> promise) {
-              // Run database swap on background thread
-              std::thread([sourcePath, gameName, &dbManager, promise]() {
-                try {
-                  // The store being swapped out may be mid-search in a scan.
-                  std::unique_lock<std::shared_timed_mutex> exclusive(
-                      ScannerRegistry::pipelineMutex());
+              runAsync(std::move(promise), [gameName, sourcePath,
+                                            &dbManager]() -> SettleFn {
+                // The store being swapped out may be mid-search in a scan.
+                std::unique_lock<std::shared_timed_mutex> exclusive(
+                    ScannerRegistry::pipelineMutex());
 
-                  std::chrono::steady_clock::time_point startTime =
-                      std::chrono::steady_clock::now();
-                  bool success =
-                      dbManager.swapDatabaseFile(gameName, sourcePath);
-                  std::chrono::steady_clock::time_point endTime =
-                      std::chrono::steady_clock::now();
-                  auto duration =
-                      std::chrono::duration_cast<std::chrono::milliseconds>(
-                          endTime - startTime)
-                          .count();
-                  std::cout << "[CardScanner] Swapped database for game '"
-                            << gameName << "' in " << duration << " ms."
-                            << std::endl;
+                const auto startTime = std::chrono::steady_clock::now();
+                bool success = dbManager.swapDatabaseFile(gameName, sourcePath);
+                const auto duration =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - startTime)
+                        .count();
+                log(LOG_LEVEL::Info, "[CardScanner] Swapped database for game",
+                    gameName, "in", duration, "ms.");
 
-                  if (success) {
-                    dbManager.scanForExistingStores();
-                  }
-
-                  // Resolve promise on JS thread
-                  promise->getCallInvoker()->invokeAsync([promise, success]() {
-                    jsi::Object result(promise->getRuntime());
-                    result.setProperty(promise->getRuntime(), "success",
-                                       jsi::Value(success));
-                    if (!success) {
-                      result.setProperty(promise->getRuntime(), "error",
-                                         jsi::String::createFromUtf8(
-                                             promise->getRuntime(),
-                                             "Failed to swap database file"));
-                    }
-                    promise->resolve(std::move(result));
-                  });
-                } catch (const std::exception &e) {
-                  // Reject promise on JS thread
-                  promise->getCallInvoker()->invokeAsync(
-                      [promise, errorMsg = std::string(e.what())]() {
-                        jsi::Object result(promise->getRuntime());
-                        result.setProperty(promise->getRuntime(), "success",
-                                           jsi::Value(false));
-                        result.setProperty(
-                            promise->getRuntime(), "error",
-                            jsi::String::createFromUtf8(promise->getRuntime(),
-                                                        errorMsg));
-                        promise->resolve(std::move(result));
-                      });
+                if (success) {
+                  dbManager.scanForExistingStores();
                 }
-              }).detach();
+
+                return settleOperationResult(
+                    success, success ? "" : "Failed to swap database file");
+              });
             });
       });
 
   jsiRuntime->global().setProperty(*jsiRuntime, "swapDatabase",
                                    std::move(swapDatabaseFunc));
 
-  // Create the 'scanImage' host function
   auto scanImageFunc = jsi::Function::createFromHostFunction(
       *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "scanImage"), 2,
       [&dbManager,
@@ -213,45 +238,27 @@ void CardScannerInstaller::injectJSIBindings(
             runtime, callInvoker,
             [imagePath, scanMode,
              &dbManager](std::shared_ptr<Promise> promise) {
-              std::thread([imagePath, scanMode, &dbManager,
-                           promise]() {
-                auto invoker = promise->getCallInvoker();
+              runAsync(std::move(promise), [imagePath, scanMode,
+                                            &dbManager]() -> SettleFn {
                 try {
                   ScanResult scanResult = ScannerRegistry::scanImageFile(
                       imagePath, dbManager, scanMode);
-
-                  invoker->invokeAsync(
-                      [promise, scanResult = std::move(scanResult)]() {
-                        try {
-                          auto result =
-                              utils::JSISerializer::serializeScanResult(
-                                  promise->getRuntime(), scanResult);
-                          promise->resolve(std::move(result));
-                        } catch (const std::exception &e) {
-                          promise->reject(std::string("Image scan failed: ") +
-                                          e.what());
-                        } catch (...) {
-                          promise->reject("Image scan failed: unknown error");
-                        }
-                      });
+                  return [scanResult = std::move(scanResult)](jsi::Runtime &rt,
+                                                              Promise &p) {
+                    p.resolve(rt, utils::JSISerializer::serializeScanResult(
+                                      rt, scanResult));
+                  };
                 } catch (const std::exception &e) {
-                  invoker->invokeAsync([promise,
-                                        errorMsg = std::string(e.what())]() {
-                    promise->reject("Image scan failed: " + errorMsg);
-                  });
-                } catch (...) {
-                  invoker->invokeAsync([promise]() {
-                    promise->reject("Image scan failed: unknown error");
-                  });
+                  throw std::runtime_error(std::string("Image scan failed: ") +
+                                           e.what());
                 }
-              }).detach();
+              });
             });
       });
 
   jsiRuntime->global().setProperty(*jsiRuntime, "scanImage",
                                    std::move(scanImageFunc));
 
-  // Runs the pipeline on a detached worker thread.
   auto runBenchmarkFunc = jsi::Function::createFromHostFunction(
       *jsiRuntime,
       jsi::PropNameID::forAscii(*jsiRuntime, "runBenchmarkFromImages"), 3,
@@ -336,61 +343,46 @@ void CardScannerInstaller::injectJSIBindings(
             runtime, callInvoker,
             [&dbManager, images = std::move(images), warmupIterations,
              benchmarkIterations](std::shared_ptr<Promise> promise) {
-              std::thread([&dbManager, images, warmupIterations,
-                          benchmarkIterations, promise]() {
-                try {
-                  ScannerRegistry::beginBenchmark();
-                  struct BenchmarkRunningGuard {
-                    ~BenchmarkRunningGuard() {
-                      ScannerRegistry::endBenchmark();
-                    }
-                  } benchmarkRunningGuard;
+              runAsync(std::move(promise), [&dbManager, images = std::move(images),
+                                            warmupIterations,
+                                            benchmarkIterations]() -> SettleFn {
+                ScannerRegistry::beginBenchmark();
+                struct BenchmarkRunningGuard {
+                  ~BenchmarkRunningGuard() { ScannerRegistry::endBenchmark(); }
+                } benchmarkRunningGuard;
 
-                  // New scans are already turned away by the flag above; this
-                  // waits out the ones that started before it was set.
-                  std::unique_lock<std::shared_timed_mutex> exclusive(
-                      ScannerRegistry::pipelineMutex());
+                // New scans are already turned away by the flag above; this
+                // waits out the ones that started before it was set.
+                std::unique_lock<std::shared_timed_mutex> exclusive(
+                    ScannerRegistry::pipelineMutex());
 
-                  auto ctx = ScannerRegistry::getScannerContext();
+                auto ctx = ScannerRegistry::getScannerContext();
 
-                  if (!ctx.yoloModel || !ctx.embeddingModel) {
-                    promise->getCallInvoker()->invokeAsync([promise]() {
-                      promise->reject("Models not initialized. Call "
-                                      "initializeScanner() first.");
-                    });
-                    return;
-                  }
-
-                  auto runResult = benchmark::BenchmarkRunner::run(
-                      images, ctx.config, warmupIterations,
-                      benchmarkIterations, dbManager, ctx.yoloModel.get(),
-                      ctx.embeddingModel.get(), ctx.setSymbolYoloModel.get(),
-                      ctx.setSymbolEmbedder.get(), ctx.fabColorClassifier.get(),
-                      &ctx.gameEmbeddingModels);
-
-                  promise->getCallInvoker()->invokeAsync(
-                      [promise, runResult = std::move(runResult)]() {
-                        auto &rt = promise->getRuntime();
-                        jsi::Object result(rt);
-                        result.setProperty(rt, "success", jsi::Value(true));
-                        result.setProperty(
-                            rt, "recordCount",
-                            jsi::Value(
-                                static_cast<double>(runResult.recordCount)));
-
-                        result.setProperty(
-                            rt, "recordsJson",
-                            jsi::String::createFromUtf8(rt, runResult.json));
-                        promise->resolve(std::move(result));
-                      });
-                } catch (const std::exception &e) {
-                  promise->getCallInvoker()->invokeAsync(
-                      [promise, errorMsg = std::string(e.what())]() {
-                        promise->reject(std::string("Benchmark run failed: ") +
-                                        errorMsg);
-                      });
+                if (!ctx.yoloModel || !ctx.embeddingModel) {
+                  throw std::runtime_error(
+                      "Models not initialized. Call initializeScanner() "
+                      "first.");
                 }
-              }).detach();
+
+                auto runResult = benchmark::BenchmarkRunner::run(
+                    images, ctx.config, warmupIterations, benchmarkIterations,
+                    dbManager, ctx.yoloModel.get(), ctx.embeddingModel.get(),
+                    ctx.setSymbolYoloModel.get(), ctx.setSymbolEmbedder.get(),
+                    ctx.fabColorClassifier.get(), &ctx.gameEmbeddingModels);
+
+                return [runResult =
+                            std::move(runResult)](jsi::Runtime &rt, Promise &p) {
+                  jsi::Object result(rt);
+                  result.setProperty(rt, "success", jsi::Value(true));
+                  result.setProperty(
+                      rt, "recordCount",
+                      jsi::Value(static_cast<double>(runResult.recordCount)));
+                  result.setProperty(
+                      rt, "recordsJson",
+                      jsi::String::createFromUtf8(rt, runResult.json));
+                  p.resolve(rt, std::move(result));
+                };
+              });
             });
       });
 
@@ -402,65 +394,35 @@ void CardScannerInstaller::injectJSIBindings(
       [&dbManager,
        callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
                     const jsi::Value *args, size_t count) -> jsi::Value {
-        // Return a Promise that scans for games on background thread
         return Promise::createPromise(
             runtime, callInvoker,
             [&dbManager](std::shared_ptr<Promise> promise) {
-              std::thread([&dbManager, promise]() {
-                try {
-                  dbManager.scanForExistingStores();
-                  std::set<std::string> games = dbManager.getKnownGames();
+              runAsync(std::move(promise), [&dbManager]() -> SettleFn {
+                dbManager.scanForExistingStores();
 
-                  // Resolve promise on JS thread
-                  promise->getCallInvoker()->invokeAsync([promise, games,
-                                                          &dbManager]() {
-                    jsi::Array result(promise->getRuntime(), games.size());
-                    size_t i = 0;
-
-                    for (const auto &gameName : games) {
-                      std::string dirPath = dbManager.getStorePath(gameName);
-
-                      // Get metadata
-                      uint64_t cardCount = 0;
-                      std::string creationTimestamp = "";
-                      long fileSize = 0;
-
-                      try {
-                        GameStorePtr db = dbManager.getOrCreateStore(gameName);
-                        if (db) {
-                          cardCount = db->get_card_count();
-                          creationTimestamp =
-                              db->get_metadata_value("creation_timestamp");
-                        }
-
-                        // Get file size
-                        fileSize = utils::ImageUtils::getFileSize(dirPath);
-                        if (fileSize < 0) {
-                          fileSize = 0;
-                        }
-                      } catch (...) {
-                        // Ignore errors for individual games
-                      }
-
-                      // Use JSISerializer for consistent serialization
-                      jsi::Object gameObj =
-                          utils::JSISerializer::serializeDatabaseInfo(
-                              promise->getRuntime(), gameName, dirPath,
-                              cardCount, creationTimestamp, fileSize);
-
-                      result.setValueAtIndex(promise->getRuntime(), i++,
-                                             std::move(gameObj));
-                    }
-
-                    promise->resolve(std::move(result));
-                  });
-                } catch (const std::exception &e) {
-                  promise->getCallInvoker()->invokeAsync(
-                      [promise, errorMsg = std::string(e.what())]() {
-                        promise->reject(errorMsg);
-                      });
+                std::vector<GameDbInfo> infos;
+                for (const auto &gameName : dbManager.getKnownGames()) {
+                  try {
+                    infos.push_back(readGameDbInfo(dbManager, gameName));
+                  } catch (...) {
+                    // Ignore errors for individual games
+                  }
                 }
-              }).detach();
+
+                return [infos = std::move(infos)](jsi::Runtime &rt,
+                                                  Promise &p) {
+                  jsi::Array result(rt, infos.size());
+                  for (size_t i = 0; i < infos.size(); i++) {
+                    const auto &info = infos[i];
+                    result.setValueAtIndex(
+                        rt, i,
+                        utils::JSISerializer::serializeDatabaseInfo(
+                            rt, info.name, info.path, info.cardCount,
+                            info.creationTimestamp, info.fileSize));
+                  }
+                  p.resolve(rt, std::move(result));
+                };
+              });
             });
       });
 
@@ -480,64 +442,28 @@ void CardScannerInstaller::injectJSIBindings(
 
         std::string gameName = args[0].asString(runtime).utf8(runtime);
 
-        // Return a Promise that retrieves database info on background thread
         return Promise::createPromise(
             runtime, callInvoker,
             [&dbManager, gameName](std::shared_ptr<Promise> promise) {
-              std::thread([&dbManager, gameName, promise]() {
+              runAsync(std::move(promise), [&dbManager, gameName]() -> SettleFn {
                 try {
-                  std::string dirPath = dbManager.getStorePath(gameName);
-
-                  // Check if database exists
-                  if (!std::filesystem::exists(dirPath)) {
-                    promise->getCallInvoker()->invokeAsync(
-                        [promise, gameName]() {
-                          promise->reject(
-                              std::string("Database not found for game: ") +
-                              gameName);
-                        });
-                    return;
+                  if (!std::filesystem::exists(dbManager.getStorePath(gameName))) {
+                    throw std::runtime_error(
+                        std::string("Database not found for game: ") + gameName);
                   }
 
-                  // Get metadata
-                  uint64_t cardCount = 0;
-                  std::string creationTimestamp = "";
-                  long fileSize = 0;
-
-                  GameStorePtr db = dbManager.getOrCreateStore(gameName);
-                  if (db) {
-                    cardCount = db->get_card_count();
-                    creationTimestamp =
-                        db->get_metadata_value("creation_timestamp");
-                  }
-
-                  // Get file size
-                  fileSize = utils::ImageUtils::getFileSize(dirPath);
-                  if (fileSize < 0) {
-                    fileSize = 0;
-                  }
-
-                  // Resolve promise on JS thread
-                  promise->getCallInvoker()->invokeAsync(
-                      [promise, gameName, dirPath, cardCount, creationTimestamp,
-                       fileSize]() {
-                        // Use JSISerializer for consistent serialization
-                        jsi::Object gameObj =
-                            utils::JSISerializer::serializeDatabaseInfo(
-                                promise->getRuntime(), gameName, dirPath,
-                                cardCount, creationTimestamp, fileSize);
-
-                        promise->resolve(std::move(gameObj));
-                      });
+                  GameDbInfo info = readGameDbInfo(dbManager, gameName);
+                  return [info = std::move(info)](jsi::Runtime &rt, Promise &p) {
+                    p.resolve(rt, utils::JSISerializer::serializeDatabaseInfo(
+                                      rt, info.name, info.path, info.cardCount,
+                                      info.creationTimestamp, info.fileSize));
+                  };
                 } catch (const std::exception &e) {
-                  promise->getCallInvoker()->invokeAsync(
-                      [promise, gameName, errorMsg = std::string(e.what())]() {
-                        promise->reject(
-                            std::string("Failed to get database info for ") +
-                            gameName + ": " + errorMsg);
-                      });
+                  throw std::runtime_error(
+                      std::string("Failed to get database info for ") +
+                      gameName + ": " + e.what());
                 }
-              }).detach();
+              });
             });
       });
 
@@ -561,21 +487,19 @@ void CardScannerInstaller::injectJSIBindings(
         return Promise::createPromise(
             runtime, callInvoker,
             [&dbManager, gameName, cardId](std::shared_ptr<Promise> promise) {
-              std::thread([&dbManager, gameName, cardId, promise]() {
+              runAsync(std::move(promise), [&dbManager, gameName,
+                                            cardId]() -> SettleFn {
                 try {
                   bool exists = dbManager.cardIdExists(gameName, cardId);
-                  promise->getCallInvoker()->invokeAsync([promise, exists]() {
-                    promise->resolve(jsi::Value(exists));
-                  });
+                  return [exists](jsi::Runtime &rt, Promise &p) {
+                    p.resolve(rt, jsi::Value(exists));
+                  };
                 } catch (const std::exception &e) {
-                  promise->getCallInvoker()->invokeAsync(
-                      [promise, gameName, errorMsg = std::string(e.what())]() {
-                        promise->reject(
-                            std::string("Failed to look up card_id for ") +
-                            gameName + ": " + errorMsg);
-                      });
+                  throw std::runtime_error(
+                      std::string("Failed to look up card_id for ") + gameName +
+                      ": " + e.what());
                 }
-              }).detach();
+              });
             });
       });
 
@@ -595,43 +519,25 @@ void CardScannerInstaller::injectJSIBindings(
 
         std::string gameName = args[0].asString(runtime).utf8(runtime);
 
-        // Return a Promise that deletes database on background thread
         return Promise::createPromise(
             runtime, callInvoker,
             [&dbManager, gameName](std::shared_ptr<Promise> promise) {
-              std::thread([&dbManager, gameName, promise]() {
+              runAsync(std::move(promise), [&dbManager, gameName]() -> SettleFn {
                 try {
                   // The store being deleted may be mid-search in a scan.
                   std::unique_lock<std::shared_timed_mutex> exclusive(
                       ScannerRegistry::pipelineMutex());
 
                   bool success = dbManager.deleteDatabaseDirectory(gameName);
-
-                  promise->getCallInvoker()->invokeAsync([promise, success,
-                                                          gameName]() {
-                    // Use JSISerializer for consistent serialization
-                    std::string error =
-                        success
-                            ? ""
-                            : std::string("Failed to delete database for ") +
-                                  gameName;
-                    jsi::Object result =
-                        utils::JSISerializer::serializeOperationResult(
-                            promise->getRuntime(), success, error);
-
-                    promise->resolve(std::move(result));
-                  });
+                  return settleOperationResult(
+                      success, success ? ""
+                                       : std::string(
+                                             "Failed to delete database for ") +
+                                             gameName);
                 } catch (const std::exception &e) {
-                  promise->getCallInvoker()->invokeAsync(
-                      [promise, errorMsg = std::string(e.what())]() {
-                        // Use JSISerializer for consistent serialization
-                        jsi::Object result =
-                            utils::JSISerializer::serializeOperationResult(
-                                promise->getRuntime(), false, errorMsg);
-                        promise->resolve(std::move(result));
-                      });
+                  return settleOperationResult(false, e.what());
                 }
-              }).detach();
+              });
             });
       });
 
@@ -642,7 +548,11 @@ void CardScannerInstaller::injectJSIBindings(
   // over as Nitro HybridObjects and the plugin is the autolinked
   // HybridCardScannerPlugin rather than a scanFramePlugin global.
 
-  threads::utils::unsafeSetupThreadPool();
+  // Once per process: resizing the pool on a reload could pull it out from
+  // under an inference still running from before the reload.
+  static std::once_flag threadPoolOnce;
+  std::call_once(threadPoolOnce,
+                 [] { threads::utils::unsafeSetupThreadPool(); });
 }
 
 } // namespace cardscanner

@@ -64,6 +64,9 @@ struct ProcessedCard {
 
   // Extracted images
   cv::Mat croppedImage;
+  // Pending capture in resolved orientation; written and released by
+  // ScannerPipeline::saveCardImages() after the scan lease is released.
+  cv::Mat imageToSave;
   std::string savedImagePath;
   int imageWidth;     // Width of saved image in pixels
   int imageHeight;    // Height of saved image in pixels

@@ -9,11 +9,8 @@ namespace cardscanner {
 namespace inference {
 
 /**
- * @brief One model output: the flat float buffer plus its dimensions.
- *
- * Owns its data. Every call site copied out of the runtime's buffer into a
- * vector anyway, so this costs nothing and removes the question of how long
- * the runtime's own tensor has to stay alive.
+ * @brief One model output: an owned copy of the backend's buffer plus
+ * dimensions. Owning, so it stays valid across later run() calls.
  */
 struct Tensor {
   std::vector<float> data;

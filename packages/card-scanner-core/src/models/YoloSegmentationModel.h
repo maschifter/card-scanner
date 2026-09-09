@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <opencv2/opencv.hpp>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -91,8 +92,8 @@ private:
    * @return Vector of complete detections
    */
   std::vector<Detection>
-  postprocess(const cv::Mat &originalImg, const std::vector<float> &preds,
-              const std::vector<float> &protos, int protoH, int protoW,
+  postprocess(const cv::Mat &originalImg, std::span<const float> preds,
+              std::span<const float> protos, int protoH, int protoW,
               const GameClassMap &classNames);
 
   /**
@@ -105,7 +106,7 @@ private:
    * @param imgSize Original image size
    * @return Binary mask (CV_8U)
    */
-  cv::Mat processMask(const std::vector<float> &protos, int protoH, int protoW,
+  cv::Mat processMask(std::span<const float> protos, int protoH, int protoW,
                       const std::vector<float> &maskCoeffs, const BBox &bbox,
                       const cv::Size &imgSize) const;
 

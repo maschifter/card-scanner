@@ -245,6 +245,10 @@ BenchmarkRunResult BenchmarkRunner::run(
               setSymbolYolo, setSymbolEmbedder, fabColorClassifier,
                 gameEmbedders);
 
+      // processFrame closes the record after the first detection; reopen it
+      // so the deferred save stage still lands in this record's saveMs.
+      BenchmarkCollector::beginBenchmarkRecord();
+      core::ScannerPipeline::saveCardImages(scanResult, benchmarkConfig);
       BenchmarkCollector::endBenchmarkRecord();
 
       BenchmarkRecord record;

@@ -175,8 +175,21 @@ public:
       gray = image;
     }
 
+    // Downscale by an integer factor so the Laplacian runs on far fewer
+    // pixels: 4x fewer at 720p, 9x at 1080p, 36x at 4K, in either
+    // orientation. Integer factors keep INTER_AREA on its fast box-filter
+    // path; a fractional factor (for example 1080 -> 640) takes a generic
+    // path that is slower than scoring the full frame, so frames with a long
+    // side under 2 * kBlurScoreLongSide are left alone.
+    constexpr int kBlurScoreLongSide = 640;
+    const int factor = std::max(gray.cols, gray.rows) / kBlurScoreLongSide;
+    if (factor > 1) {
+      cv::resize(gray, gray, cv::Size(gray.cols / factor, gray.rows / factor),
+                 0, 0, cv::INTER_AREA);
+    }
+
     cv::Mat laplacian;
-    cv::Laplacian(gray, laplacian, CV_64F);
+    cv::Laplacian(gray, laplacian, CV_32F);
 
     cv::Scalar mean, stddev;
     cv::meanStdDev(laplacian, mean, stddev);
@@ -216,9 +229,8 @@ public:
       p[i] = cv::saturate_cast<uchar>(pow(i / 255.0, 1.0 / gamma) * 255.0);
     }
 
-    cv::Mat res = image.clone();
-
     // LUT applies the same table to all 3 channels (R, G, B) automatically
+    cv::Mat res;
     cv::LUT(image, lookUpTable, res);
     return res;
   }

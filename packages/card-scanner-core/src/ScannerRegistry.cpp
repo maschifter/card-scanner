@@ -150,24 +150,21 @@ void ScannerRegistry::initializeModels() {
   }
 }
 
-void ScannerRegistry::releaseModels() {
-  // Integration layers call this from a UI thread when a screen goes away, so
-  // it cannot sit and wait (on mobile that thread is JS, and blocking it
-  // freezes the app).
-  // A scan finishes in well under a second and is worth waiting for;
-  // a benchmark holds the scanner for its whole run and is not. Give up rather
-  // than freeze the app - whoever is still scanning keeps the models they need,
-  // and the next initialize clears everything out anyway.
-  std::unique_lock<std::shared_timed_mutex> exclusive(
-      pipelineMutex_, std::chrono::seconds(1));
+bool ScannerRegistry::releaseModels() {
+  // A scan finishes in well under a second and is worth waiting for; a
+  // benchmark holds the scanner for its whole run and is not. Skip and report
+  // it rather than block indefinitely - whoever is still scanning keeps the
+  // models they need, and the next initialize clears everything out anyway.
+  std::unique_lock<std::shared_timed_mutex> exclusive(pipelineMutex_,
+                                                      std::chrono::seconds(1));
   if (!exclusive.owns_lock()) {
-    log(LOG_LEVEL::Info,
-        "[CardScanner] Scanner still busy, skipping release.");
-    return;
+    log(LOG_LEVEL::Info, "[CardScanner] Scanner still busy, skipping release.");
+    return false;
   }
 
   std::lock_guard<std::mutex> lock(modelMutex_);
   resetModelsLocked();
+  return true;
 }
 
 ScannerContext ScannerRegistry::getScannerContext() {
@@ -180,31 +177,42 @@ ScannerContext ScannerRegistry::getScannerContext() {
 ScanResult ScannerRegistry::scanImageFile(const std::string &imagePath,
                                           DatabaseManager &dbManager,
                                           std::string_view scanMode) {
-  auto ctx = getScannerContext();
-  if (!ctx.yoloModel || !ctx.embeddingModel) {
-    throw std::runtime_error(
-        "Models not initialized. Call initializeScanner() first.");
-  }
-
-  if (!scanMode.empty()) {
-    ctx.config.scanMode = scanMode;
-  }
-  ctx.config.maxFrameRate = 0;
-
   cv::Mat imageRGB = utils::ImageUtils::loadImageRGB(imagePath);
 
-  // Applicable only when camera runs in the same time as scan (not likely).
-  auto scanLock = claimScan();
-  ScanLease lease;
-  if (!lease) {
-    throw std::runtime_error("Scanner busy: benchmark or model reload.");
+  ScanResult result;
+  ScannerConfig config;
+  {
+    // Queues behind a live camera scan if one is running (rare).
+    auto scanLock = claimScan();
+    ScanLease lease;
+    if (!lease) {
+      throw std::runtime_error("Scanner busy: benchmark or model reload.");
+    }
+
+    // Snapshot under the lease, so a swap cannot slip in between.
+    auto ctx = getScannerContext();
+    if (!ctx.yoloModel || !ctx.embeddingModel) {
+      throw std::runtime_error(
+          "Models not initialized. Call initializeScanner() first.");
+    }
+
+    if (!scanMode.empty()) {
+      ctx.config.scanMode = scanMode;
+    }
+    ctx.config.maxFrameRate = 0;
+
+    result = core::ScannerPipeline::processFrame(
+        imageRGB, ctx.config, dbManager, ctx.yoloModel.get(),
+        ctx.embeddingModel.get(), ctx.setSymbolYoloModel.get(),
+        ctx.setSymbolEmbedder.get(), ctx.fabColorClassifier.get(),
+        &ctx.gameEmbeddingModels);
+    config = std::move(ctx.config);
   }
 
-  return core::ScannerPipeline::processFrame(
-      imageRGB, ctx.config, dbManager, ctx.yoloModel.get(),
-      ctx.embeddingModel.get(), ctx.setSymbolYoloModel.get(),
-      ctx.setSymbolEmbedder.get(), ctx.fabColorClassifier.get(),
-      &ctx.gameEmbeddingModels);
+  // Disk I/O off the lease - a swap waiting on the pipeline lock is not
+  // blocked by JPEG encoding.
+  core::ScannerPipeline::saveCardImages(result, config);
+  return result;
 }
 
 int ScannerRegistry::getMaxFrameRate() {

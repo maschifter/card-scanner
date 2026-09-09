@@ -31,7 +31,7 @@ The scanner processes camera frames through a **5-stage pipeline**:
 
 - Multi-game support (MTG, Lorcana, FAB, Pokémon, etc.)
 - Automatic game detection via YOLO
-- Adaptive database search (early exit optimization)
+- Multi-database search across every candidate game
 - Disambiguation-gated metadata detection
 - Frame throttling and blur filtering
 
@@ -93,10 +93,12 @@ The scanner processes camera frames through a **5-stage pipeline**:
 │      └─> CardEmbeddingModel → feature vector                │
 │  4.2 Extract Top Games                                       │
 │      └─> Filter YOLO predictions by confidence              │
-│  4.3 Multi-Database Search (Adaptive)                        │
-│      ├─> Search game 1 database                             │
-│      ├─> If confident + only 1 game → STOP (optimization)   │
-│      └─> Else search remaining games                        │
+│  4.3 Multi-Database Search                                   │
+│      ├─> Search candidate games in YOLO-confidence order    │
+│      ├─> Databases sharing one YOLO class always searched   │
+│      │   together (pokemon + pokemon-japan)                  │
+│      └─> Then stop early after a confident match; a failed  │
+│          or empty database never cuts the search short      │
 │  4.4 Filter to Best Game                                     │
 │      └─> Keep only matches from best game above threshold   │
 └──────────┬───────────────────────────────────────────────────┘
@@ -192,7 +194,9 @@ if (config.blurThreshold > 0.0) {
 
 **Method:** [`ImageUtils::calculateBlurScore`](../packages/card-scanner-core/src/utils/ImageUtils.h)
 
-- Computes Laplacian variance
+- Computes Laplacian variance on a grayscale copy downscaled by an integer
+  factor so the long side lands in 640 to 1279 px (720p ÷ 2, 1080p ÷ 3,
+  4K ÷ 6, either orientation); smaller frames are scored as is
 - Higher score = sharper image
 - Typical threshold: 100
 
@@ -374,9 +378,9 @@ See [`SearchStrategy.cpp:50-85`](../packages/card-scanner-core/src/core/SearchSt
 Two merged classes in the top 3 would expand to 6 names; the cap drops the
 lowest-ranked ones rather than searching them.
 
-#### Step 4.3: Multi-Database Search (Adaptive)
+#### Step 4.3: Multi-Database Search
 
-**Source:** [`SearchStrategy.cpp:57-112`](../packages/card-scanner-core/src/core/SearchStrategy.cpp)
+**Source:** [`SearchStrategy.cpp`](../packages/card-scanner-core/src/core/SearchStrategy.cpp)
 
 ```cpp
 std::vector<CardSearchResult> searchMultipleDatabases(
@@ -386,7 +390,6 @@ std::vector<CardSearchResult> searchMultipleDatabases(
     DatabaseManager &dbManager
 ) {
   std::vector<CardSearchResult> allResults;
-  bool shouldSearchMore = false;
 
   for (size_t i = 0; i < topGames.size(); i++) {
     const auto &gameToSearch = topGames[i];
@@ -404,27 +407,21 @@ std::vector<CardSearchResult> searchMultipleDatabases(
         allResults.push_back(result);
       }
 
-      // Optimization: only search more games if first search is uncertain
-      if (i == 0 && !gameResults.empty()) {
-        float topScore = gameResults[0].score;
-
-        // Search additional games if:
-        // 1. Top score below confidence threshold + delta OR
-        // 2. Multiple high-confidence games predicted by YOLO
-        if (topScore < config.confidenceThreshold + SEARCH_MORE_THRESHOLD_DELTA ||
-            topGames.size() > 1) {
-          shouldSearchMore = true;
-        } else {
-          // High confidence match in first game, skip remaining searches
-          break;
-        }
-      }
-
-      // After first search, only continue if needed
-      if (i > 0 && !shouldSearchMore) break;
-
+      confidentMatch = confidentMatch ||
+          (!gameResults.empty() &&
+           gameResults[0].score >=
+               getEffectiveConfidenceThreshold(gameToSearch, config) +
+                   ScannerConfig::EARLY_EXIT_SCORE_MARGIN);
     } catch (const std::exception &e) {
-      continue; // Skip failed game database
+      // Skip failed game database; never triggers the early exit
+    }
+
+    // Exit only once every database of the current YOLO class is searched
+    const bool classGroupDone =
+        i + 1 >= topGames.size() ||
+        !shareYoloClass(gameToSearch, topGames[i + 1], config);
+    if (confidentMatch && classGroupDone) {
+      break;
     }
   }
 
@@ -432,14 +429,13 @@ std::vector<CardSearchResult> searchMultipleDatabases(
 }
 ```
 
-**Optimization:** Early exit after first database if:
-
-- Top score ≥ threshold + delta (0.1) AND
-- Only 1 game predicted by YOLO
-
-**Constants:**
-
-- `SEARCH_MORE_THRESHOLD_DELTA` = 0.1
+The early exit triggers only on a confident match, never on a failure: a
+missing, empty, or throwing database moves on to the next candidate game
+instead of ending the search. Databases that share one YOLO class (for
+example `pokemon` and `pokemon-japan`, or `dbs-fusion` and `dbs-masters`)
+can hold the same art, so the whole group is searched before the exit is
+considered; otherwise a confident hit on the wrong print would hide the
+right one. `MAX_GAME_DATABASES` bounds the worst case.
 
 #### Step 4.4: Filter to Best Game
 
@@ -459,13 +455,16 @@ std::vector<dto::CardMatch> filterToBestGame(
               return a.score > b.score;
             });
 
-  // Find the best match game (highest similarity score).
-  // Each game may override the scanner-wide threshold via
-  // gameSpecificConfig[game].confidenceThreshold.
-  std::string bestMatchGame = "";
-  if (sortedResults[0].score >=
-      getEffectiveConfidenceThreshold(sortedResults[0].gameName, config)) {
-    bestMatchGame = sortedResults[0].gameName;
+  // Best match game: the highest-scoring result that clears its own game's
+  // threshold (gameSpecificConfig[game].confidenceThreshold overrides the
+  // scanner-wide one), so a strict game's near-miss cannot mask another
+  // game's qualifying hit.
+  std::string bestMatchGame;
+  for (const auto &result : sortedResults) {
+    if (result.score >= getEffectiveConfidenceThreshold(result.gameName, config)) {
+      bestMatchGame = result.gameName;
+      break;
+    }
   }
 
   if (bestMatchGame.empty()) {
@@ -650,15 +649,15 @@ cv::Mat extractDotsRegion(const cv::Mat &cardImage,
 - **Where:** [`models/YoloSegmentationModel.cpp`](../packages/card-scanner-core/src/models/YoloSegmentationModel.cpp)
 - **Impact:** Single mode processes 1 detection instead of N; boxes dropped in postprocessing skip mask generation, dewarp, embedding and DB search
 
-### 4. Early Database Exit
-
-- **Where:** [`SearchStrategy.cpp:76-80`](../packages/card-scanner-core/src/core/SearchStrategy.cpp)
-- **Impact:** Stops after first database if high confidence
-
-### 5. Disambiguation Gating
+### 4. Disambiguation Gating
 
 - **Where:** Set symbol & color detection conditions
 - **Impact:** Only runs expensive operations when needed for disambiguation
+
+### 5. Early Search Exit
+
+- **Where:** [`SearchStrategy.cpp`](../packages/card-scanner-core/src/core/SearchStrategy.cpp)
+- **Impact:** Skips the remaining YOLO classes (embedding pass + vector search each) once a match clears its game's threshold by `EARLY_EXIT_SCORE_MARGIN`; databases sharing one class are always searched together first, and failures never trigger it
 
 ---
 
@@ -666,7 +665,7 @@ cv::Mat extractDotsRegion(const cv::Mat &cardImage,
 
 ### Model Access
 
-**Source:** [`CardScannerInstaller.cpp:45`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
+**Source:** [`ScannerRegistry.cpp`](../packages/card-scanner-core/src/ScannerRegistry.cpp)
 
 ```cpp
 static std::mutex modelMutex_;

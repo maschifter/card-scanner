@@ -97,10 +97,8 @@ ScanResult ScannerPipeline::processFrame(
       result.processingTimeMs = elapsedMs();
 
       log(LOG_LEVEL::Debug,
-          "[CardScanner] "
-          "Frame skipped due to low blur score: "
-          "%.2f (threshold: %.2f)",
-          blurScore, config.blurThreshold);
+          "[CardScanner] Frame skipped due to low blur score:", blurScore,
+          "(threshold:", config.blurThreshold, ")");
 
       return result; // Skip ML pipeline for blurry frames
     }
@@ -187,16 +185,26 @@ cardscanner::SegmentationResult ScannerPipeline::performSegmentation(
   return segResult;
 }
 
-std::string ScannerPipeline::saveCardImage(const cv::Mat &cardImage,
-                                           const ScannerConfig &config,
-                                           size_t index) {
-  if (!config.captureImage || cardImage.empty()) {
-    return "";
+void ScannerPipeline::saveCardImages(ScanResult &result,
+                                     const ScannerConfig &config) {
+  if (!config.captureImage) {
+    return;
   }
-
+  benchmark::BenchmarkCollector::ScopedTimer saveTimer(benchmark::Stage::Save);
   // Use cache directory for temporary images, not database directory
-  std::string cacheDir = pathprovider::get_cache_path();
-  return utils::ImageUtils::saveCardImage(cardImage, cacheDir, index);
+  const std::string cacheDir = pathprovider::get_cache_path();
+  for (size_t i = 0; i < result.cards.size(); i++) {
+    auto &card = result.cards[i];
+    if (card.imageToSave.empty()) {
+      continue;
+    }
+    card.savedImagePath =
+        utils::ImageUtils::saveCardImage(card.imageToSave, cacheDir, i);
+    if (!card.savedImagePath.empty()) {
+      card.imageFileSize = utils::ImageUtils::getFileSize(card.savedImagePath);
+    }
+    card.imageToSave.release();
+  }
 }
 
 std::vector<CardMatch> ScannerPipeline::recognizeCard(
@@ -220,7 +228,7 @@ SetSymbolInfo ScannerPipeline::detectSetSymbol(
     const ScannerConfig &config,
     cardscanner::SetSymbolYoloModel *setSymbolYolo,
     cardscanner::SetSymbolEmbedder *setSymbolEmbedder,
-    ObjectBoxDB *setSymbolDb) {
+    cardscanner::DatabaseManager &dbManager) {
 
   // Check if MTG config exists in gameSpecificConfig
   auto mtgConfigIt = config.gameSpecificConfig.find("mtg");
@@ -229,11 +237,13 @@ SetSymbolInfo ScannerPipeline::detectSetSymbol(
     return SetSymbolInfo(); // Return empty if MTG config is not present
   }
 
+  GameStorePtr setSymbolDb = dbManager.getSetSymbolStore();
+
   const auto &mtgConfig = mtgConfigIt->second;
   return SetSymbolProcessor::processSetSymbol(
       cardImage, cardMatches, config.disambiguationThreshold,
       mtgConfig.setSymbolConfidenceThreshold, setSymbolYolo, setSymbolEmbedder,
-      setSymbolDb);
+      setSymbolDb.get());
 }
 
 FABColorInfo ScannerPipeline::detectFABColorVariant(
@@ -265,7 +275,6 @@ ProcessedCard ScannerPipeline::processDetection(
     const cardscanner::GameEmbedders *gameEmbedders) {
 
   ProcessedCard card;
-  GameStorePtr setSymbolDb = dbManager.getSetSymbolStore();
   // Store detection info
   card.boundingBox = utils::ImageUtils::boundingBoxToRect(detection.box);
   card.detectionConfidence = detection.box.conf;
@@ -291,8 +300,8 @@ ProcessedCard ScannerPipeline::processDetection(
         utils::ImageUtils::isLowLight(processingImage,
                                       config.lowLightThreshold)) {
       log(LOG_LEVEL::Debug,
-          "[CardScanner] Low-light enhancement applied (threshold: %.2f)",
-          config.lowLightThreshold);
+          "[CardScanner] Low-light enhancement applied (threshold:",
+          config.lowLightThreshold, ")");
       processingImage =
           utils::ImageUtils::adjustGamma(processingImage, config.lowLightGamma);
       cv::normalize(processingImage, processingImage, 0, 255, cv::NORM_MINMAX);
@@ -337,17 +346,10 @@ ProcessedCard ScannerPipeline::processDetection(
     }
   }
 
-  // Disk I/O, measured because the live-camera path pays it too; runs after
-  // recognition so the image saves in its resolved orientation.
-  {
-    benchmark::BenchmarkCollector::ScopedTimer saveTimer(benchmark::Stage::Save);
-
-    card.savedImagePath = saveCardImage(processingImage, config, index);
-
-    // Get file size after saving
-    if (!card.savedImagePath.empty()) {
-      card.imageFileSize = utils::ImageUtils::getFileSize(card.savedImagePath);
-    }
+  // Disk I/O happens in saveCardImages(), after the scan lease is released;
+  // kept here in resolved orientation until then.
+  if (config.captureImage) {
+    card.imageToSave = processingImage;
   }
 
   // If no matches, but we have a predicted game, store it
@@ -367,7 +369,7 @@ ProcessedCard ScannerPipeline::processDetection(
     // MTG: Detect set symbol (with disambiguation threshold)
     card.setSymbol =
         detectSetSymbol(card.croppedImage, card.matches, config, setSymbolYolo,
-                        setSymbolEmbedder, setSymbolDb.get());
+                        setSymbolEmbedder, dbManager);
     // FAB: Detect color variant (with disambiguation threshold)
     card.fabColor = detectFABColorVariant(card.croppedImage, card.matches,
                                           config, fabColorClassifier);

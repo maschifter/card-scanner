@@ -99,30 +99,6 @@ public:
    */
   GameStorePtr getOrCreateStore(const std::string &gameName);
 
-  /**
-   * @brief Explicitly opens a database store for a game
-   * @param gameName Name of the game to open
-   *
-   * Initializes the ObjectBoxDB instance. No-op if already open.
-   */
-  void openStore(const std::string &gameName);
-
-  /**
-   * @brief Closes a game's database store
-   * @param gameName Name of the game to close
-   *
-   * Releases resources and removes from active stores. Required before
-   * swapping database files.
-   */
-  void closeStore(const std::string &gameName);
-
-  /**
-   * @brief Checks if a store is closed and can be swapped
-   * @param gameName Name of the game to check
-   * @return true if store is closed and swappable, false otherwise
-   */
-  bool isClosedAndSwappable(const std::string &gameName) const;
-
   // --- Set Symbol Access ---
 
   /**
@@ -168,13 +144,9 @@ public:
    * @param sourcePath Path to the new database file (data.mdb)
    * @return true if swap succeeded, false otherwise
    *
-   * Process:
-   * 1. Verifies store is closed
-   * 2. Copies source to temporary location
-   * 3. Removes old database
-   * 4. Moves temporary to final location
-   *
-   * Thread-safe. Fails if store is currently open.
+   * Closes the store, swaps the file with rollback on failure, and reopens
+   * the new one, all under one lock, so no concurrent access can reopen the
+   * old file mid-swap.
    */
   bool swapDatabaseFile(const std::string &gameName,
                         const std::string &sourcePath);

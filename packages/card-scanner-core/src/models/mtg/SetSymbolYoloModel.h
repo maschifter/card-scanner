@@ -4,6 +4,7 @@
 #include "../../types/SetSymbolDetection.h"
 #include <memory>
 #include <opencv2/opencv.hpp>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -36,7 +37,7 @@ private:
 
   // Postprocessing: NMS and coordinate scaling
   std::vector<SetSymbolBBox>
-  postprocess(const cv::Mat &originalImg, const std::vector<float> &preds,
+  postprocess(const cv::Mat &originalImg, std::span<const float> preds,
               const std::vector<long long> &outputShape);
 
   // Non-max suppression

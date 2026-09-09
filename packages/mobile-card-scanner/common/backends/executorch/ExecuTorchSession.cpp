@@ -63,8 +63,10 @@ public:
         count *= static_cast<size_t>(dim);
       }
 
-      const float *data = tensor.const_data_ptr<float>();
-      out.data.assign(data, data + count);
+      // Copies out of the method's memory-planned buffers, which the Module
+      // owns and reuses on the next forward().
+      const float *ptr = tensor.const_data_ptr<float>();
+      out.data.assign(ptr, ptr + count);
 
       outputs.push_back(std::move(out));
     }

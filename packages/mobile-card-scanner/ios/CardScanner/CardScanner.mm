@@ -2,36 +2,35 @@
 
 #import "../common/rnbridge/CardScannerInstaller.h"
 #import "PathProvider.h"
-#import <React/RCTBridge+Private.h>
-#import <React/RCTCallInvoker.h>
 #import <ReactCommon/RCTTurboModule.h>
-#include <stdexcept>
+#import <ReactCommon/RCTTurboModuleWithJSIBindings.h>
 
 using namespace facebook::react;
 
-@interface RCTBridge (JSIRuntime)
-- (void *)runtime;
+@interface CardScannerInstaller () <RCTTurboModuleWithJSIBindings>
 @end
 
 @implementation CardScannerInstaller
 
-@synthesize callInvoker = _callInvoker;
-
 RCT_EXPORT_MODULE(CardScannerInstaller)
 
+// React Native installs the bindings via installJSIBindingsWithRuntime:
+// when it creates this TurboModule, before this method can run. install()
+// exists only to trigger that creation from JS; acquiring the runtime
+// synchronously here would deadlock the JS thread.
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install) {
+  return @true;
+}
+
+- (void)installJSIBindingsWithRuntime:(facebook::jsi::Runtime &)runtime
+                          callInvoker:(const std::shared_ptr<CallInvoker> &)callInvoker {
   NSFileManager *fileManager = [NSFileManager defaultManager];
 
-  // Get the library directory for database (persistent storage)
+  // Library directory: persistent storage for the databases.
   NSArray *libraryPaths = NSSearchPathForDirectoriesInDomains(NSLibraryDirectory,
-                                                               NSUserDomainMask, YES);
-  NSString *libraryDirectory = [libraryPaths objectAtIndex:0];
-
-  // Create a "database" subdirectory
+                                                              NSUserDomainMask, YES);
   NSString *databaseDirectory =
-      [libraryDirectory stringByAppendingPathComponent:@"database"];
-
-  // Create the database directory if it doesn't exist
+      [[libraryPaths objectAtIndex:0] stringByAppendingPathComponent:@"database"];
   if (![fileManager fileExistsAtPath:databaseDirectory]) {
     [fileManager createDirectoryAtPath:databaseDirectory
            withIntermediateDirectories:YES
@@ -39,20 +38,13 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install) {
                                  error:nil];
   }
   NSLog(@"Native module database directory: %@", databaseDirectory);
+  pathprovider::set_db_path(std::string([databaseDirectory UTF8String]));
 
-  std::string dbPath = std::string([databaseDirectory UTF8String]);
-  pathprovider::set_db_path(dbPath);
-
-  // Get the cache directory for temporary images
+  // Caches directory: temporary storage for captured card images.
   NSArray *cachePaths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory,
-                                                             NSUserDomainMask, YES);
-  NSString *cacheDirectory = [cachePaths objectAtIndex:0];
-
-  // Create a "card-images" subdirectory in cache
+                                                            NSUserDomainMask, YES);
   NSString *imageCacheDirectory =
-      [cacheDirectory stringByAppendingPathComponent:@"card-images"];
-
-  // Create the cache directory if it doesn't exist
+      [[cachePaths objectAtIndex:0] stringByAppendingPathComponent:@"card-images"];
   if (![fileManager fileExistsAtPath:imageCacheDirectory]) {
     [fileManager createDirectoryAtPath:imageCacheDirectory
            withIntermediateDirectories:YES
@@ -60,21 +52,13 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install) {
                                  error:nil];
   }
   NSLog(@"Native module cache directory: %@", imageCacheDirectory);
+  pathprovider::set_cache_path(std::string([imageCacheDirectory UTF8String]));
 
-  std::string cachePath = std::string([imageCacheDirectory UTF8String]);
-  pathprovider::set_cache_path(cachePath);
-
-  auto jsiRuntime =
-      reinterpret_cast<facebook::jsi::Runtime *>(self.bridge.runtime);
-  auto jsCallInvoker = _callInvoker.callInvoker;
-
-  assert(jsiRuntime != nullptr);
-
-  cardscanner::CardScannerInstaller::injectJSIBindings(jsiRuntime,
-                                                         jsCallInvoker);
+  // Paths must be set first: injectJSIBindings constructs the
+  // DatabaseManager singleton, which reads the db path once at construction.
+  cardscanner::CardScannerInstaller::injectJSIBindings(&runtime, callInvoker);
 
   NSLog(@"Successfully installed JSI bindings for @cardnexus/card-scanner!");
-  return @true;
 }
 
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:

@@ -123,7 +123,7 @@ YoloSegmentationModel::nonMaxSuppression(const std::vector<BBox> &boxes) const {
   return keep;
 }
 
-cv::Mat YoloSegmentationModel::processMask(const std::vector<float> &protos,
+cv::Mat YoloSegmentationModel::processMask(std::span<const float> protos,
                                            int protoH, int protoW,
                                            const std::vector<float> &maskCoeffs,
                                            const BBox &bbox,
@@ -229,8 +229,8 @@ cv::Mat YoloSegmentationModel::processMask(const std::vector<float> &protos,
 }
 
 std::vector<Detection> YoloSegmentationModel::postprocess(
-    const cv::Mat &originalImg, const std::vector<float> &preds,
-    const std::vector<float> &protos, int protoH, int protoW,
+    const cv::Mat &originalImg, std::span<const float> preds,
+    std::span<const float> protos, int protoH, int protoW,
     const GameClassMap &classNames) {
   // Parse predictions tensor: [1, 4 + numClasses + 32, anchors], channels-first
 
@@ -615,9 +615,9 @@ SegmentationResult YoloSegmentationModel::segment(const cv::Mat &image) {
                              std::to_string(outputs.size()) +
                              " outputs, expected at least 2");
   }
-  const std::vector<float> &preds = outputs.front().data;
+  const std::span<const float> preds = outputs.front().data;
   const auto &protosOutput = outputs.back();
-  const std::vector<float> &protos = protosOutput.data;
+  const std::span<const float> protos = protosOutput.data;
 
   // Read the prototype grid from the tensor rather than assuming it is square
   const auto &protosSizes = protosOutput.shape;

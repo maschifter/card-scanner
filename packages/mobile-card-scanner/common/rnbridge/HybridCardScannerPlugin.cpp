@@ -77,28 +77,40 @@ NitroDetection HybridCardScannerPlugin::runPipeline(
   const cv::Mat &frameImage = extracted.image;
   const cv::Size rotatedSize = frameImage.size();
 
-  auto ctx = ::cardscanner::ScannerRegistry::getScannerContext();
-
-  if (!ctx.yoloModel || !ctx.embeddingModel) {
-    throw std::runtime_error(
-        "Models not initialized. Call initializeScanner() first.");
-  }
-
   // Meyer's singleton; the store accessors the pipeline uses lock internally.
   auto &dbManager = ::cardscanner::DatabaseManager::getInstance();
 
-  // Skip rather than block while a benchmark or a model swap owns the scanner.
-  ::cardscanner::ScanLease lease;
-  if (!lease) {
-    return ::cardscanner::utils::NitroSerializer::serializeScanResult(
-        ::cardscanner::ScanResult{});
+  ::cardscanner::ScanResult result;
+  ::cardscanner::ScannerConfig config;
+  {
+    // Skip rather than block while a benchmark or a model swap owns the
+    // scanner. Taken before the context snapshot, so a swap cannot complete
+    // in between and mix model/store generations - and so a frame skips
+    // instead of blocking on the model mutex during a load.
+    ::cardscanner::ScanLease lease;
+    if (!lease) {
+      return ::cardscanner::utils::NitroSerializer::serializeScanResult(
+          ::cardscanner::ScanResult{});
+    }
+
+    auto ctx = ::cardscanner::ScannerRegistry::getScannerContext();
+
+    if (!ctx.yoloModel || !ctx.embeddingModel) {
+      throw std::runtime_error(
+          "Models not initialized. Call initializeScanner() first.");
+    }
+
+    result = ::cardscanner::core::ScannerPipeline::processFrame(
+        frameImage, ctx.config, dbManager, ctx.yoloModel.get(),
+        ctx.embeddingModel.get(), ctx.setSymbolYoloModel.get(),
+        ctx.setSymbolEmbedder.get(), ctx.fabColorClassifier.get(),
+        &ctx.gameEmbeddingModels);
+    config = std::move(ctx.config);
   }
 
-  auto result = ::cardscanner::core::ScannerPipeline::processFrame(
-      frameImage, ctx.config, dbManager, ctx.yoloModel.get(),
-      ctx.embeddingModel.get(), ctx.setSymbolYoloModel.get(),
-      ctx.setSymbolEmbedder.get(), ctx.fabColorClassifier.get(),
-      &ctx.gameEmbeddingModels);
+  // Disk I/O off the lease - a swap waiting on the pipeline lock is not
+  // blocked by JPEG encoding.
+  ::cardscanner::core::ScannerPipeline::saveCardImages(result, config);
 
   // Contract with JS: boxes go back in raw frame-buffer coordinates.
   for (auto &card : result.cards) {
