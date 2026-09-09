@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Platform } from 'react-native';
 import { Asset } from 'expo-asset';
 import { cacheDirectory, copyAsync } from 'expo-file-system/legacy';
 import { initializeScanner, releaseScanner } from '@cardnexus/card-scanner';
@@ -23,10 +24,17 @@ const loadScanner = async () => {
   // Parallelize downloads to speed up boot time
   const [yoloPath, embedPath, setYoloPath, setEmbedPath, fabPath] =
     await Promise.all([
-      prepareAsset(require('../assets/CardSegmentationModel.pte'), 'seg.pte'),
+      prepareAsset(
+        Platform.OS === 'ios'
+          ? require('../assets/CardSegmentationModel.coreml.pte')
+          : require('../assets/CardSegmentationModel.xnnpack.pte'),
+        'seg.pte',
+      ),
       prepareAsset(require('../assets/CardRecognitionModel.pte'), 'embed.pte'),
       prepareAsset(
-        require('../assets/mtg/SetSymbolDetectionModel.pte'),
+        Platform.OS === 'ios'
+          ? require('../assets/mtg/SetSymbolDetectionModel.coreml.pte')
+          : require('../assets/mtg/SetSymbolDetectionModel.xnnpack.pte'),
         'set_yolo.pte',
       ),
       prepareAsset(

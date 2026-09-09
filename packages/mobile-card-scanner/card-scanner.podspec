@@ -56,21 +56,25 @@ Pod::Spec.new do |s|
     "OTHER_LDFLAGS[sdk=iphoneos*]" => [
       '$(inherited)',
       "-force_load \"#{et_binaries_path}/libbackend_xnnpack_ios.a\"",
+      "-force_load \"#{et_binaries_path}/libbackend_coreml_ios.a\"",
       "-force_load \"#{et_binaries_path}/libexecutorch_ios.a\"",
       "-force_load \"#{et_binaries_path}/libkernels_optimized_ios.a\"",
       "-force_load \"#{et_binaries_path}/libthreadpool_ios.a\"",
       "\"#{pthreadpool_binaries_path}/physical-arm64-release/libpthreadpool.a\"",
       "\"#{cpuinfo_binaries_path}/libcpuinfo.a\"",
+      '-framework CoreML -framework Accelerate -lsqlite3',
     ].join(' '),
 
     "OTHER_LDFLAGS[sdk=iphonesimulator*]" => [
       '$(inherited)',
       "-force_load \"#{et_binaries_path}/libbackend_xnnpack_simulator.a\"",
+      "-force_load \"#{et_binaries_path}/libbackend_coreml_simulator.a\"",
       "-force_load \"#{et_binaries_path}/libexecutorch_simulator.a\"",
       "-force_load \"#{et_binaries_path}/libkernels_optimized_simulator.a\"",
       "-force_load \"#{et_binaries_path}/libthreadpool_simulator.a\"",
       "\"#{pthreadpool_binaries_path}/simulator-arm64-debug/libpthreadpool.a\"",
       "\"#{cpuinfo_binaries_path}/libcpuinfo.a\"",
+      '-framework CoreML -framework Accelerate -lsqlite3',
     ].join(' '),
 
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'x86_64',
