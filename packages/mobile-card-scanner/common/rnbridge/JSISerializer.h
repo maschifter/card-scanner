@@ -33,8 +33,9 @@ public:
   static jsi::Object serializeScanResult(jsi::Runtime &runtime,
                                          const ScanResult &result);
 
+  /// Maps the JS object onto ScannerConfig. Throws jsi::JSError on bad shape.
   static ScannerConfig parseScannerConfig(jsi::Runtime &runtime,
-                                               const jsi::Object &configObj);
+                                          const jsi::Object &configObj);
 
   /**
    * @brief Serialize database info to JSI object

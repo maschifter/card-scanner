@@ -12,8 +12,8 @@ namespace constants {
 // Model Configuration
 // ============================================================================
 namespace model {
-// YOLO Segmentation Model
-constexpr float DEFAULT_YOLO_CONF_THRESHOLD = 0.7f;
+// Fixed YOLO knobs: the segmentation model's input size, and the NMS IoU the
+// set-symbol model runs with (segmentation takes ScannerConfig::iouThreshold).
 constexpr float DEFAULT_YOLO_IOU_THRESHOLD = 0.7f;
 constexpr int DEFAULT_YOLO_IMAGE_SIZE = 384;
 
@@ -39,13 +39,15 @@ constexpr float PIXEL_SCALE = 255.0f;
 // Database Configuration
 // ============================================================================
 namespace database {
-// Default cap on candidates returned by a similarity search. Callers that have
-// a configured value (ScannerConfig::searchCandidates) pass it explicitly.
-constexpr int MAX_SEARCH_RESULTS = 100;
-// Minimum cosine similarity score for card matching (0.6 = 60% similarity)
 constexpr float MIN_SIMILARITY_SCORE = 0.6f;
 // Embedding vector dimension
-constexpr size_t EMBEDDING_VECTOR_SIZE = 256;
+constexpr size_t EMBEDDING_VECTOR_SIZE = model::EMBEDDING_DIMENSION;
+
+// Cap on databases searched per detection; a merged class contributes two
+constexpr int MAX_GAME_DATABASES = 4;
+// Margin above a game's confidence threshold at which a match skips the
+// remaining candidate classes; databases sharing a class are searched first.
+constexpr float EARLY_EXIT_SCORE_MARGIN = 0.2f;
 
 // Database file names and paths
 constexpr const char *SET_SYMBOL_DB_NAME = "set-symbols";
@@ -133,6 +135,7 @@ constexpr int DEWARP_HEIGHT = 640;
 constexpr float ASPECT_RATIO = 0.63f;
 // Sideways dewarps are 180-deg ambiguous; how long a resolved flip stays valid
 constexpr std::chrono::milliseconds SIDEWAYS_FLIP_CACHE_TTL{3000};
+constexpr int JPEG_QUALITY = 90;
 } // namespace card
 
 // ============================================================================

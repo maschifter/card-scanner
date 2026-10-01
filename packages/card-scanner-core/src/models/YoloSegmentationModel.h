@@ -48,16 +48,14 @@ public:
    *
    * @param modelPath Path to the .pte model file (supports file:// URIs)
    * @param classNames Class ID to game name(s), keys contiguous from 0
-   * @param conf Confidence threshold for detection [0, 1] (default: 0.7)
-   * @param iou IoU threshold for NMS [0, 1] (default: 0.7)
-   * @param imgsz Input image size (square, default: 384)
+   * @param conf Confidence threshold for detection [0, 1]
+   * @param iou IoU threshold for NMS [0, 1]
+   * @param imgsz Input image size (square)
    * @throws std::runtime_error if loading fails or classNames is invalid
    */
-  explicit YoloSegmentationModel(
-      const std::string &modelPath, const GameClassMap &classNames,
-      float conf = constants::model::DEFAULT_YOLO_CONF_THRESHOLD,
-      float iou = constants::model::DEFAULT_YOLO_IOU_THRESHOLD,
-      int imgsz = constants::model::DEFAULT_YOLO_IMAGE_SIZE);
+  explicit YoloSegmentationModel(const std::string &modelPath,
+                                 const GameClassMap &classNames, float conf,
+                                 float iou, int imgsz);
 
   /**
    * @brief Run segmentation on an image
@@ -158,13 +156,13 @@ private:
    * @brief Apply perspective transform to dewarp card
    * @param img Input image
    * @param quad 4 corner points [TL, TR, BR, BL]
-   * @param targetH Target height in pixels (default: 384)
-   * @param aspect Width/height ratio (default: 0.63 for trading cards)
+   * @param targetH Target height in pixels
+   * @param aspect Width/height ratio
    * @return Dewarped rectangular card image
    */
   cv::Mat warpPerspectiveCard(const cv::Mat &img,
                               const std::vector<cv::Point2f> &quad,
-                              int targetH = 384, float aspect = 0.63f) const;
+                              int targetH, float aspect) const;
 };
 
 } // namespace cardscanner

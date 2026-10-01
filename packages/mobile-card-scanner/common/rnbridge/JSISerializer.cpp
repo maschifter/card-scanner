@@ -1,7 +1,6 @@
 #include "JSISerializer.h"
 #include <Constants.h>
 #include "NitroSerializer.h"
-#include <iostream>
 
 namespace cardscanner {
 namespace utils {
@@ -50,21 +49,21 @@ JSISerializer::parseScannerConfig(jsi::Runtime &runtime,
   config.confidenceThreshold = static_cast<float>(
       configObj.getProperty(runtime, "confidenceThreshold").asNumber());
 
-  // Parse disambiguation threshold (optional, defaults to 2%)
+  // Parse disambiguation threshold (optional)
   auto disambiguationThresholdProp =
       configObj.getProperty(runtime, "disambiguationThreshold");
   config.disambiguationThreshold =
       disambiguationThresholdProp.isNumber()
           ? static_cast<float>(disambiguationThresholdProp.asNumber())
-          : ScannerConfig::DEFAULT_DISAMBIGUATION_THRESHOLD;
+          : config.disambiguationThreshold;
 
-  // Parse min game confidence (optional, defaults to 0.1)
+  // Parse min game confidence (optional)
   auto minGameConfidenceProp =
       configObj.getProperty(runtime, "minGameConfidence");
   config.minGameConfidence =
       minGameConfidenceProp.isNumber()
           ? static_cast<float>(minGameConfidenceProp.asNumber())
-          : ScannerConfig::DEFAULT_MIN_GAME_CONFIDENCE;
+          : config.minGameConfidence;
 
   // 3. Parse Search Parameters (Ints)
   config.maxMatches =
@@ -76,37 +75,37 @@ JSISerializer::parseScannerConfig(jsi::Runtime &runtime,
   // 4. Parse Optional Booleans
   // safe check: if property doesn't exist, default to false
   auto captureImageProp = configObj.getProperty(runtime, "captureImage");
-  config.captureImage =
-      captureImageProp.isBool() ? captureImageProp.asBool() : false;
+  config.captureImage = captureImageProp.isBool() ? captureImageProp.asBool()
+                                                  : config.captureImage;
 
 
-  // 4b. Parse blur threshold (optional, defaults to 100)
+  // 4b. Parse blur threshold (optional)
   auto blurThresholdProp = configObj.getProperty(runtime, "blurThreshold");
   config.blurThreshold = blurThresholdProp.isNumber()
                              ? static_cast<double>(blurThresholdProp.asNumber())
-                             : ScannerConfig::DEFAULT_BLUR_THRESHOLD;
+                             : config.blurThreshold;
 
-  // 4c. Parse low light threshold (optional, defaults to 65)
+  // 4c. Parse low light threshold (optional)
   auto lowLightThresholdProp =
       configObj.getProperty(runtime, "lowLightThreshold");
   config.lowLightThreshold =
       lowLightThresholdProp.isNumber()
           ? static_cast<double>(lowLightThresholdProp.asNumber())
-          : ScannerConfig::DEFAULT_LOW_LIGHT_THRESHOLD;
+          : config.lowLightThreshold;
 
-  // 4d. Parse low light gamma (optional, defaults to 2.0)
+  // 4d. Parse low light gamma (optional)
   auto lowLightGammaProp = configObj.getProperty(runtime, "lowLightGamma");
   config.lowLightGamma = lowLightGammaProp.isNumber()
                              ? static_cast<double>(lowLightGammaProp.asNumber())
-                             : ScannerConfig::DEFAULT_LOW_LIGHT_GAMMA;
+                             : config.lowLightGamma;
 
-  // 4e. Parse max frame rate (optional, defaults to 5)
+  // 4e. Parse max frame rate (optional)
   auto maxFrameRateProp = configObj.getProperty(runtime, "maxFrameRate");
   config.maxFrameRate = maxFrameRateProp.isNumber()
                             ? static_cast<int>(maxFrameRateProp.asNumber())
-                            : ScannerConfig::DEFAULT_MAX_FRAME_RATE;
+                            : config.maxFrameRate;
 
-  // 4f. Parse game class mapping (optional)
+  // 4f. Parse game class mapping; validate() checks the map itself
   auto gameClassMappingProp =
       configObj.getProperty(runtime, "gameClassMapping");
   if (!gameClassMappingProp.isUndefined() &&
@@ -120,39 +119,31 @@ JSISerializer::parseScannerConfig(jsi::Runtime &runtime,
           propertyNames.getValueAtIndex(runtime, i).asString(runtime);
       std::string keyStr = propName.utf8(runtime);
 
+      int classId = 0;
       try {
-        int classId = std::stoi(keyStr);
-        jsi::Value value = mappingObj.getProperty(runtime, propName);
+        classId = std::stoi(keyStr);
+      } catch (const std::exception &) {
+        throw jsi::JSError(runtime, "initializeScanner: gameClassMapping key '" +
+                                        keyStr + "' is not an integer class id");
+      }
+      jsi::Value value = mappingObj.getProperty(runtime, propName);
 
-        // A class maps to one game name, or several when games are merged
-        std::vector<std::string> gameNames;
-        if (value.isString()) {
-          gameNames.push_back(value.asString(runtime).utf8(runtime));
-        } else if (value.isObject() &&
-                   value.asObject(runtime).isArray(runtime)) {
-          jsi::Array namesArray = value.asObject(runtime).asArray(runtime);
-          size_t nameCount = namesArray.size(runtime);
-          for (size_t n = 0; n < nameCount; n++) {
-            jsi::Value name = namesArray.getValueAtIndex(runtime, n);
-            if (name.isString()) {
-              gameNames.push_back(name.asString(runtime).utf8(runtime));
-            }
+      // A class maps to one game name, or several when games are merged
+      std::vector<std::string> gameNames;
+      if (value.isString()) {
+        gameNames.push_back(value.asString(runtime).utf8(runtime));
+      } else if (value.isObject() && value.asObject(runtime).isArray(runtime)) {
+        jsi::Array namesArray = value.asObject(runtime).asArray(runtime);
+        size_t nameCount = namesArray.size(runtime);
+        for (size_t n = 0; n < nameCount; n++) {
+          jsi::Value name = namesArray.getValueAtIndex(runtime, n);
+          if (name.isString()) {
+            gameNames.push_back(name.asString(runtime).utf8(runtime));
           }
         }
-
-        if (gameNames.empty()) {
-          std::cerr << "[CardScanner] gameClassMapping entry '" << keyStr
-                    << "' is neither a string nor a non-empty string array; "
-                       "skipping."
-                    << std::endl;
-          continue;
-        }
-
-        config.gameClassMapping[classId] = gameNames;
-      } catch (const std::exception &e) {
-        std::cerr << "[CardScanner] Invalid gameClassMapping key '" << keyStr
-                  << "': " << e.what() << std::endl;
       }
+
+      config.gameClassMapping[classId] = gameNames;
     }
   }
 
@@ -265,6 +256,7 @@ JSISerializer::parseScannerConfig(jsi::Runtime &runtime,
       }
     }
   }
+
   return config;
 }
 

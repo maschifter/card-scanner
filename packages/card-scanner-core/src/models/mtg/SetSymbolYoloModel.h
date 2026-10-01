@@ -20,8 +20,8 @@ namespace cardscanner {
  */
 class SetSymbolYoloModel {
 public:
-  explicit SetSymbolYoloModel(const std::string &modelPath, float conf = 0.3f,
-                              float iou = 0.7f, int imgsz = 384);
+  explicit SetSymbolYoloModel(const std::string &modelPath, float conf,
+                              float iou, int imgsz);
 
   // Run detection on a cv::Mat
   SetSymbolDetectionResult detect(const cv::Mat &image);

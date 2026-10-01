@@ -256,7 +256,8 @@ everything on CPU.
 `config.json` sits beside the executables in the bundle and holds the model
 paths, the database directory, and the scanner thresholds. Relative directories
 resolve against the config file's own location, so the config and its data move
-together.
+together. Omitted keys take the defaults declared in `ScannerConfig.h`; the
+server refuses to start on a config that fails core's validation.
 
 The models and the databases ship through Git LFS, so `git lfs pull` gets you a
 working set. They live under `assets/` in the layout the config expects:

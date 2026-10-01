@@ -29,7 +29,7 @@ which takes `ipc/FrameProtocol.h` and nothing else from the server side.
 | `ipc/FrameServer`               | Receives frames on port 27846, validates the header, and converts the scan region to RGB. Serves one filter at a time.              |
 | `ipc/ControlServer`             | The WebSocket endpoint on port 27845; the overlay and the dock both attach to it.                                                   |
 | `ipc/OverlayServer`             | Serves the overlay page over HTTP on port 27847.                                                                                    |
-| `config/ScannerConfigLoader`    | Reads a JSON config into a fully populated `ScannerConfig`.                                                                         |
+| `config/ScannerConfigLoader`    | Maps a JSON config onto `ScannerConfig`; core validates the result.                                                                 |
 
 ### OBS side
 

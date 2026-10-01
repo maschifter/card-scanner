@@ -31,13 +31,10 @@ T valueOrDefault(const json &obj, const char *key, T fallback) {
   }
 }
 
-std::string requiredString(const json &obj, const char *key) {
-  const auto it = obj.find(key);
-  if (it == obj.end() || !it->is_string() || it->get<std::string>().empty()) {
-    throw std::runtime_error(std::string("config: missing required string '") +
-                             key + "'");
-  }
-  return it->get<std::string>();
+/// Overwrites target only when the key is present; T is deduced from the field.
+template <typename T>
+void readInto(const json &obj, const char *key, T &target) {
+  target = valueOrDefault<T>(obj, key, target);
 }
 
 /**
@@ -72,18 +69,15 @@ std::string resolveModel(const std::filesystem::path &modelsDir,
   return p.is_absolute() ? value : (modelsDir / p).string();
 }
 
-/**
- * @brief Parses gameClassMapping and enforces its contiguity invariant.
- *
- * A swapped segmentation model with a different class order otherwise
- * misroutes every database search, and the symptom is bad matches, not an error.
- */
+/// Parses gameClassMapping's JSON shape; ScannerConfig::validate checks the map.
 GameClassMap parseGameClassMapping(const json &root) {
   const auto it = root.find("gameClassMapping");
-  if (it == root.end() || !it->is_object() || it->empty()) {
-    throw std::runtime_error(
-        "config: 'gameClassMapping' is required and must be a non-empty object "
-        "mapping model class ids to database names");
+  if (it == root.end()) {
+    return {}; // validate() reports the missing mapping
+  }
+  if (!it->is_object()) {
+    throw std::runtime_error("config: 'gameClassMapping' must be an object "
+                             "mapping model class ids to database names");
   }
 
   GameClassMap mapping;
@@ -109,29 +103,8 @@ GameClassMap parseGameClassMapping(const json &root) {
                                "'] must be a string or array of strings");
     }
 
-    if (games.empty()) {
-      throw std::runtime_error("config: gameClassMapping['" + key +
-                               "'] names no database");
-    }
     mapping[classId] = std::move(games);
   }
-
-  // Contiguous from zero, or the entry count no longer decodes the tensor.
-  for (int i = 0; i < static_cast<int>(mapping.size()); i++) {
-    if (mapping.find(i) == mapping.end()) {
-      throw std::runtime_error(
-          "config: gameClassMapping must use contiguous keys 0.." +
-          std::to_string(mapping.size() - 1) + " (missing " +
-          std::to_string(i) +
-          "). The entry count decodes the segmentation model's prediction "
-          "tensor, so a gap silently misroutes every search.");
-    }
-  }
-
-  // Checks the map is self-consistent. YoloSegmentationModel::segment matches
-  // the entry count against the model's channel dim on the first scan; the
-  // order cannot be checked.
-
   return mapping;
 }
 
@@ -144,8 +117,8 @@ ScannerConfig::GameConfig parseGameConfig(const json &obj,
 
   ScannerConfig::GameConfig game;
 
-  game.embeddingModelPath = resolveModel(
-      modelsDir, valueOrDefault<std::string>(obj, "embeddingModelPath", ""));
+  readInto(obj, "embeddingModelPath", game.embeddingModelPath);
+  game.embeddingModelPath = resolveModel(modelsDir, game.embeddingModelPath);
 
   const auto confidence = obj.find("confidenceThreshold");
   if (confidence != obj.end() && !confidence->is_null()) {
@@ -157,29 +130,26 @@ ScannerConfig::GameConfig parseGameConfig(const json &obj,
     warnUnknownKeys(*setSymbol, prefix + "setSymbolDetection.",
                     {"detectionModelPath", "embeddingModelPath", "detectionThreshold",
                      "confidenceThreshold", "imageSize"});
-    game.setSymbolDetectionModelPath = resolveModel(
-        modelsDir, valueOrDefault<std::string>(*setSymbol, "detectionModelPath", ""));
-    game.setSymbolEmbedderModelPath = resolveModel(
-        modelsDir, valueOrDefault<std::string>(*setSymbol, "embeddingModelPath", ""));
-    game.setSymbolDetectionThreshold = valueOrDefault<float>(
-        *setSymbol, "detectionThreshold", game.setSymbolDetectionThreshold);
-    game.setSymbolConfidenceThreshold = valueOrDefault<float>(
-        *setSymbol, "confidenceThreshold", game.setSymbolConfidenceThreshold);
+    readInto(*setSymbol, "detectionModelPath", game.setSymbolDetectionModelPath);
+    readInto(*setSymbol, "embeddingModelPath", game.setSymbolEmbedderModelPath);
+    game.setSymbolDetectionModelPath =
+        resolveModel(modelsDir, game.setSymbolDetectionModelPath);
+    game.setSymbolEmbedderModelPath =
+        resolveModel(modelsDir, game.setSymbolEmbedderModelPath);
+    readInto(*setSymbol, "detectionThreshold", game.setSymbolDetectionThreshold);
+    readInto(*setSymbol, "confidenceThreshold", game.setSymbolConfidenceThreshold);
     // Must match the exported model's input_shape or inference fails.
-    game.setSymbolImageSize =
-        valueOrDefault<int>(*setSymbol, "imageSize", game.setSymbolImageSize);
+    readInto(*setSymbol, "imageSize", game.setSymbolImageSize);
   }
 
   const auto color = obj.find("colorDetection");
   if (color != obj.end() && color->is_object()) {
     warnUnknownKeys(*color, prefix + "colorDetection.",
                     {"modelPath", "dotsRegionRatio", "minDotsRegionSize"});
-    game.colorDetectionModelPath = resolveModel(
-        modelsDir, valueOrDefault<std::string>(*color, "modelPath", ""));
-    game.dotsRegionRatio =
-        valueOrDefault<double>(*color, "dotsRegionRatio", game.dotsRegionRatio);
-    game.minDotsRegionSize =
-        valueOrDefault<int>(*color, "minDotsRegionSize", game.minDotsRegionSize);
+    readInto(*color, "modelPath", game.colorDetectionModelPath);
+    game.colorDetectionModelPath = resolveModel(modelsDir, game.colorDetectionModelPath);
+    readInto(*color, "dotsRegionRatio", game.dotsRegionRatio);
+    readInto(*color, "minDotsRegionSize", game.minDotsRegionSize);
   }
 
   return game;
@@ -227,52 +197,40 @@ LoadedConfig loadConfigFile(const std::filesystem::path &configPath) {
   loaded.paths.databases = resolveDir(root, "databasesDir", base, "databases");
   loaded.paths.cache = resolveDir(root, "cacheDir", base, "cache");
 
-  loaded.products.endpoint =
-      valueOrDefault<std::string>(root, "productEndpoint", loaded.products.endpoint);
-  loaded.products.imageBase =
-      valueOrDefault<std::string>(root, "productImageBase", loaded.products.imageBase);
-  loaded.products.imageTransform = valueOrDefault<std::string>(
-      root, "productImageTransform", loaded.products.imageTransform);
+  readInto(root, "productEndpoint", loaded.products.endpoint);
+  readInto(root, "productImageBase", loaded.products.imageBase);
+  readInto(root, "productImageTransform", loaded.products.imageTransform);
 
   ScannerConfig &config = loaded.scanner;
 
-  config.segmentationModelPath =
-      resolveModel(modelsDir, requiredString(root, "segmentationModelPath"));
-  config.embeddingModelPath =
-      resolveModel(modelsDir, requiredString(root, "embeddingModelPath"));
+#define SET_CONFIG_OR_DEFAULT(field) readInto(root, #field, config.field)
 
-  config.scanMode = valueOrDefault<std::string>(root, "scanMode", "single");
-  if (config.scanMode != "single" && config.scanMode != "multiple") {
-    throw std::runtime_error("config: scanMode must be 'single' or 'multiple', got '" +
-                             config.scanMode + "'");
-  }
+  SET_CONFIG_OR_DEFAULT(segmentationModelPath);
+  SET_CONFIG_OR_DEFAULT(embeddingModelPath);
+  config.segmentationModelPath = resolveModel(modelsDir, config.segmentationModelPath);
+  config.embeddingModelPath = resolveModel(modelsDir, config.embeddingModelPath);
 
-  // Matching mobile's defaults, so both paths score the same images alike.
-  config.segmentationThreshold =
-      valueOrDefault<float>(root, "segmentationThreshold", 0.6f);
-  config.iouThreshold = valueOrDefault<float>(root, "iouThreshold", 0.7f);
-  config.confidenceThreshold = valueOrDefault<float>(root, "confidenceThreshold", 0.6f);
-  config.disambiguationThreshold = valueOrDefault<float>(
-      root, "disambiguationThreshold", ScannerConfig::DEFAULT_DISAMBIGUATION_THRESHOLD);
-  config.minGameConfidence = valueOrDefault<float>(root, "minGameConfidence", 1e-5f);
+  SET_CONFIG_OR_DEFAULT(scanMode);
 
-  config.maxMatches = valueOrDefault<int>(root, "maxMatches", 5);
-  config.searchCandidates = valueOrDefault<int>(root, "searchCandidates", 100);
-  config.captureImage = valueOrDefault<bool>(root, "captureImage", false);
+  SET_CONFIG_OR_DEFAULT(segmentationThreshold);
+  SET_CONFIG_OR_DEFAULT(iouThreshold);
+  SET_CONFIG_OR_DEFAULT(confidenceThreshold);
+  SET_CONFIG_OR_DEFAULT(disambiguationThreshold);
+  SET_CONFIG_OR_DEFAULT(minGameConfidence);
 
-  config.useDetectionSelection =
-      valueOrDefault<bool>(root, "useDetectionSelection", true);
-  config.useSidewaysFlipCache =
-      valueOrDefault<bool>(root, "useSidewaysFlipCache", true);
+  SET_CONFIG_OR_DEFAULT(maxMatches);
+  SET_CONFIG_OR_DEFAULT(searchCandidates);
+  SET_CONFIG_OR_DEFAULT(captureImage);
 
-  config.blurThreshold = valueOrDefault<double>(root, "blurThreshold", 0.0);
-  config.lowLightThreshold = valueOrDefault<double>(
-      root, "lowLightThreshold", ScannerConfig::DEFAULT_LOW_LIGHT_THRESHOLD);
-  config.lowLightGamma = valueOrDefault<double>(root, "lowLightGamma",
-                                          ScannerConfig::DEFAULT_LOW_LIGHT_GAMMA);
-  // 0: no throttle in core. The OBS filter's max_fps is the only gate; a second
-  // cap on the same interval returned dropped frames as empty scans.
-  config.maxFrameRate = valueOrDefault<int>(root, "maxFrameRate", 0);
+  SET_CONFIG_OR_DEFAULT(useDetectionSelection);
+  SET_CONFIG_OR_DEFAULT(useSidewaysFlipCache);
+
+  SET_CONFIG_OR_DEFAULT(blurThreshold);
+  SET_CONFIG_OR_DEFAULT(lowLightThreshold);
+  SET_CONFIG_OR_DEFAULT(lowLightGamma);
+  SET_CONFIG_OR_DEFAULT(maxFrameRate);
+
+#undef SET_CONFIG_OR_DEFAULT
 
   config.gameClassMapping = parseGameClassMapping(root);
 
@@ -282,18 +240,6 @@ LoadedConfig loadConfigFile(const std::filesystem::path &configPath) {
       if (!value.is_object()) {
         throw std::runtime_error("config: gameSpecificConfig['" + game +
                                  "'] must be an object");
-      }
-      // Searches key this map by gameClassMapping names; any other entry never applies.
-      const bool mapped =
-          std::any_of(config.gameClassMapping.begin(), config.gameClassMapping.end(),
-                      [&game](const auto &entry) {
-                        return std::find(entry.second.begin(), entry.second.end(),
-                                         game) != entry.second.end();
-                      });
-      if (!mapped) {
-        throw std::runtime_error("config: gameSpecificConfig['" + game +
-                                 "'] names a game that no gameClassMapping "
-                                 "entry routes to");
       }
       config.gameSpecificConfig[game] =
           parseGameConfig(value, modelsDir, "gameSpecificConfig." + game + ".");

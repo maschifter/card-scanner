@@ -49,7 +49,7 @@ SearchStrategy::extractTopGames(const cardscanner::Detection &detection,
   for (const auto &[conf, classId] : detection.box.class_confs) {
     if (classesTaken >= constants::yolo::MAX_TOP_PREDICTIONS ||
         static_cast<int>(databases.size()) >=
-            ScannerConfig::MAX_GAME_DATABASES) {
+            constants::database::MAX_GAME_DATABASES) {
       break;
     }
     if (conf < config.minGameConfidence) {
@@ -63,7 +63,7 @@ SearchStrategy::extractTopGames(const cardscanner::Detection &detection,
 
     for (const auto &name : it->second) {
       if (static_cast<int>(databases.size()) >=
-          ScannerConfig::MAX_GAME_DATABASES) {
+          constants::database::MAX_GAME_DATABASES) {
         break;
       }
       if (std::find(databases.begin(), databases.end(), name) ==
@@ -173,7 +173,7 @@ std::vector<CardSearchResult> SearchStrategy::searchMultipleDatabases(
           (!gameResults.empty() &&
            gameResults[0].score >=
                getEffectiveConfidenceThreshold(gameToSearch, config) +
-                   ScannerConfig::EARLY_EXIT_SCORE_MARGIN);
+                   constants::database::EARLY_EXIT_SCORE_MARGIN);
     } catch (const std::exception &e) {
       // Skip failed game database; a failure never triggers the early exit.
       log(LOG_LEVEL::Error, "[CardScanner] Failed to search database for",

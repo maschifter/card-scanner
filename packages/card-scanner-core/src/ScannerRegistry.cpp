@@ -81,6 +81,9 @@ static std::unique_lock<std::mutex> claimScan() {
 }
 
 void ScannerRegistry::setConfig(ScannerConfig config) {
+  if (const auto error = config.validate(); !error.empty()) {
+    throw std::runtime_error("invalid scanner config: " + error);
+  }
   std::lock_guard<std::mutex> lock(modelMutex_);
   config_ = std::move(config);
   maxFrameRate_.store(config_.maxFrameRate, std::memory_order_relaxed);

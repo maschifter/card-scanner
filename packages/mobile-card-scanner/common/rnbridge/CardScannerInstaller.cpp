@@ -15,6 +15,7 @@
 #include <memory>
 #include <mutex>
 #include <opencv2/opencv.hpp>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -124,8 +125,13 @@ void CardScannerInstaller::injectJSIBindings(
         // Disable OpenCV threading to prevent interference with ExecutorTorch
         cv::setNumThreads(0);
 
-        ScannerRegistry::setConfig(
-            utils::JSISerializer::parseScannerConfig(runtime, configObj));
+        try {
+          ScannerRegistry::setConfig(
+              utils::JSISerializer::parseScannerConfig(runtime, configObj));
+        } catch (const std::runtime_error &e) {
+          throw jsi::JSError(runtime,
+                             std::string("initializeScanner: ") + e.what());
+        }
 
         return Promise::createPromise(
             runtime, callInvoker, [](std::shared_ptr<Promise> promise) {

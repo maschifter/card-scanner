@@ -16,9 +16,8 @@ public:
   // Similarity search: returns top N most similar cards
   // NOTE: this class predates the cardscanner namespace and still sits at
   // global scope, hence the fully-qualified constants.
-  std::vector<cardscanner::CardSearchResult> search_similar_cards(
-      const std::vector<float> &query_embedding,
-      int limit = cardscanner::constants::database::MAX_SEARCH_RESULTS);
+  std::vector<cardscanner::CardSearchResult>
+  search_similar_cards(const std::vector<float> &query_embedding, int limit);
 
   // Similarity search for MTG set symbols
   std::vector<cardscanner::SetSymbolMatch> search_similar_set_symbols(

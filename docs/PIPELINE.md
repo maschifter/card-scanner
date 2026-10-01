@@ -411,7 +411,7 @@ std::vector<CardSearchResult> searchMultipleDatabases(
           (!gameResults.empty() &&
            gameResults[0].score >=
                getEffectiveConfidenceThreshold(gameToSearch, config) +
-                   ScannerConfig::EARLY_EXIT_SCORE_MARGIN);
+                   constants::database::EARLY_EXIT_SCORE_MARGIN);
     } catch (const std::exception &e) {
       // Skip failed game database; never triggers the early exit
     }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../types/ScannerConfig.h"
+#include "../Constants.h"
 #include "../types/Detection.h"
 #include "PathUtils.h"
 #include <opencv2/opencv.hpp>
@@ -103,7 +103,7 @@ public:
       // Save image as JPEG
       std::vector<int> compression_params;
       compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
-      compression_params.push_back(ScannerConfig::JPEG_QUALITY);
+      compression_params.push_back(constants::card::JPEG_QUALITY);
 
       bool success = cv::imwrite(imagePath, cardImgBGR, compression_params);
       return success ? imagePath : "";

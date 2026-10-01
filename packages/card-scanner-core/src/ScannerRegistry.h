@@ -46,7 +46,9 @@ class ScannerRegistry {
 public:
   /**
    * @brief Replaces the config the next initializeModels() will build from,
-   * and refreshes the lock-free max frame rate cache.
+   * and refreshes the lock-free max frame rate cache. Every config enters
+   * through here, so this is where ScannerConfig::validate() runs.
+   * @throws std::runtime_error when validate() rejects the config.
    */
   static void setConfig(ScannerConfig config);
 

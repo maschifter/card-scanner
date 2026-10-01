@@ -31,14 +31,11 @@ struct LoadedConfig {
 };
 
 /**
- * @brief Reads a JSON config into a fully-populated ScannerConfig.
+ * @brief Maps the file's keys onto a ScannerConfig. Omitted keys keep
+ * ScannerConfig's defaults. Relative model paths resolve against modelsDir,
+ * which resolves against the config file's own directory.
  *
- * Assigns every field, since ScannerConfig declares no initializers for most
- * members. Relative model paths resolve against modelsDir, which resolves
- * against the config file's own directory.
- *
- * @throws std::runtime_error on bad JSON, a missing required key, or a
- *         gameClassMapping that violates its documented invariant.
+ * @throws std::runtime_error on bad JSON or a key of the wrong type.
  */
 LoadedConfig loadConfigFile(const std::filesystem::path &configPath);
 

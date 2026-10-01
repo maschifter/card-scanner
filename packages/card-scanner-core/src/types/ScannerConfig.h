@@ -22,16 +22,16 @@ using GameClassMap = std::map<int, std::vector<std::string>>;
  */
 struct ScannerConfig {
   // Scan behavior
-  std::string scanMode; // "single" or "multiple"
+  std::string scanMode = "single"; // "single" or "multiple"
 
   // Thresholds
   float segmentationThreshold = 0.7f; // YOLO confidence threshold
   float iouThreshold = 0.7f;          // NMS IOU threshold
   float confidenceThreshold = 0.6f;   // Database match threshold
   // Min score difference to skip game-specific detection (0.02 = 2%)
-  float disambiguationThreshold = DEFAULT_DISAMBIGUATION_THRESHOLD;
+  float disambiguationThreshold = 0.02f;
   // Min YOLO class confidence to search a game's DB
-  float minGameConfidence = DEFAULT_MIN_GAME_CONFIDENCE;
+  float minGameConfidence = 0.1f;
 
   // Search parameters
   int maxMatches = 5;         // Max matches to return per detection
@@ -46,13 +46,13 @@ struct ScannerConfig {
 
   // Frame quality
   // Minimum blur score (higher = sharper, 0 = disabled)
-  double blurThreshold = DEFAULT_BLUR_THRESHOLD;
+  double blurThreshold = 100.0;
   // Minimum brightness for gamma correction (0-255, 0 = disabled)
-  double lowLightThreshold = DEFAULT_LOW_LIGHT_THRESHOLD;
+  double lowLightThreshold = 65.0;
   // Gamma correction value for low-light enhancement
-  double lowLightGamma = DEFAULT_LOW_LIGHT_GAMMA;
+  double lowLightGamma = 2.0;
   // Maximum frame rate for the ML pipeline in FPS
-  int maxFrameRate = DEFAULT_MAX_FRAME_RATE;
+  int maxFrameRate = 5;
 
   std::string segmentationModelPath;
   std::string embeddingModelPath;
@@ -75,12 +75,12 @@ struct ScannerConfig {
     float setSymbolDetectionThreshold = 0.3f;  // Set symbol YOLO threshold
     float setSymbolConfidenceThreshold = 0.6f; // Set symbol match threshold
     // Must match the exported model's input_shape or inference fails
-    int setSymbolImageSize = DEFAULT_SET_SYMBOL_IMAGE_SIZE;
+    int setSymbolImageSize = 384;
 
     // FAB-specific: Color variant detection
     std::string colorDetectionModelPath;
-    double dotsRegionRatio = DEFAULT_FAB_DOTS_REGION_RATIO;
-    int minDotsRegionSize = DEFAULT_FAB_MIN_DOTS_REGION_SIZE;
+    double dotsRegionRatio = 0.20;
+    int minDotsRegionSize = 50;
 
     // Check if any fields are configured
     bool hasEmbedding() const { return !embeddingModelPath.empty(); }
@@ -93,23 +93,8 @@ struct ScannerConfig {
   // Map of game name to game-specific configuration
   std::map<std::string, GameConfig> gameSpecificConfig;
 
-  // Constants
-  static constexpr float DEFAULT_MIN_GAME_CONFIDENCE = 0.1f;
-  // Cap on databases searched per detection; a merged class contributes two
-  static constexpr int MAX_GAME_DATABASES = 4;
-  // Margin above a game's effective confidence threshold at which a match is
-  // confident enough to skip the remaining candidate YOLO classes. Databases
-  // that share one class are always searched together first.
-  static constexpr float EARLY_EXIT_SCORE_MARGIN = 0.2f;
-  static constexpr int JPEG_QUALITY = 90;
-  static constexpr double DEFAULT_BLUR_THRESHOLD = 100.0;
-  static constexpr double DEFAULT_LOW_LIGHT_THRESHOLD = 65.0;
-  static constexpr float DEFAULT_DISAMBIGUATION_THRESHOLD = 0.02f; // 2%
-  static constexpr double DEFAULT_LOW_LIGHT_GAMMA = 2.0;
-  static constexpr int DEFAULT_MAX_FRAME_RATE = 5; // 5 FPS
-  static constexpr double DEFAULT_FAB_DOTS_REGION_RATIO = 0.20;
-  static constexpr int DEFAULT_FAB_MIN_DOTS_REGION_SIZE = 50;
-  static constexpr int DEFAULT_SET_SYMBOL_IMAGE_SIZE = 384;
+  /// Empty means valid, else the first violation. Callers add their own prefix.
+  std::string validate() const;
 };
 
 } // namespace cardscanner
