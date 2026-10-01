@@ -15,7 +15,6 @@ constexpr uint32_t kFrameMagic = 0x43534631; // "CSF1"
 constexpr uint16_t kFrameVersion = 2;
 constexpr uint16_t kDefaultFramePort = 27846;
 constexpr uint16_t kDefaultControlPort = 27845;
-constexpr uint16_t kDefaultOverlayPort = 27847;
 constexpr int kMaxPlanes = 3;
 
 /// Our own values, not OBS's, so this header stays free of libobs.

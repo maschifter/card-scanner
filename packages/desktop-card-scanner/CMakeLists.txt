@@ -283,7 +283,6 @@ add_library(cardscanner_desktop STATIC
     src/util/ParentWatchdog.cpp
     src/ipc/FrameServer.cpp
     src/ipc/ControlServer.cpp
-    src/ipc/OverlayServer.cpp
 )
 set_target_properties(cardscanner_desktop PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # OpenCV_INCLUDE_DIRS is deliberately NOT added: core exports its own vendored

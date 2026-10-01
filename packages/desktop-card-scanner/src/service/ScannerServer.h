@@ -7,11 +7,9 @@
 #include <ipc/ControlServer.h>
 #include <ipc/FrameProtocol.h>
 #include <ipc/FrameServer.h>
-#include <ipc/OverlayServer.h>
 #include <types/ScannerConfig.h>
 
 #include <cstdint>
-#include <filesystem>
 #include <string>
 
 namespace cardscanner {
@@ -21,8 +19,6 @@ struct ServerOptions {
   uint64_t token = 0;
   uint16_t framePort = ipc::kDefaultFramePort;
   uint16_t controlPort = ipc::kDefaultControlPort;
-  uint16_t overlayPort = ipc::kDefaultOverlayPort;
-  std::filesystem::path overlayFile;
   ProductSource products;
 };
 
@@ -65,7 +61,6 @@ private:
   // Declaration order reversed is destruction order: service_ last means it is
   // destroyed first, so the worker is joined before anything its listener -
   // fixed at construction - calls into.
-  ipc::OverlayServer overlay_;
   ipc::ControlServer control_;
   ProductClient products_;
   ipc::FrameServer frames_;

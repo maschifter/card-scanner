@@ -5,8 +5,6 @@
 //     --token N           shared secret the module must present
 //     --frame-port N      default 27846
 //     --control-port N    default 27845
-//     --overlay-port N    default 27847
-//     --overlay <path>    defaults to overlay.html beside the config
 //     --replay <dir>      pump images from a directory instead of waiting for OBS
 //     --timings           report stage timings, as the OBS filter's box does
 
@@ -77,8 +75,7 @@ void replayDirectory(const std::filesystem::path &dir, desktop::ScannerServer &s
 int main(int argc, char **argv) {
   if (argc < 2) {
     std::cerr << "usage: " << argv[0] << " <config.json> [--token N] "
-              << "[--frame-port N] [--control-port N] [--overlay-port N] "
-              << "[--overlay <path>] [--replay <dir>]\n";
+              << "[--frame-port N] [--control-port N] [--replay <dir>]\n";
     return 1;
   }
 
@@ -100,10 +97,6 @@ int main(int argc, char **argv) {
         options.framePort = uint16_t(std::stoi(argv[++i]));
       } else if (flag == "--control-port") {
         options.controlPort = uint16_t(std::stoi(argv[++i]));
-      } else if (flag == "--overlay-port") {
-        options.overlayPort = uint16_t(std::stoi(argv[++i]));
-      } else if (flag == "--overlay") {
-        options.overlayFile = argv[++i];
       } else if (flag == "--replay") {
         replayDir = argv[++i];
       }
@@ -137,11 +130,6 @@ int main(int argc, char **argv) {
     cardscanner::desktop::applyDataPaths(loaded.paths);
     options.products = loaded.products;
 
-    if (options.overlayFile.empty()) {
-      options.overlayFile =
-          std::filesystem::absolute(configPath).parent_path() / "overlay.html";
-    }
-
     cardscanner::log(cardscanner::LOG_LEVEL::Info, "[Server]",
                      "loading models...");
     desktop::ScannerServer server(loaded.scanner, {}, options);
@@ -152,8 +140,7 @@ int main(int argc, char **argv) {
     ready << "ready\n"
           << "  frames   127.0.0.1:" << options.framePort << "  token "
           << options.token << "\n"
-          << "  control  ws://127.0.0.1:" << options.controlPort << "\n"
-          << "  overlay  http://127.0.0.1:" << options.overlayPort;
+          << "  control  ws://127.0.0.1:" << options.controlPort;
     cardscanner::log(cardscanner::LOG_LEVEL::Info, "[Server]", ready.str());
 
     if (!replayDir.empty()) {

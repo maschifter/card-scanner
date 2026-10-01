@@ -13,8 +13,7 @@ namespace ipc {
 
 namespace {
 
-/// Only loopback pages (overlay, dock, dev server) may drive the scanner. No
-/// Origin means no browser: a local process is let through.
+/// A page on a loopback host: the overlay or the dock served by the dev server.
 bool loopbackOrigin(const std::string &origin) {
   const auto scheme = origin.find("://");
   if (scheme == std::string::npos) {
@@ -25,6 +24,20 @@ bool loopbackOrigin(const std::string &origin) {
   const std::string host = origin.substr(
       hostStart, hostEnd == std::string::npos ? std::string::npos : hostEnd - hostStart);
   return host == "127.0.0.1" || host == "localhost";
+}
+
+/// Local process (no Origin), loopback page, or OBS's own browser: Origin "null" with its UA.
+bool browserAllowed(const ix::WebSocketHttpHeaders &headers) {
+  const auto origin = headers.find("Origin");
+  if (origin == headers.end()) {
+    return true;
+  }
+  if (loopbackOrigin(origin->second)) {
+    return true;
+  }
+  const auto agent = headers.find("User-Agent");
+  return origin->second == "null" && agent != headers.end() &&
+         agent->second.find("OBS/") != std::string::npos;
 }
 
 } // namespace
@@ -54,8 +67,10 @@ void ControlServer::start() {
       [this](std::shared_ptr<ix::ConnectionState>, ix::WebSocket &socket,
              const ix::WebSocketMessagePtr &msg) {
         if (msg->type == ix::WebSocketMessageType::Open) {
-          const auto origin = msg->openInfo.headers.find("Origin");
-          if (origin != msg->openInfo.headers.end() && !loopbackOrigin(origin->second)) {
+          const auto &headers = msg->openInfo.headers;
+          const auto origin = headers.find("Origin");
+          if (!browserAllowed(headers)) {
+            // Only a page can be turned away, so an Origin is present here.
             log(LOG_LEVEL::Error, "[Control]", "closed a client from",
                 origin->second);
             // 1008, policy violation. The handshake is done by now, so this
@@ -63,6 +78,9 @@ void ControlServer::start() {
             socket.close(1008, "origin not allowed");
             return;
           }
+          log(LOG_LEVEL::Info, "[Control]", "client connected from",
+              origin == headers.end() ? std::string("a local process")
+                                      : origin->second);
           std::string snapshot;
           {
             std::lock_guard<std::mutex> lock(impl_->mutex);

@@ -12,7 +12,7 @@ namespace ipc {
  * @brief WebSocket endpoint the overlay connects to.
  *
  * One server for the whole process, shared by the overlay and the dock. Browser
- * pages are accepted from loopback origins only. Payloads are JSON strings; this
+ * pages are accepted from loopback or OBS's browser. Payloads are JSON strings; this
  * class moves them, it does not parse them.
  */
 class ControlServer {

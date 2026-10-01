@@ -20,9 +20,8 @@ OBS process                            card-scanner-server
 │ filter_video tap       │ frame bytes │ FrameServer :27846          │
 │ full frame (memcpy)    │ ──:27846──► │  └ ScannerService (worker)  │
 │ depth-1 mailbox        │             │    └ ScanSession            │
-│ socket writer thread   │ ◄─result─── │ ControlServer :27845 ───────┼──► overlay
-└────────────────────────┘             │ OverlayServer :27847        │    and dock
-                                       └─────────────────────────────┘
+│ socket writer thread   │ ◄─result─── │ ControlServer :27845 ───────┼──► overlay and dock,
+└────────────────────────┘             └─────────────────────────────┘    loaded from this bundle
 ```
 
 The module links **libobs and nothing else**. No OpenCV, no ONNX Runtime, no
@@ -136,8 +135,8 @@ into the video, so turn it off before you go live.
 | **Show scan region**              | on                                  | Draws the region into the video. For aiming, not for broadcast.                                                                                                    |
 | **Show stage timings**            | off                                 | Measures the pipeline and puts the per-stage times on the overlay, in the dock, and in the log. Needs a benchmark build (see below); off, nothing is recorded.     |
 | **Region X / Y / width / height** | `0.25`, `0.20`, `0.50`, `0.60`      | The part of the frame that gets scanned, as fractions of the full frame. The default is centered, half the width and 60% of the height.                            |
-| **Overlay URL**                   | `http://127.0.0.1:27847`            | The page the Browser Source loads.                                                                                                                                 |
-| **Dock URL**                      | `http://127.0.0.1:27847/?view=dock` | The page to paste into a custom browser dock.                                                                                                                      |
+| **Overlay URL**                   | `overlay.html` inside this bundle   | The page the Browser Source loads, as a `file://` URL straight off disk.                                                                                           |
+| **Dock URL**                      | the same URL with `?view=dock`      | The URL to paste into a custom browser dock.                                                                                                                       |
 
 The overlay takes two query parameters of its own. Add `?debug=0` to hide the
 status readout, which reports what the scanner is doing when no card is on
@@ -173,8 +172,10 @@ is enough to check the models, the databases, and the overlay:
     --replay ../mobile-example/assets/games_images/lorcana
 ```
 
-Open `http://127.0.0.1:27847` in a browser to watch the overlay, and
-`http://127.0.0.1:27847/?view=dock` for the dock.
+Watch it from the dev server: `yarn --cwd web dev`, then
+`http://localhost:5174` for the overlay and `http://localhost:5174/?view=dock`
+for the dock. Opening the built page off disk will not do - only the OBS
+browser is let past the origin check when a page loads from a file.
 
 To scan a single still image and print the result, use the headless harness:
 
@@ -291,17 +292,19 @@ card-scanner-server <config.json> [options]
   --token N          shared secret the module presents on the frame socket
   --frame-port N     default 27846
   --control-port N   default 27845
-  --overlay-port N   default 27847
-  --overlay <path>   overlay page to serve, default overlay.html beside the config
   --replay <dir>     pump images from a directory instead of waiting for OBS
 ```
 
 ## Control protocol
 
 The overlay and the dock both connect to `ws://127.0.0.1:27845`. Browser
-clients are accepted from loopback origins only; a page served from anywhere
-else is closed on connect. The server broadcasts the whole state on every
-change, so a client that reloads is current from its first message:
+clients are accepted from loopback origins and from OBS's own browser, which
+sends `Origin: null` for a page loaded off disk; anything else is closed on
+connect. That check keeps other browsers out, not other pages inside OBS: a
+sandboxed iframe in a third-party Browser Source also has a `null` origin and
+gets in. It can send the commands below and read the state, nothing more. The
+server broadcasts the whole state on every change, so a client that reloads
+is current from its first message:
 
 ```json
 {
@@ -350,13 +353,15 @@ module. Open the most recent log under
   module was built against headers newer than the installed OBS. Set
   `OBS_VERSION` to your OBS version and rebuild.
 
-**The overlay stays blank.** The Browser Source needs the server running, which
-means the filter has to exist on a source. The server writes its own log beside
-OBS's plugin configuration, at
+**The overlay stays blank.** A Browser Source saved by an older build still
+points at `http://127.0.0.1:27847`, which nothing answers any more: remove that
+source and add the overlay again from the filter's button. Otherwise the filter
+has to exist on a source for the server to run at all. The server writes its
+own log beside OBS's plugin configuration, at
 `~/Library/Application Support/obs-studio/plugin_config/obs-card-scanner/card-scanner-server.log`.
 The module logs that path when it starts the server, so search OBS's log for
 `server starting` if you cannot find it. Core's lines land there too, each
-timestamped. The server prints `ready` and its three ports once the models
+timestamped. The server prints `ready` and its two ports once the models
 load, which takes a few seconds.
 
 **Cards are not recognized.** With **Show scan region** on, confirm the card

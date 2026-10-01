@@ -13,7 +13,6 @@ ScannerServer::ScannerServer(const ScannerConfig &config,
                              core::SessionConfig sessionConfig,
                              ServerOptions options)
     : options_(std::move(options)),
-      overlay_(options_.overlayPort, options_.overlayFile),
       control_(options_.controlPort), products_(options_.products),
       frames_(options_.framePort, options_.token,
               [this](cv::Mat rgb, uint64_t sequence, cv::Rect2f roi, bool reportTimings) {
@@ -45,10 +44,6 @@ void ScannerServer::start() {
 
   // A late name resolution is a second broadcast, not a blocked scan.
   products_.start([this](const std::string &) { broadcastState(); });
-
-  if (!options_.overlayFile.empty()) {
-    overlay_.start();
-  }
 
   frames_.start();
 
@@ -108,7 +103,6 @@ void ScannerServer::stop() {
 
   frames_.stop();
   products_.stop();
-  overlay_.stop();
   control_.stop();
 }
 

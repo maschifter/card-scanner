@@ -15,6 +15,7 @@
 #include <random>
 #include <memory>
 #include <string>
+#include <string_view>
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-card-scanner", "en-US")
@@ -31,8 +32,9 @@ uint64_t g_token = 0;
 /// The server serves one filter at a time; any other waits, unscanned, until
 /// that one is removed.
 std::atomic<int> g_filters{0};
-const std::string g_overlayUrl =
-    "http://127.0.0.1:" + std::to_string(ipc::kDefaultOverlayPort);
+/// file:// URL of the bundled overlay page; the Browser Source and the dock load it.
+/// Set once in obs_module_load, before any filter exists; empty when the page is missing.
+std::string g_overlayUrl;
 
 constexpr const char *kSettingEnabled = "enabled";
 constexpr const char *kSettingFps = "max_fps";
@@ -155,10 +157,29 @@ void drawRegion(obs_source_frame *frame, ipc::PixelFormat format, float rx, floa
   }
 }
 
+/// Path to a file:// URL; CEF encodes the rest, only these three change its meaning.
+std::string fileUrl(std::string_view path) {
+  std::string url = path.starts_with('/') ? "file://" : "file:///";
+  for (const char c : path) {
+    switch (c) {
+    case '\\': url += '/'; break;
+    case '%': url += "%25"; break;
+    case '#': url += "%23"; break;
+    case '?': url += "%3F"; break;
+    default: url += c;
+    }
+  }
+  return url;
+}
+
 /// Adds the overlay Browser Source to the current scene, sized to the canvas.
 /// One source per OBS: a scene that already shows it is left alone, and any
 /// other scene gets the same source rather than a second one.
 bool addOverlayClicked(obs_properties_t *, obs_property_t *, void *) {
+  if (g_overlayUrl.empty()) {
+    blog(LOG_ERROR, "[CardScanner] overlay.html is missing from the bundle; nothing to add");
+    return false;
+  }
   obs_source_t *sceneSource = obs_frontend_get_current_scene();
   if (sceneSource == nullptr) {
     return false;
@@ -179,11 +200,10 @@ bool addOverlayClicked(obs_properties_t *, obs_property_t *, void *) {
     const bool haveVideo = obs_get_video_info(&video);
 
     obs_data_t *settings = obs_data_create();
+    // Not "Local file": obs-browser turns that into http://absolute/, an unknown origin.
     obs_data_set_string(settings, "url", g_overlayUrl.c_str());
     obs_data_set_int(settings, "width", haveVideo ? video.base_width : 1920);
     obs_data_set_int(settings, "height", haveVideo ? video.base_height : 1080);
-    // Without this OBS stops rendering the overlay when it is not selected.
-    obs_data_set_bool(settings, "shutdown", false);
     browser = obs_source_create("browser_source", kOverlayName, settings, nullptr);
     obs_data_release(settings);
   }
@@ -219,9 +239,11 @@ void filter_update(void *data, obs_data_t *settings) {
   filter->showTimings = obs_data_get_bool(settings, kSettingShowTimings);
 
   // A default alone does not survive a scene collection saved before this
-  // property existed.
-  obs_data_set_string(settings, kSettingOverlayPath, g_overlayUrl.c_str());
-  obs_data_set_string(settings, kSettingDockPath, (g_overlayUrl + "/?view=dock").c_str());
+  // property existed. Nothing to show when the page is missing; load logged it.
+  if (!g_overlayUrl.empty()) {
+    obs_data_set_string(settings, kSettingOverlayPath, g_overlayUrl.c_str());
+    obs_data_set_string(settings, kSettingDockPath, (g_overlayUrl + "?view=dock").c_str());
+  }
 }
 
 void *filter_create(obs_data_t *settings, obs_source_t *source) {
@@ -293,14 +315,10 @@ obs_properties_t *filter_properties(void *) {
   // Shown here so adding the Browser Source does not mean hunting for a URL.
   obs_properties_add_text(props, kSettingOverlayPath, obs_module_text("OverlayPath"),
                           OBS_TEXT_INFO);
-  // OBS exposes only Qt widget docks to plugins, and linking Qt would put a
-  // heavyweight dependency back in OBS's process - so the URL is shown for
-  // OBS's own Docks > Custom Browser Docks.
+  // A dock needs a QWidget, so Qt at build time; the URL is for Custom Browser Docks.
   obs_properties_add_text(props, kSettingDockPath, obs_module_text("DockPath"),
                           OBS_TEXT_INFO);
-  // One click instead of asking the user to add a Browser Source and paste a
-  // URL into it. The overlay used to live inside this bundle as a file, which
-  // no file dialog can reach: macOS treats a .plugin as a package.
+  // One click; the page sits inside this bundle, which on macOS no file dialog reaches.
   obs_properties_add_button(props, "add_overlay", obs_module_text("AddOverlay"),
                             addOverlayClicked);
   return props;
@@ -424,6 +442,19 @@ bool obs_module_load(void) {
   char *server = obs_module_file("card-scanner-server");
 #endif
   char *config = obs_module_file("config.json");
+  if (char *overlay = obs_module_file("overlay.html")) {
+    // Relative when the plugin sits in OBS's own tree; a file URL needs it absolute.
+    char *absolute = os_get_abs_path_ptr(overlay);
+    if (absolute == nullptr) {
+      blog(LOG_WARNING, "[CardScanner] could not absolutize %s; the overlay may not load",
+           overlay);
+    }
+    g_overlayUrl = fileUrl(absolute ? absolute : overlay);
+    bfree(absolute);
+    bfree(overlay);
+  } else {
+    blog(LOG_ERROR, "[CardScanner] overlay.html is missing from the bundle");
+  }
 
   if (server && config) {
     std::random_device rd;
@@ -461,8 +492,8 @@ bool obs_module_load(void) {
   bfree(server);
   bfree(config);
 
-  blog(LOG_INFO, "[CardScanner] module loaded, overlay served at %s",
-       g_overlayUrl.c_str());
+  blog(LOG_INFO, "[CardScanner] module loaded, overlay at %s",
+       g_overlayUrl.empty() ? "(none)" : g_overlayUrl.c_str());
   return true;
 }
 
