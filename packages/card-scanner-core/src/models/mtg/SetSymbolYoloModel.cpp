@@ -2,10 +2,10 @@
 #include "../../Constants.h"
 #include "../../utils/BoxGeometry.h"
 #include "../../utils/YoloPreprocessing.h"
+#include <Log.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <iostream>
 #include <opencv2/imgproc.hpp>
 
 namespace cardscanner {
@@ -132,7 +132,8 @@ SetSymbolYoloModel::postprocess(const cv::Mat &originalImg,
       int offset = i * predSize;
 
       if (offset + 4 >= static_cast<int>(preds.size())) {
-        std::cerr << "Warning: offset out of bounds at i=" << i << std::endl;
+        log(LOG_LEVEL::Error, "[CardScanner]", "offset out of bounds at index",
+            i);
         break;
       }
 

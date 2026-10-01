@@ -1,10 +1,10 @@
 #include "ScannerConfigLoader.h"
+#include <Log.h>
 #include <PathProvider.h>
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <fstream>
 #include <initializer_list>
-#include <iostream>
 #include <stdexcept>
 
 namespace cardscanner {
@@ -54,7 +54,8 @@ void warnUnknownKeys(const json &obj, const std::string &prefix,
         std::find(known.begin(), known.end(), key) != known.end()) {
       continue;
     }
-    std::cerr << "config: unknown key '" << prefix << key << "' is ignored\n";
+    const std::string fullKey = prefix + key;
+    log(LOG_LEVEL::Info, "[Config]", "ignoring unknown key:", fullKey);
   }
 }
 

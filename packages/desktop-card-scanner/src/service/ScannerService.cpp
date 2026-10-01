@@ -4,7 +4,7 @@
 #include <ScannerRegistry.h>
 #include <benchmark/BenchmarkCollector.h>
 
-#include <util/Log.h>
+#include <Log.h>
 #include <util/OpenCvThreads.h>
 
 #include <chrono>
@@ -50,8 +50,9 @@ void ScannerService::setReportTimings(bool enabled) {
   if (enabled) {
     static std::once_flag warned;
     std::call_once(warned, [] {
-      util::logLine("perf", "timings are switched on, but this build compiled "
-                            "the timers out (CARDSCANNER_BENCHMARK=0)");
+      log(LOG_LEVEL::Error, "[Perf]",
+          "timings are switched on, but this build compiled the timers out "
+          "(CARDSCANNER_BENCHMARK=0)");
     });
   }
 #endif
@@ -174,7 +175,7 @@ void ScannerService::workerLoop() {
         }
       } catch (const std::exception &e) {
         // One bad frame must not take the server down.
-        util::logLine("scan", e.what());
+        log(LOG_LEVEL::Error, "[Scan]", e.what());
       }
     }
 
@@ -199,7 +200,7 @@ void ScannerService::workerLoop() {
              << perfEmbed / perfFrames << "  dbSearch "
              << perfDbSearch / perfFrames << "  total "
              << perfTotal / perfFrames;
-        util::logLine("perf", line.str());
+        log(LOG_LEVEL::Info, "[Perf]", line.str());
         perfWindowStart = now;
         perfFrames = 0;
         perfYolo = perfPreproc = perfEmbed = perfDbSearch = perfTotal = 0;
@@ -212,7 +213,7 @@ void ScannerService::workerLoop() {
       try {
         listener_();
       } catch (const std::exception &e) {
-        util::logLine("scan", std::string("listener threw: ") + e.what());
+        log(LOG_LEVEL::Error, "[Scan]", "listener threw:", e.what());
       }
     }
   }

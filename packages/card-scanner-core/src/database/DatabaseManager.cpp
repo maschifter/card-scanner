@@ -4,8 +4,8 @@
 #include "../utils/PathUtils.h"
 #include "ObjectBoxDB.h"
 #include "PathProvider.h"
+#include <Log.h>
 #include <filesystem>
-#include <iostream>
 
 namespace fs = std::filesystem;
 namespace cardscanner {
@@ -56,8 +56,8 @@ void DatabaseManager::scanForExistingStores() {
   fs::path basePath(baseDbPath_);
 
   if (!fs::exists(basePath) || !fs::is_directory(basePath)) {
-    std::cerr << "Error: Base DB path does not exist or is not a directory: "
-              << baseDbPath_ << std::endl;
+    log(LOG_LEVEL::Error, "[CardScanner]",
+        "base DB path does not exist or is not a directory:", baseDbPath_);
     return;
   }
 
@@ -85,7 +85,8 @@ void DatabaseManager::scanForExistingStores() {
       }
     }
   } catch (const fs::filesystem_error &e) {
-    std::cerr << "Filesystem Error during scan: " << e.what() << std::endl;
+    log(LOG_LEVEL::Error, "[CardScanner]", "filesystem error during scan:",
+        e.what());
   }
 }
 
@@ -110,8 +111,8 @@ GameStorePtr DatabaseManager::getSetSymbolStore() {
 
       setSymbolStore_ = std::make_shared<ObjectBoxDB>(dbDir.string());
     } catch (const std::exception &e) {
-      std::cerr << "Failed to initialize SetSymbol store: " << e.what()
-                << std::endl;
+      log(LOG_LEVEL::Error, "[CardScanner]",
+          "failed to initialize SetSymbol store:", e.what());
       setSymbolStore_.reset(); // Ensure nullptr on failure
     }
   }
@@ -152,7 +153,8 @@ bool DatabaseManager::swapDatabaseFile(const std::string &gameName,
     fs::create_directories(target.parent_path());
 
     if (!fs::exists(source)) {
-      std::cerr << "Source file does not exist: " << source << std::endl;
+      log(LOG_LEVEL::Error, "[CardScanner]", "source file does not exist:",
+          source.string());
       return false;
     }
 
@@ -179,8 +181,8 @@ bool DatabaseManager::swapDatabaseFile(const std::string &gameName,
         try {
           fs::rename(backup, target);
         } catch (const std::exception &e) {
-          std::cerr << "Swap rollback failed for " << gameName << ": "
-                    << e.what() << std::endl;
+          log(LOG_LEVEL::Error, "[CardScanner]", "swap rollback for", gameName,
+              "failed:", e.what());
         }
       }
       throw;
@@ -194,8 +196,8 @@ bool DatabaseManager::swapDatabaseFile(const std::string &gameName,
     return true;
 
   } catch (const std::exception &e) {
-    std::cerr << "Swap failed for " << gameName << ": " << e.what()
-              << std::endl;
+    log(LOG_LEVEL::Error, "[CardScanner]", "swap for", gameName, "failed:",
+        e.what());
     return false;
   }
 }
@@ -217,13 +219,14 @@ bool DatabaseManager::deleteDatabaseDirectory(const std::string &gameName) {
 
   try {
     if (!fs::exists(dbDirectory)) {
-      std::cerr << "Database directory does not exist: " << dbDirectory
-                << std::endl;
+      log(LOG_LEVEL::Error, "[CardScanner]",
+          "database directory does not exist:", dbDirectory.string());
       return false;
     }
 
     if (!fs::is_directory(dbDirectory)) {
-      std::cerr << "Path is not a directory: " << dbDirectory << std::endl;
+      log(LOG_LEVEL::Error, "[CardScanner]", "path is not a directory:",
+          dbDirectory.string());
       return false;
     }
 
@@ -233,12 +236,12 @@ bool DatabaseManager::deleteDatabaseDirectory(const std::string &gameName) {
     return true;
 
   } catch (const fs::filesystem_error &e) {
-    std::cerr << "Failed to delete database directory for " << gameName << ": "
-              << e.what() << std::endl;
+    log(LOG_LEVEL::Error, "[CardScanner]",
+        "deleting the database directory for", gameName, "failed:", e.what());
     return false;
   } catch (const std::exception &e) {
-    std::cerr << "Unexpected error deleting database for " << gameName << ": "
-              << e.what() << std::endl;
+    log(LOG_LEVEL::Error, "[CardScanner]", "deleting the database for",
+        gameName, "failed unexpectedly:", e.what());
     return false;
   }
 }

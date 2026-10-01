@@ -10,6 +10,7 @@
 //     --replay <dir>      pump images from a directory instead of waiting for OBS
 //     --timings           report stage timings, as the OBS filter's box does
 
+#include <Log.h>
 #include <config/ScannerConfigLoader.h>
 #include <http/HttpClient.h>
 #include <service/ScannerServer.h>
@@ -24,6 +25,7 @@
 #include <filesystem>
 #include <iostream>
 #include <random>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -137,16 +139,19 @@ int main(int argc, char **argv) {
           std::filesystem::absolute(configPath).parent_path() / "overlay.html";
     }
 
-    std::cout << "loading models...\n";
+    cardscanner::log(cardscanner::LOG_LEVEL::Info, "[Server]",
+                     "loading models...");
     desktop::ScannerServer server(loaded.scanner, {}, options);
     server.service().setReportTimings(timings);
     server.start();
 
-    std::cout << "ready\n"
-              << "  frames   127.0.0.1:" << options.framePort << "  token "
-              << options.token << "\n"
-              << "  control  ws://127.0.0.1:" << options.controlPort << "\n"
-              << "  overlay  http://127.0.0.1:" << options.overlayPort << "\n";
+    std::ostringstream ready;
+    ready << "ready\n"
+          << "  frames   127.0.0.1:" << options.framePort << "  token "
+          << options.token << "\n"
+          << "  control  ws://127.0.0.1:" << options.controlPort << "\n"
+          << "  overlay  http://127.0.0.1:" << options.overlayPort;
+    cardscanner::log(cardscanner::LOG_LEVEL::Info, "[Server]", ready.str());
 
     if (!replayDir.empty()) {
       replayDirectory(replayDir, server);
@@ -171,7 +176,8 @@ int main(int argc, char **argv) {
     // until someone killed it by hand.
     std::thread([] {
       std::this_thread::sleep_for(std::chrono::seconds(5));
-      std::cerr << "shutdown stalled; exiting\n";
+      cardscanner::log(cardscanner::LOG_LEVEL::Error, "[Server]",
+                       "shutdown stalled; exiting");
       std::_Exit(1);
     }).detach();
     server.stop();

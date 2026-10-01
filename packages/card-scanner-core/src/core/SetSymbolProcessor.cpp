@@ -42,9 +42,8 @@ SetSymbolInfo SetSymbolProcessor::processSetSymbol(
   }
 
   try {
-    log(LOG_LEVEL::Debug,
-        "[CardScanner] Detecting set symbol for MTG card with disambiguation "
-        "threshold:",
+    log(LOG_LEVEL::Debug, "[CardScanner]",
+        "detecting set symbol for MTG card with disambiguation threshold:",
         disambiguationThreshold);
 
     // Detect set symbol bounding box
@@ -55,8 +54,8 @@ SetSymbolInfo SetSymbolProcessor::processSetSymbol(
       symbolBox = detectSetSymbolBox(cardImage, yoloModel);
     }
     if (symbolBox.width == 0 || symbolBox.height == 0) {
-      log(LOG_LEVEL::Debug,
-          "[CardScanner] No set symbol detected in card image");
+      log(LOG_LEVEL::Debug, "[CardScanner]",
+          "no set symbol detected in card image");
       return SetSymbolInfo(); // Not detected
     }
 
@@ -133,8 +132,8 @@ SetSymbolInfo SetSymbolProcessor::matchSetSymbol(
 
   // If no matches found, return empty info
   if (symbolMatches.empty()) {
-    log(LOG_LEVEL::Debug,
-        "[CardScanner] No matching set symbols found in database");
+    log(LOG_LEVEL::Debug, "[CardScanner]",
+        "no matching set symbols found in database");
     return SetSymbolInfo();
   }
 
@@ -145,16 +144,15 @@ SetSymbolInfo SetSymbolProcessor::matchSetSymbol(
 
   // If below threshold, return empty info
   if (symbolMatches[0].similarity < effectiveConfidenceThreshold) {
-    log(LOG_LEVEL::Debug,
-        "[CardScanner] Set symbol match below confidence threshold:",
-        symbolMatches[0].similarity,
-        "(threshold:", effectiveConfidenceThreshold, ")");
+    log(LOG_LEVEL::Debug, "[CardScanner]",
+        "set symbol match below the confidence threshold, similarity:",
+        symbolMatches[0].similarity, "threshold:",
+        effectiveConfidenceThreshold);
     return SetSymbolInfo();
   }
 
-  log(LOG_LEVEL::Debug, "[CardScanner] Matched set symbol:",
-      symbolMatches[0].setCode,
-      "(similarity:", symbolMatches[0].similarity, ")");
+  log(LOG_LEVEL::Debug, "[CardScanner]", "matched set symbol:",
+      symbolMatches[0].setCode, "similarity:", symbolMatches[0].similarity);
   // Return matched set symbol info
   return SetSymbolInfo(symbolMatches[0].setCode,
                             symbolMatches[0].similarity);

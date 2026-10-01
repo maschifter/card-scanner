@@ -2,7 +2,7 @@
 
 #include <ixwebsocket/IXHttpServer.h>
 
-#include <util/Log.h>
+#include <Log.h>
 
 #include <fstream>
 #include <sstream>
@@ -17,7 +17,8 @@ OverlayServer::~OverlayServer() { stop(); }
 
 bool OverlayServer::start() {
   if (!std::filesystem::exists(file_)) {
-    util::logLine("overlay", "not found at " + file_.string() + "; the URL will 404");
+    log(LOG_LEVEL::Error, "[Overlay]", "the URL will 404, file not found:",
+        file_.string());
     return false;
   }
 
@@ -41,7 +42,7 @@ bool OverlayServer::start() {
 
   const auto result = server_->listen();
   if (!result.first) {
-    util::logLine("overlay", "listen failed: " + result.second);
+    log(LOG_LEVEL::Error, "[Overlay]", "listen failed:", result.second);
     server_.reset();
     return false;
   }

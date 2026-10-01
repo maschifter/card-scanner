@@ -168,7 +168,7 @@ bool addOverlayClicked(obs_properties_t *, obs_property_t *, void *) {
 
   if (browser != nullptr &&
       obs_scene_find_source_recursive(scene, kOverlayName) != nullptr) {
-    blog(LOG_INFO, "[card-scanner] overlay already in the current scene");
+    blog(LOG_INFO, "[CardScanner] overlay already in the current scene");
     obs_source_release(browser);
     obs_source_release(sceneSource);
     return false;
@@ -194,9 +194,9 @@ bool addOverlayClicked(obs_properties_t *, obs_property_t *, void *) {
       // obs_scene_add inserts at the bottom of the z-order, which would put the
       // overlay behind the camera it composites over.
       obs_sceneitem_set_order(item, OBS_ORDER_MOVE_TOP);
-      blog(LOG_INFO, "[card-scanner] added overlay source at %s", g_overlayUrl.c_str());
+      blog(LOG_INFO, "[CardScanner] added overlay source at %s", g_overlayUrl.c_str());
     } else {
-      blog(LOG_WARNING, "[card-scanner] could not add the overlay to the current scene");
+      blog(LOG_WARNING, "[CardScanner] could not add the overlay to the current scene");
     }
     obs_source_release(browser);
   }
@@ -230,7 +230,7 @@ void *filter_create(obs_data_t *settings, obs_source_t *source) {
   const int filters = ++g_filters;
   if (filters > 1) {
     blog(LOG_WARNING,
-         "[card-scanner] %d filters exist; the server scans one at a time and the "
+         "[CardScanner] %d filters exist; the server scans one at a time and the "
          "others wait until it is removed",
          filters);
   }
@@ -242,14 +242,14 @@ void *filter_create(obs_data_t *settings, obs_source_t *source) {
   filter->client->start();
   filter_update(filter, settings);
 
-  blog(LOG_INFO, "[card-scanner] filter created, sending to 127.0.0.1:%u",
+  blog(LOG_INFO, "[CardScanner] filter created, sending to 127.0.0.1:%u",
        unsigned(ipc::kDefaultFramePort));
   return filter;
 }
 
 void filter_destroy(void *data) {
   auto *filter = static_cast<ScannerFilter *>(data);
-  blog(LOG_INFO, "[card-scanner] filter destroyed (%llu sent, %llu dropped)",
+  blog(LOG_INFO, "[CardScanner] filter destroyed, sent: %llu dropped: %llu",
        static_cast<unsigned long long>(filter->client->sent()),
        static_cast<unsigned long long>(filter->client->dropped()));
   // Shuts the socket down before joining, so this cannot stall the OBS thread
@@ -346,7 +346,7 @@ obs_source_frame *filter_video(void *data, obs_source_frame *frame) {
     if (!filter->warnedFormat) {
       filter->warnedFormat = true;
       blog(LOG_WARNING,
-           "[card-scanner] unsupported pixel format %d; frames will not be scanned",
+           "[CardScanner] unsupported pixel format %d; frames will not be scanned",
            int(frame->format));
     }
     return frame;
@@ -410,8 +410,8 @@ MODULE_EXPORT const char *obs_module_description(void) {
 bool obs_module_load(void) {
   if (obs_source_get_display_name(g_filterInfo.id) != nullptr) {
     blog(LOG_ERROR,
-         "[card-scanner] already loaded from another plugin directory; "
-         "this copy is skipped - remove one of them");
+         "[CardScanner] already loaded from another plugin directory; "
+         "this copy is skipped, remove one of them");
     return false;
   }
 
@@ -451,17 +451,17 @@ bool obs_module_load(void) {
         server, config, log, g_token, ipc::kDefaultFramePort,
         ipc::kDefaultControlPort);
     g_server->start();
-    blog(LOG_INFO, "[card-scanner] server starting, log: %s", log.c_str());
+    blog(LOG_INFO, "[CardScanner] server starting, log: %s", log.c_str());
   } else {
     blog(LOG_ERROR,
-         "[card-scanner] bundle is missing card-scanner-server or config.json; "
+         "[CardScanner] bundle is missing card-scanner-server or config.json; "
          "scanning will not work");
   }
 
   bfree(server);
   bfree(config);
 
-  blog(LOG_INFO, "[card-scanner] module loaded, overlay served at %s",
+  blog(LOG_INFO, "[CardScanner] module loaded, overlay served at %s",
        g_overlayUrl.c_str());
   return true;
 }
@@ -471,5 +471,5 @@ void obs_module_unload(void) {
   // watches its parent and Windows uses a kill-on-close job object. When it
   // does run, stop cleanly.
   g_server.reset();
-  blog(LOG_INFO, "[card-scanner] module unloaded");
+  blog(LOG_INFO, "[CardScanner] module unloaded");
 }

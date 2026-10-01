@@ -355,8 +355,9 @@ means the filter has to exist on a source. The server writes its own log beside
 OBS's plugin configuration, at
 `~/Library/Application Support/obs-studio/plugin_config/obs-card-scanner/card-scanner-server.log`.
 The module logs that path when it starts the server, so search OBS's log for
-`server starting` if you cannot find it. The server prints `ready` and its three
-ports once the models load, which takes a few seconds.
+`server starting` if you cannot find it. Core's lines land there too, each
+timestamped. The server prints `ready` and its three ports once the models
+load, which takes a few seconds.
 
 **Cards are not recognized.** With **Show scan region** on, confirm the card
 sits inside the region with room to spare. Then read the overlay's status

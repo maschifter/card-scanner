@@ -80,9 +80,8 @@ FABColorClassifier::classifyColor(const cv::Mat &dotsRegion) {
       detectedColor = fab_color::CLASS_LABELS[maxIndex];
 
       // Debug logging (similar to SetSymbolProcessor pattern)
-      log(LOG_LEVEL::Debug,
-          "[FABColorClassifier] Detected color:", detectedColor,
-          "(confidence:", confidence, ")");
+      log(LOG_LEVEL::Debug, "[CardScanner]", "detected color:", detectedColor,
+          "confidence:", confidence);
     }
 
     return cardscanner::FABColorInfo(detectedColor, confidence);

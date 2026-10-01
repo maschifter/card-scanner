@@ -1,6 +1,6 @@
 #include "ControlServer.h"
 
-#include <util/Log.h>
+#include <Log.h>
 
 #include <ixwebsocket/IXWebSocketServer.h>
 
@@ -56,7 +56,8 @@ void ControlServer::start() {
         if (msg->type == ix::WebSocketMessageType::Open) {
           const auto origin = msg->openInfo.headers.find("Origin");
           if (origin != msg->openInfo.headers.end() && !loopbackOrigin(origin->second)) {
-            util::logLine("control", "closed a client from " + origin->second);
+            log(LOG_LEVEL::Error, "[Control]", "closed a client from",
+                origin->second);
             // 1008, policy violation. The handshake is done by now, so this
             // is the earliest a client can be turned away.
             socket.close(1008, "origin not allowed");
@@ -89,7 +90,7 @@ void ControlServer::start() {
             try {
               handler(msg->str);
             } catch (const std::exception &e) {
-              util::logLine("control", std::string("command failed: ") + e.what());
+              log(LOG_LEVEL::Error, "[Control]", "command failed:", e.what());
             }
           }
         }

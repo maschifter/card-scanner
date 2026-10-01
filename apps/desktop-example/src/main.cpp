@@ -11,6 +11,7 @@
 #include <config/ScannerConfigLoader.h>
 
 #include <DatabaseManager.h>
+#include <Log.h>
 #include <ScannerRegistry.h>
 #include <types/ScanResults.h>
 #include <util/OpenCvThreads.h>
@@ -91,7 +92,8 @@ int run(const std::filesystem::path &configPath,
   if (games.empty()) {
     // Not fatal, but every match will be empty, so say why rather than let it
     // look like a recognition failure.
-    std::cerr << "warning: no databases found; detections cannot be identified\n";
+    cardscanner::log(cardscanner::LOG_LEVEL::Error, "[Scan]",
+                     "no databases found; detections cannot be identified");
   }
 
   const auto result =
@@ -147,8 +149,9 @@ int runBenchmark(int argc, char **argv) {
   }
 
   if (cardscanner::DatabaseManager::getInstance().getKnownGames().empty()) {
-    std::cerr << "warning: no databases found in " << loaded.paths.databases
-              << "; dbSearch timings will be hollow\n";
+    cardscanner::log(cardscanner::LOG_LEVEL::Info, "[Benchmark]",
+                     "no databases found, dbSearch timings will be hollow:",
+                     loaded.paths.databases.string());
   }
 
   const size_t records = cardscanner::desktop::runOfflineBenchmark(options);

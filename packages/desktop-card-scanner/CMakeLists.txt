@@ -82,6 +82,8 @@ if(CARDSCANNER_BENCHMARK AND NOT CMAKE_CONFIGURATION_TYPES
       "benchmark would time an unoptimised build. Use -DCMAKE_BUILD_TYPE=Release.")
 endif()
 add_subdirectory("${CORE_DIR}" "${CMAKE_BINARY_DIR}/cardscanner_core")
+# Core logs one timestamped stderr line here, not os_log or stdout.
+target_compile_definitions(cardscanner_core PUBLIC CARDSCANNER_LOG_STDERR)
 
 # --- ONNX Runtime ---
 # Fetched rather than vendored or shell-scripted, so the version is pinned in
@@ -278,7 +280,6 @@ add_library(cardscanner_desktop STATIC
     src/service/ProductClient.cpp
     src/protocol/StateMessage.cpp
     src/http/HttpClient.cpp
-    src/util/Log.cpp
     src/util/OpenCvThreads.cpp
     src/util/ParentWatchdog.cpp
     src/ipc/FrameServer.cpp

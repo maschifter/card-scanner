@@ -1,7 +1,7 @@
 #include "ProductClient.h"
 
 #include <http/HttpClient.h>
-#include <util/Log.h>
+#include <Log.h>
 
 #include <nlohmann/json.hpp>
 
@@ -92,11 +92,12 @@ void ProductClient::workerLoop() {
         // error can succeed on the next state change.
         if (response.status >= 400 && response.status < 500) {
           if (failed_.insert(cardId).second) {
-            util::logLine("product", "lookup " + cardId + ": " + reason +
-                                         " (not retrying this card)");
+            log(LOG_LEVEL::Error, "[Product]", "lookup for", cardId,
+                "failed, not retrying this card:", reason);
           }
         } else {
-          util::logLine("product", "lookup " + cardId + ": " + reason + " (retrying)");
+          log(LOG_LEVEL::Error, "[Product]", "lookup for", cardId,
+              "failed, retrying:", reason);
         }
       } else {
         try {
@@ -124,7 +125,7 @@ void ProductClient::workerLoop() {
       try {
         onResolved_(cardId);
       } catch (const std::exception &e) {
-        util::logLine("product", std::string("callback threw: ") + e.what());
+        log(LOG_LEVEL::Error, "[Product]", "callback threw:", e.what());
       }
     }
   }

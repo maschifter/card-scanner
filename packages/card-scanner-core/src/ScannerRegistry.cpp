@@ -10,7 +10,6 @@
 #include "utils/ImageUtils.h"
 #include <Log.h>
 #include <chrono>
-#include <iostream>
 #include <opencv2/opencv.hpp>
 #include <stdexcept>
 
@@ -101,11 +100,11 @@ void ScannerRegistry::resetModelsLocked() {
   try {
     cardscanner::DatabaseManager::getInstance().closeSetSymbolStore();
   } catch (const std::exception &e) {
-    std::cerr << "Warning: Could not close SetSymbol store during reset: "
-              << e.what() << std::endl;
+    log(LOG_LEVEL::Error, "[CardScanner]",
+        "could not close SetSymbol store during reset:", e.what());
   } catch (...) {
-    std::cerr << "Warning: Could not close SetSymbol store during reset"
-              << std::endl;
+    log(LOG_LEVEL::Error, "[CardScanner]",
+        "could not close SetSymbol store during reset");
   }
 }
 
@@ -162,8 +161,8 @@ void ScannerRegistry::initializeModels() {
         try {
           cardscanner::DatabaseManager::getInstance().getSetSymbolStore();
         } catch (const std::exception &e) {
-          std::cerr << "Warning: Could not initialize SetSymbol store: "
-                    << e.what() << std::endl;
+          log(LOG_LEVEL::Error, "[CardScanner]",
+              "could not initialize SetSymbol store:", e.what());
         }
       }
 
@@ -187,7 +186,8 @@ bool ScannerRegistry::releaseModels() {
   std::unique_lock<std::shared_timed_mutex> exclusive(pipelineMutex_,
                                                       std::chrono::seconds(1));
   if (!exclusive.owns_lock()) {
-    log(LOG_LEVEL::Info, "[CardScanner] Scanner still busy, skipping release.");
+    log(LOG_LEVEL::Info, "[CardScanner]",
+        "scanner still busy, skipping release");
     return false;
   }
 
@@ -280,8 +280,8 @@ bool ScannerRegistry::swapDatabase(DatabaseManager &dbManager,
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now() - startTime)
           .count();
-  log(LOG_LEVEL::Info, "[CardScanner] Swapped database for game", gameName,
-      "in", durationMs, "ms.");
+  log(LOG_LEVEL::Info, "[CardScanner]", "swapped database for game", gameName,
+      "in", durationMs, "ms");
 
   if (success) {
     dbManager.scanForExistingStores();

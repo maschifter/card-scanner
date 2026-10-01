@@ -16,7 +16,8 @@ std::vector<CardMatch> SearchStrategy::searchCard(
     const cardscanner::GameEmbedders *gameEmbedders) {
   // Extract top game predictions from YOLO
   auto topGames = extractTopGames(detection, config);
-  log(LOG_LEVEL::Debug, "[CardScanner] Top YOLO game predictions:", topGames);
+  log(LOG_LEVEL::Debug, "[CardScanner]", "top YOLO game predictions:",
+      topGames);
   // Yolo predicted games
   for (const auto &game : topGames) {
     benchmark::BenchmarkCollector::appendStringWithSpace(
@@ -32,7 +33,7 @@ std::vector<CardMatch> SearchStrategy::searchCard(
       searchMultipleDatabases(cardImage, topGames, config, dbManager,
                               defaultEmbedder, gameEmbedders);
 
-  log(LOG_LEVEL::Debug, "[CardScanner] Retrieved", allResults.size(),
+  log(LOG_LEVEL::Debug, "[CardScanner]", "retrieved", allResults.size(),
       "total matches from databases");
   // Filter to best game
   return filterToBestGame(allResults, config);
@@ -136,8 +137,8 @@ std::vector<CardSearchResult> SearchStrategy::searchMultipleDatabases(
         const auto it = gameEmbedders->find(gameToSearch);
         if (it != gameEmbedders->end() && it->second) {
           gameEmbedder = it->second;
-          log(LOG_LEVEL::Debug,
-              "[CardScanner] Using game-specific embedder for", gameToSearch);
+          log(LOG_LEVEL::Debug, "[CardScanner]",
+              "using game-specific embedder for", gameToSearch);
         }
       }
 
@@ -176,8 +177,8 @@ std::vector<CardSearchResult> SearchStrategy::searchMultipleDatabases(
                    constants::database::EARLY_EXIT_SCORE_MARGIN);
     } catch (const std::exception &e) {
       // Skip failed game database; a failure never triggers the early exit.
-      log(LOG_LEVEL::Error, "[CardScanner] Failed to search database for",
-          gameToSearch, ":", e.what());
+      log(LOG_LEVEL::Error, "[CardScanner]", "database search for",
+          gameToSearch, "failed:", e.what());
     }
 
     // Early exit on a positive signal only, and only once every database of
@@ -190,8 +191,9 @@ std::vector<CardSearchResult> SearchStrategy::searchMultipleDatabases(
         !shareYoloClass(gameToSearch, topGames[i + 1], config);
     if (confidentMatch && classGroupDone) {
       if (i + 1 < topGames.size()) {
-        log(LOG_LEVEL::Debug, "[CardScanner] Confident match in", gameToSearch,
-            "- skipping", topGames.size() - i - 1, "remaining games");
+        log(LOG_LEVEL::Debug, "[CardScanner]", "confident match in",
+            gameToSearch, "so skipping the remaining games:",
+            topGames.size() - i - 1);
       }
       break;
     }
@@ -234,9 +236,8 @@ std::vector<CardMatch> SearchStrategy::filterToBestGame(
     }
   }
 
-  log(LOG_LEVEL::Debug, "[CardScanner] Best match game:",
-      bestMatchGame.empty() ? "None" : bestMatchGame,
-      "(score:", bestMatchScore, ")");
+  log(LOG_LEVEL::Debug, "[CardScanner]", "best match game:",
+      bestMatchGame.empty() ? "None" : bestMatchGame, "score:", bestMatchScore);
 
   if (bestMatchGame.empty()) {
     return {}; // No confident match

@@ -6,12 +6,12 @@
 #include "objectbox-model.h" // Include the generated model header
 #include "objectbox.hpp"
 #include "schema.obx.hpp"
+#include <Log.h>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <sstream>
 
 using namespace cardscanner::constants;
@@ -23,8 +23,9 @@ ObjectBoxDB::ObjectBoxDB(const std::string &db_path) : db_path_(db_path) {
   std::error_code ec;
   std::filesystem::create_directories(db_path_, ec);
   if (ec) {
-    std::cerr << "Warning: could not create database directory '" << db_path_
-              << "': " << ec.message() << std::endl;
+    cardscanner::log(cardscanner::LOG_LEVEL::Error, "[CardScanner]",
+                     "creating the database directory", db_path_, "failed:",
+                     ec.message());
   }
 
   obx::Options options(create_obx_model());
@@ -46,9 +47,10 @@ ObjectBoxDB::search_similar_cards(const std::vector<float> &query_embedding,
   std::vector<cardscanner::CardSearchResult> results;
 
   if (query_embedding.size() != database::EMBEDDING_VECTOR_SIZE) {
-    std::cerr << "Error: Query embedding must have "
-              << database::EMBEDDING_VECTOR_SIZE << " dimensions, got "
-              << query_embedding.size() << std::endl;
+    cardscanner::log(cardscanner::LOG_LEVEL::Error, "[CardScanner]",
+                     "query embedding must have",
+                     database::EMBEDDING_VECTOR_SIZE, "dimensions, got",
+                     query_embedding.size());
     return results;
   }
 
@@ -133,7 +135,8 @@ std::vector<cardscanner::SetSymbolMatch> ObjectBoxDB::search_similar_set_symbols
               });
 
   } catch (const std::exception &e) {
-    std::cerr << "SetSymbol search failed: " << e.what() << std::endl;
+    cardscanner::log(cardscanner::LOG_LEVEL::Error, "[CardScanner]",
+                     "SetSymbol search failed:", e.what());
   }
 
   return results;
@@ -145,8 +148,8 @@ bool ObjectBoxDB::card_id_exists(const std::string &card_id) {
     auto query = box.query(Card_::card_id.equals(card_id)).build();
     return query.count() > 0;
   } catch (const std::exception &e) {
-    std::cerr << "card_id_exists lookup failed for '" << card_id
-              << "': " << e.what() << std::endl;
+    cardscanner::log(cardscanner::LOG_LEVEL::Error, "[CardScanner]",
+                     "card_id_exists lookup for", card_id, "failed:", e.what());
     return false;
   }
 }
@@ -165,8 +168,8 @@ std::string ObjectBoxDB::get_metadata_value(const std::string &key) {
       return results[0].value;
     }
   } catch (const std::exception &e) {
-    std::cerr << "Failed to get metadata value for key '" << key
-              << "': " << e.what() << std::endl;
+    cardscanner::log(cardscanner::LOG_LEVEL::Error, "[CardScanner]",
+                     "metadata lookup for key", key, "failed:", e.what());
   }
   return "";
 }

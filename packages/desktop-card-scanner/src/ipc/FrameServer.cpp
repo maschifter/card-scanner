@@ -1,7 +1,7 @@
 #include "FrameServer.h"
 
 #include <ipc/Socket.h>
-#include <util/Log.h>
+#include <Log.h>
 
 #include <chrono>
 #include <cstring>
@@ -339,14 +339,14 @@ void FrameServer::acceptLoop(net::Handle listenFd) {
       clientFd_ = client;
     }
 
-    util::logLine("frame", "client connected");
+    log(LOG_LEVEL::Info, "[Frame]", "client connected");
     serveClient(client);
     {
       std::lock_guard<std::mutex> lock(sendMutex_);
       clientFd_ = net::kInvalidHandle;
     }
     net::closeHandle(client);
-    util::logLine("frame", "client disconnected");
+    log(LOG_LEVEL::Info, "[Frame]", "client disconnected");
   }
 }
 
@@ -361,24 +361,24 @@ void FrameServer::serveClient(net::Handle clientFd) {
     }
 
     if (header.magic != kFrameMagic || header.version != kFrameVersion) {
-      util::logLine("frame", "bad magic/version, dropping client");
+      log(LOG_LEVEL::Error, "[Frame]", "bad magic/version, dropping client");
       return;
     }
     if (header.token != token_) {
       // Loopback is not an authorisation boundary; any local process can
       // connect. Without this, one could inject frames or read nothing useful
       // but still disrupt the scanner.
-      util::logLine("frame", "bad token, dropping client");
+      log(LOG_LEVEL::Error, "[Frame]", "bad token, dropping client");
       return;
     }
     if (header.planeCount == 0 || header.planeCount > kMaxPlanes) {
-      util::logLine("frame", "bad plane count");
+      log(LOG_LEVEL::Error, "[Frame]", "bad plane count");
       return;
     }
     // Bound the allocation: a corrupt length must not be a memory bomb.
     if (header.payloadBytes == 0 || header.payloadBytes > 64u * 1024 * 1024) {
-      util::logLine("frame", "implausible payload size " +
-                                 std::to_string(header.payloadBytes));
+      log(LOG_LEVEL::Error, "[Frame]", "implausible payload size",
+          header.payloadBytes);
       return;
     }
 
@@ -393,7 +393,7 @@ void FrameServer::serveClient(net::Handle clientFd) {
     try {
       validateHeader(header, payload.size());
     } catch (const std::exception &e) {
-      util::logLine("frame", std::string("rejecting client: ") + e.what());
+      log(LOG_LEVEL::Error, "[Frame]", "rejecting client:", e.what());
       return;
     }
 
@@ -413,7 +413,7 @@ void FrameServer::serveClient(net::Handle clientFd) {
       }
     } catch (const std::exception &e) {
       // A bad frame behind a valid header; keep the connection.
-      util::logLine("frame", e.what());
+      log(LOG_LEVEL::Error, "[Frame]", e.what());
       rejected_++;
     }
   }

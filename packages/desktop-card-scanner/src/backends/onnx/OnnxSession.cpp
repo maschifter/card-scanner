@@ -7,7 +7,7 @@
 
 #include <onnxruntime_cxx_api.h>
 
-#include <util/Log.h>
+#include <Log.h>
 
 #include <array>
 #include <cstdlib>
@@ -89,8 +89,8 @@ std::string appendProviders(Ort::SessionOptions &options) {
       options.AppendExecutionProvider(name, {});
       return name;
     } catch (const Ort::Exception &e) {
-      util::logLine("inference",
-                    name + " unavailable (" + e.what() + "), trying next");
+      log(LOG_LEVEL::Error, "[Inference]", name, "unavailable, trying next:",
+          e.what());
     }
   }
   return "cpu";
@@ -120,10 +120,9 @@ public:
         throw std::runtime_error("Failed to load model '" + modelPath_ +
                                  "': " + e.what());
       }
-      util::logLine("inference",
-                    std::filesystem::path(modelPath_).filename().string() +
-                        " failed to build on " + provider_ + " (" + e.what() +
-                        "), falling back to cpu");
+      log(LOG_LEVEL::Error, "[Inference]",
+          std::filesystem::path(modelPath_).filename().string(), "build on",
+          provider_, "failed, falling back to cpu:", e.what());
       Ort::SessionOptions cpuOptions;
       cpuOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
       try {
@@ -139,9 +138,8 @@ public:
 
     // A failed registration is otherwise indistinguishable from a successful
     // one. filename() rather than find_last_of('/'): Windows paths use '\\'.
-    util::logLine("inference",
-                  std::filesystem::path(modelPath_).filename().string() + " on " +
-                      provider_);
+    log(LOG_LEVEL::Info, "[Inference]",
+        std::filesystem::path(modelPath_).filename().string(), "on", provider_);
   }
 
   std::vector<Tensor> run(const float *input,

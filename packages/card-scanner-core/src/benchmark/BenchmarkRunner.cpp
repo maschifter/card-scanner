@@ -211,13 +211,13 @@ BenchmarkRunResult BenchmarkRunner::run(
   const int totalIterations = warmupIterations + benchmarkIterations;
 
 #if CARDSCANNER_BENCHMARK_VERBOSE
-  log(LOG_LEVEL::Info, "[CardScanner][Benchmark] === run start:",
-      images.size(), "images x", totalIterations, "iterations (",
-      warmupIterations, "warmup +", benchmarkIterations, "measured ) ===");
-  log(LOG_LEVEL::Info, "[CardScanner][Benchmark] conf_threshold:",
-      benchmarkConfig.confidenceThreshold,
-      "seg_threshold:", benchmarkConfig.segmentationThreshold,
-      "disambig_threshold:", benchmarkConfig.disambiguationThreshold);
+  log(LOG_LEVEL::Info, "[CardScanner][Benchmark]", "run start, images:",
+      images.size(), "iterations:", totalIterations, "warmup:",
+      warmupIterations, "measured:", benchmarkIterations);
+  log(LOG_LEVEL::Info, "[CardScanner][Benchmark]", "conf_threshold:",
+      benchmarkConfig.confidenceThreshold, "seg_threshold:",
+      benchmarkConfig.segmentationThreshold, "disambig_threshold:",
+      benchmarkConfig.disambiguationThreshold);
   size_t imageIndex = 0;
   size_t correctCount = 0;
 #endif
@@ -227,9 +227,9 @@ BenchmarkRunResult BenchmarkRunner::run(
 
 #if CARDSCANNER_BENCHMARK_VERBOSE
     ++imageIndex;
-    log(LOG_LEVEL::Info, "[CardScanner][Benchmark] ---", imageIndex, "/",
-        images.size(), "--", input.game, "/", expectedId(input), "(",
-        imageRGB.cols, "x", imageRGB.rows, ")");
+    log(LOG_LEVEL::Info, "[CardScanner][Benchmark]", "image:", imageIndex,
+        "total:", images.size(), "game:", input.game, "card:",
+        expectedId(input), "width:", imageRGB.cols, "height:", imageRGB.rows);
 #endif
 
     for (int iter = 1; iter <= totalIterations; iter++) {
@@ -337,10 +337,8 @@ BenchmarkRunResult BenchmarkRunner::run(
 #if CARDSCANNER_BENCHMARK_VERBOSE
   const size_t measuredCount =
       imageIndex * static_cast<size_t>(benchmarkIterations);
-  log(LOG_LEVEL::Info,
-      "[CardScanner][Benchmark] === run complete:", records.size(),
-      "records,", correctCount, "/", measuredCount,
-      "measured scans correct ===");
+  log(LOG_LEVEL::Info, "[CardScanner][Benchmark]", "run complete, records:",
+      records.size(), "correct:", correctCount, "measured:", measuredCount);
 #endif
 
   BenchmarkRunResult result;

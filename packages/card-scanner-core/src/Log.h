@@ -9,6 +9,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <tuple>
 #include <type_traits>
@@ -20,6 +21,13 @@
 #endif
 #ifdef __APPLE__
 #include <os/log.h>
+#endif
+// Set by the desktop build: one timestamped stderr line instead of os_log.
+#ifdef CARDSCANNER_LOG_STDERR
+#include <chrono>
+#include <cstdio>
+#include <ctime>
+#include <mutex>
 #endif
 
 namespace low_level_log_implementation {
@@ -414,6 +422,54 @@ inline void handleIosLog(LOG_LEVEL logLevel, const char *buffer) {
 }
 #endif
 
+#ifdef CARDSCANNER_LOG_STDERR
+inline std::string_view levelName(LOG_LEVEL level) {
+  switch (level) {
+  case LOG_LEVEL::Debug:
+    return "debug";
+  case LOG_LEVEL::Info:
+    return "info";
+  case LOG_LEVEL::Error:
+    return "error";
+  }
+  return "info";
+}
+
+/// One serialised line on stderr: "HH:MM:SS.mmm [info] message".
+inline void handleStderrLog(LOG_LEVEL level, std::string_view message) {
+  const auto now = std::chrono::system_clock::now();
+  const auto time = std::chrono::system_clock::to_time_t(now);
+  const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      now.time_since_epoch())
+                      .count() %
+                  1000;
+
+  std::tm local{};
+#ifdef _WIN32
+  ::localtime_s(&local, &time);
+#else
+  ::localtime_r(&time, &local);
+#endif
+
+  char stamp[16];
+  std::snprintf(stamp, sizeof(stamp), "%02d:%02d:%02d.%03d", local.tm_hour,
+                local.tm_min, local.tm_sec, int(ms));
+
+  std::string line;
+  line.reserve(sizeof(stamp) + 8 + message.size());
+  line += stamp;
+  line += " [";
+  line += levelName(level);
+  line += "] ";
+  line += message;
+  line += '\n';
+
+  static std::mutex mutex;
+  std::lock_guard<std::mutex> lock(mutex);
+  std::cerr << line;
+}
+#endif
+
 inline std::string getBuffer(const std::string &logMessage,
                              std::size_t maxLogMessageSize) {
   if (logMessage.size() > maxLogMessageSize) {
@@ -457,7 +513,7 @@ inline std::ostringstream createConfiguredOutputStream() {
  */
 template <std::size_t MaxLogSize = 1024, typename... Args>
 void log(LOG_LEVEL logLevel, Args &&...args) {
-#if !defined(__ANDROID__) && !defined(__APPLE__) && defined(NDEBUG)
+#if defined(CARDSCANNER_LOG_STDERR) && defined(NDEBUG)
   if (logLevel == LOG_LEVEL::Debug) {
     return;
   }
@@ -479,15 +535,16 @@ void log(LOG_LEVEL logLevel, Args &&...args) {
 
   const auto buffer =
       high_level_log_implementation::getBuffer(output, MaxLogSize);
-  const auto *cStyleBuffer = buffer.c_str();
 
 #ifdef __ANDROID__
-  high_level_log_implementation::handleAndroidLog(logLevel, cStyleBuffer);
+  high_level_log_implementation::handleAndroidLog(logLevel, buffer.c_str());
+#elif defined(CARDSCANNER_LOG_STDERR)
+  high_level_log_implementation::handleStderrLog(logLevel, buffer);
 #elif defined(__APPLE__)
-  high_level_log_implementation::handleIosLog(logLevel, cStyleBuffer);
+  high_level_log_implementation::handleIosLog(logLevel, buffer.c_str());
 #else
   // Default log to cout if none of the above platforms
-  std::cout << cStyleBuffer << '\n';
+  std::cout << buffer << '\n';
 #endif
 }
 

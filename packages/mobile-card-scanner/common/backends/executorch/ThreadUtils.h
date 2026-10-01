@@ -22,8 +22,9 @@ inline void unsafeSetupThreadPool(uint32_t num_of_cores = 0) {
                            : static_cast<uint32_t>(num_of_perf_cores / 2) + 1;
   const auto threadpool = ::executorch::extension::threadpool::get_threadpool();
   threadpool->_unsafe_reset_threadpool(_num_of_cores);
-  cardscanner::log(cardscanner::LOG_LEVEL::Info, "Configuring xnnpack for",
-                     threadpool->get_thread_count(), "threads");
+  cardscanner::log(cardscanner::LOG_LEVEL::Info, "[CardScanner]",
+                   "configuring xnnpack for", threadpool->get_thread_count(),
+                   "threads");
 }
 
 } // namespace cardscanner::threads::utils

@@ -96,9 +96,9 @@ ScanResult ScannerPipeline::processFrame(
     if (blurScore < config.blurThreshold) {
       result.processingTimeMs = elapsedMs();
 
-      log(LOG_LEVEL::Debug,
-          "[CardScanner] Frame skipped due to low blur score:", blurScore,
-          "(threshold:", config.blurThreshold, ")");
+      log(LOG_LEVEL::Debug, "[CardScanner]",
+          "frame skipped due to low blur score:", blurScore, "threshold:",
+          config.blurThreshold);
 
       return result; // Skip ML pipeline for blurry frames
     }
@@ -127,8 +127,8 @@ ScanResult ScannerPipeline::processFrame(
                                        segResult.detections[0].box.conf);
   }
 
-  log(LOG_LEVEL::Debug, "[CardScanner] Detected", segResult.detections.size(),
-      "cards in frame");
+  log(LOG_LEVEL::Debug, "[CardScanner]", "detected",
+      segResult.detections.size(), "cards in frame");
   // Stage 2-5: Process each detection through the pipeline
   for (size_t i = 0; i < segResult.detections.size(); i++) {
     try {
@@ -299,9 +299,9 @@ ProcessedCard ScannerPipeline::processDetection(
     if (config.lowLightThreshold > 0.0 &&
         utils::ImageUtils::isLowLight(processingImage,
                                       config.lowLightThreshold)) {
-      log(LOG_LEVEL::Debug,
-          "[CardScanner] Low-light enhancement applied (threshold:",
-          config.lowLightThreshold, ")");
+      log(LOG_LEVEL::Debug, "[CardScanner]",
+          "low-light enhancement applied, threshold:",
+          config.lowLightThreshold);
       processingImage =
           utils::ImageUtils::adjustGamma(processingImage, config.lowLightGamma);
       cv::normalize(processingImage, processingImage, 0, 255, cv::NORM_MINMAX);
