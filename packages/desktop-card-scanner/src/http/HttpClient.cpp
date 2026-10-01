@@ -2,6 +2,8 @@
 
 #include <curl/curl.h>
 
+#include <memory>
+
 namespace cardscanner {
 namespace http {
 
@@ -17,6 +19,22 @@ int abortWhenStopped(void *userdata, curl_off_t, curl_off_t, curl_off_t, curl_of
   return static_cast<const std::atomic<bool> *>(userdata)->load() ? 0 : 1;
 }
 
+struct EasyCleanup {
+  void operator()(CURL *curl) const { curl_easy_cleanup(curl); }
+};
+struct SlistFree {
+  void operator()(curl_slist *list) const { curl_slist_free_all(list); }
+};
+
+/// Appends a header, keeping the list owned even when curl returns null.
+void appendHeader(std::unique_ptr<curl_slist, SlistFree> &list,
+                  const char *header) {
+  if (curl_slist *grown = curl_slist_append(list.get(), header)) {
+    list.release();
+    list.reset(grown);
+  }
+}
+
 } // namespace
 
 void globalInit() { curl_global_init(CURL_GLOBAL_DEFAULT); }
@@ -25,18 +43,20 @@ void globalCleanup() { curl_global_cleanup(); }
 HttpResponse postJson(const std::string &url, const std::string &body,
                       const std::atomic<bool> *running) {
   HttpResponse result;
-  CURL *curl = curl_easy_init();
-  if (curl == nullptr) {
+  const std::unique_ptr<CURL, EasyCleanup> handle(curl_easy_init());
+  if (!handle) {
     return result;
   }
+  CURL *curl = handle.get();
 
-  curl_slist *headers = curl_slist_append(nullptr, "Content-Type: application/json");
-  headers = curl_slist_append(headers, "Accept: application/json");
+  std::unique_ptr<curl_slist, SlistFree> headers;
+  appendHeader(headers, "Content-Type: application/json");
+  appendHeader(headers, "Accept: application/json");
 
   curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
   curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
   curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, long(body.size()));
-  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers.get());
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, appendBody);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &result.body);
   curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
@@ -58,9 +78,6 @@ HttpResponse postJson(const std::string &url, const std::string &body,
   } else {
     result.error = curl_easy_strerror(rc);
   }
-
-  curl_slist_free_all(headers);
-  curl_easy_cleanup(curl);
   return result;
 }
 

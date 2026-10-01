@@ -17,8 +17,15 @@ void FrameClient::start() {
   if (running_.exchange(true)) {
     return;
   }
+  reconnect_.rearm();
   writer_ = std::thread([this] { writerLoop(); });
-  reader_ = std::thread([this] { readerLoop(); });
+  try {
+    reader_ = std::thread([this] { readerLoop(); });
+  } catch (...) {
+    // Joins the writer: destroying a joinable std::thread calls terminate.
+    stop();
+    throw;
+  }
 }
 
 std::shared_ptr<FrameClient::Connection> FrameClient::connection() const {
@@ -31,6 +38,12 @@ void FrameClient::stop() {
     return;
   }
   pending_.notify_all();
+  reconnect_.wake();
+  {
+    // Taken so the reader is either waiting or sees running_ false.
+    std::lock_guard<std::mutex> lock(connectionMutex_);
+  }
+  connectionReady_.notify_all();
 
   // Unblocks reader/writer before the joins - this runs on an OBS UI thread.
   if (const auto conn = connection()) {
@@ -129,12 +142,19 @@ bool FrameClient::latestDetection(float &x, float &y, float &w, float &h,
 
 void FrameClient::readerLoop() {
   while (running_) {
-    // A copy keeps the descriptor open for the whole recv(), whatever the
-    // writer does to connection_ meanwhile.
-    const auto conn = connection();
-    if (!conn || !conn->alive) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      continue;
+    std::shared_ptr<Connection> conn;
+    {
+      // Sleeps until the writer has a live connection, or until stop().
+      std::unique_lock<std::mutex> lock(connectionMutex_);
+      connectionReady_.wait(lock, [this] {
+        return !running_ || (connection_ && connection_->alive);
+      });
+      if (!running_) {
+        break;
+      }
+      // A copy keeps the descriptor open for the whole recv(), whatever the
+      // writer does to connection_ meanwhile.
+      conn = connection_;
     }
 
     ipc::ResultHeader header{};
@@ -181,12 +201,12 @@ std::shared_ptr<FrameClient::Connection> FrameClient::connectOnce() {
     std::lock_guard<std::mutex> lock(connectionMutex_);
     connection_ = conn;
   }
+  connectionReady_.notify_all();
   connected_ = true;
   return conn;
 }
 
 void FrameClient::writerLoop() {
-  int backoffMs = 200;
   // Outside the loop so the two buffers cycle between the threads; declared
   // inside, every submit() would reallocate on OBS's capture thread.
   std::vector<uint8_t> frame;
@@ -206,13 +226,10 @@ void FrameClient::writerLoop() {
       conn = connectOnce();
       if (!conn) {
         // The server may not be up yet, or may have been restarted.
-        for (int slept = 0; slept < backoffMs && running_; slept += 50) {
-          std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-        backoffMs = backoffMs < 3000 ? backoffMs * 2 : 3000;
+        reconnect_.sleep();
         continue;
       }
-      backoffMs = 200;
+      reconnect_.reset();
     }
 
     frame.clear();

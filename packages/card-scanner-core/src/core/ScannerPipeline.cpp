@@ -454,8 +454,13 @@ ScannerPipeline::processDetection(const cv::Mat &frameImage,
     benchmark::BenchmarkCollector::ScopedTimer preprocTimer(
         benchmark::Stage::Preproc);
 
+    // The dewarped card when the quad fit, else the plain box.
     card.croppedImage =
-        utils::ImageUtils::extractCardImage(frameImage, detection);
+        detection.dewarpedCard.empty()
+            ? utils::ImageUtils::cropRegion(
+                  frameImage,
+                  utils::ImageUtils::boundingBoxToRect(detection.box))
+            : detection.dewarpedCard.clone();
     if (card.croppedImage.empty()) {
       return card; // Early exit if extraction failed
     }
@@ -485,9 +490,8 @@ ScannerPipeline::processDetection(const cv::Mat &frameImage,
   // thorough scan the plain box crop is the last resort.
   if (thorough && card.matches.empty() && ctx.embedding != nullptr &&
       !detection.dewarpedCard.empty()) {
-    cardscanner::Detection boxOnly = detection;
-    boxOnly.dewarpedCard = cv::Mat();
-    cv::Mat boxCrop = utils::ImageUtils::extractCardImage(frameImage, boxOnly);
+    cv::Mat boxCrop = utils::ImageUtils::cropRegion(
+        frameImage, utils::ImageUtils::boundingBoxToRect(detection.box));
     if (!boxCrop.empty()) {
       card.matches = SearchStrategy::searchCard(boxCrop, detection, config,
                                                 *ctx.embedding,

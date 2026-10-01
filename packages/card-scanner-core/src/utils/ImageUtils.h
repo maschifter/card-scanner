@@ -19,37 +19,6 @@ namespace utils {
 class ImageUtils {
 public:
   /**
-   * @brief Extract card image from frame using detection bounding box
-   *
-   * Prefers dewarped image if available, otherwise crops from bounding box.
-   *
-   * @param frameImage Original frame (RGB)
-   * @param detection YOLO detection with bounding box and optional dewarped
-   * image
-   * @return Cropped card image (empty if invalid bounds)
-   */
-  static cv::Mat extractCardImage(const cv::Mat &frameImage,
-                                  const cardscanner::Detection &detection) {
-    // Prefer dewarped card if available
-    if (!detection.dewarpedCard.empty()) {
-      return detection.dewarpedCard.clone();
-    }
-
-    // Crop from bounding box
-    int ix1 = std::max(0, static_cast<int>(detection.box.x1));
-    int iy1 = std::max(0, static_cast<int>(detection.box.y1));
-    int ix2 = std::min(frameImage.cols, static_cast<int>(detection.box.x2));
-    int iy2 = std::min(frameImage.rows, static_cast<int>(detection.box.y2));
-
-    if (ix2 > ix1 && iy2 > iy1) {
-      cv::Rect roi(ix1, iy1, ix2 - ix1, iy2 - iy1);
-      return frameImage(roi).clone();
-    }
-
-    return cv::Mat(); // Empty if invalid
-  }
-
-  /**
    * @brief Load an image from disk as RGB (handles a file:// prefix)
    *
    * @param imagePath Path to the image
@@ -121,28 +90,15 @@ public:
   }
 
   /**
-   * @brief Crop region from image with bounds checking
+   * @brief Copies the part of `roi` that lies inside the image
    *
    * @param image Source image
-   * @param roi Region of interest
-   * @return Cropped image (empty if invalid bounds)
+   * @param roi Region of interest, clamped to the image
+   * @return Cropped copy (empty when nothing of roi is inside the image)
    */
   static cv::Mat cropRegion(const cv::Mat &image, const cv::Rect &roi) {
-    if (image.empty()) {
-      return cv::Mat();
-    }
-
-    int x1 = std::max(0, roi.x);
-    int y1 = std::max(0, roi.y);
-    int x2 = std::min(image.cols, roi.x + roi.width);
-    int y2 = std::min(image.rows, roi.y + roi.height);
-
-    if (x2 > x1 && y2 > y1) {
-      cv::Rect clampedRoi(x1, y1, x2 - x1, y2 - y1);
-      return image(clampedRoi).clone();
-    }
-
-    return cv::Mat();
+    const cv::Rect clamped = roi & cv::Rect(0, 0, image.cols, image.rows);
+    return clamped.empty() ? cv::Mat() : image(clamped).clone();
   }
 
   /**

@@ -109,69 +109,81 @@ void CardScannerInstaller::injectJSIBindings(
   cardscanner::DatabaseManager &dbManager =
       cardscanner::DatabaseManager::getInstance();
 
-  auto initializeScannerFunc = jsi::Function::createFromHostFunction(
-      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "initializeScanner"),
-      1,
-      [callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
-                    const jsi::Value *args, size_t count) -> jsi::Value {
+  // Installs `fn` as the JS global `name`.
+  const auto installFunction = [&](const char *name, size_t argCount,
+                                   jsi::HostFunctionType fn) {
+    jsiRuntime->global().setProperty(
+        *jsiRuntime, name,
+        jsi::Function::createFromHostFunction(
+            *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, name),
+            argCount, std::move(fn)));
+  };
+
+  // Installs a JS global that returns a Promise. `prepare` runs on the JS
+  // thread: it checks and copies the arguments, then returns the work that
+  // runAsync runs on a worker thread.
+  using Work = std::function<SettleFn()>;
+  using Prepare =
+      std::function<Work(jsi::Runtime &, const jsi::Value *, size_t)>;
+  const auto installAsync = [&](const char *name, size_t argCount,
+                                Prepare prepare) {
+    installFunction(
+        name, argCount,
+        [callInvoker, prepare = std::move(prepare)](
+            jsi::Runtime &runtime, const jsi::Value &, const jsi::Value *args,
+            size_t count) -> jsi::Value {
+          Work work = prepare(runtime, args, count);
+          return Promise::createPromise(
+              runtime, callInvoker,
+              [work = std::move(work)](std::shared_ptr<Promise> promise) {
+                runAsync(std::move(promise), work);
+              });
+        });
+  };
+
+  installAsync(
+      "initializeScanner", 1,
+      [](jsi::Runtime &runtime, const jsi::Value *args, size_t count) -> Work {
         if (count < 1 || !args[0].isObject()) {
           throw jsi::JSError(runtime,
                              "initializeScannerNative expects a config object");
         }
 
-        // Parse config object on JS thread
-        jsi::Object configObj = args[0].asObject(runtime);
-
         // Disable OpenCV threading to prevent interference with ExecutorTorch
         cv::setNumThreads(0);
 
         try {
-          ScannerRegistry::setConfig(
-              utils::JSISerializer::parseScannerConfig(runtime, configObj));
+          ScannerRegistry::setConfig(utils::JSISerializer::parseScannerConfig(
+              runtime, args[0].asObject(runtime)));
         } catch (const std::runtime_error &e) {
           throw jsi::JSError(runtime,
                              std::string("initializeScanner: ") + e.what());
         }
 
-        return Promise::createPromise(
-            runtime, callInvoker, [](std::shared_ptr<Promise> promise) {
-              runAsync(std::move(promise), []() -> SettleFn {
-                ScannerRegistry::initializeModels();
-                return [](jsi::Runtime &rt, Promise &p) {
-                  jsi::Object result(rt);
-                  result.setProperty(rt, "success", jsi::Value(true));
-                  p.resolve(rt, std::move(result));
-                };
-              });
-            });
+        return []() -> SettleFn {
+          ScannerRegistry::initializeModels();
+          return [](jsi::Runtime &rt, Promise &p) {
+            jsi::Object result(rt);
+            result.setProperty(rt, "success", jsi::Value(true));
+            p.resolve(rt, std::move(result));
+          };
+        };
       });
 
-  jsiRuntime->global().setProperty(*jsiRuntime, "initializeScanner",
-                                   std::move(initializeScannerFunc));
+  installAsync("releaseScanner", 0,
+               [](jsi::Runtime &, const jsi::Value *, size_t) -> Work {
+                 return []() -> SettleFn {
+                   const bool released = ScannerRegistry::releaseModels();
+                   return [released](jsi::Runtime &rt, Promise &p) {
+                     p.resolve(rt, jsi::Value(released));
+                   };
+                 };
+               });
 
-  auto releaseScannerFunc = jsi::Function::createFromHostFunction(
-      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "releaseScanner"), 0,
-      [callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
-                    const jsi::Value *args, size_t count) -> jsi::Value {
-        return Promise::createPromise(
-            runtime, callInvoker, [](std::shared_ptr<Promise> promise) {
-              runAsync(std::move(promise), []() -> SettleFn {
-                const bool released = ScannerRegistry::releaseModels();
-                return [released](jsi::Runtime &rt, Promise &p) {
-                  p.resolve(rt, jsi::Value(released));
-                };
-              });
-            });
-      });
-
-  jsiRuntime->global().setProperty(*jsiRuntime, "releaseScanner",
-                                   std::move(releaseScannerFunc));
-
-  auto swapDatabaseFunc = jsi::Function::createFromHostFunction(
-      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "swapDatabase"), 2,
-      [&dbManager,
-       callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
-                    const jsi::Value *args, size_t count) -> jsi::Value {
+  installAsync(
+      "swapDatabase", 2,
+      [&dbManager](jsi::Runtime &runtime, const jsi::Value *args,
+                   size_t count) -> Work {
         if (count != 2 || !args[0].isString() || !args[1].isString()) {
           throw jsi::JSError(
               runtime,
@@ -181,27 +193,17 @@ void CardScannerInstaller::injectJSIBindings(
         std::string gameName = args[0].asString(runtime).utf8(runtime);
         std::string sourcePath = args[1].asString(runtime).utf8(runtime);
 
-        return Promise::createPromise(
-            runtime, callInvoker,
-            [gameName, sourcePath,
-             &dbManager](std::shared_ptr<Promise> promise) {
-              runAsync(std::move(promise), [gameName, sourcePath,
-                                            &dbManager]() -> SettleFn {
-                const bool success = ScannerRegistry::swapDatabase(
-                    dbManager, gameName, sourcePath);
-                return settleOperationResult(
-                    success, success ? "" : "Failed to swap database file");
-              });
-            });
+        return [gameName, sourcePath, &dbManager]() -> SettleFn {
+          const bool success =
+              ScannerRegistry::swapDatabase(dbManager, gameName, sourcePath);
+          return settleOperationResult(
+              success, success ? "" : "Failed to swap database file");
+        };
       });
 
-  jsiRuntime->global().setProperty(*jsiRuntime, "swapDatabase",
-                                   std::move(swapDatabaseFunc));
-
-  auto scanImageFunc = jsi::Function::createFromHostFunction(
-      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "scanImage"), 2,
-      [callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
-                    const jsi::Value *args, size_t count) -> jsi::Value {
+  installAsync(
+      "scanImage", 2,
+      [](jsi::Runtime &runtime, const jsi::Value *args, size_t count) -> Work {
         if (count < 1 || !args[0].isString()) {
           throw jsi::JSError(runtime,
                              "scanImage expects (imagePath: string, "
@@ -224,76 +226,56 @@ void CardScannerInstaller::injectJSIBindings(
           }
         }
 
-        return Promise::createPromise(
-            runtime, callInvoker,
-            [imagePath, scanMode](std::shared_ptr<Promise> promise) {
-              runAsync(std::move(promise), [imagePath, scanMode]() -> SettleFn {
-                try {
-                  ScanResult scanResult =
-                      ScannerRegistry::scanImageFile(imagePath, scanMode);
-                  return [scanResult = std::move(scanResult)](jsi::Runtime &rt,
-                                                              Promise &p) {
-                    p.resolve(rt, utils::JSISerializer::serializeScanResult(
-                                      rt, scanResult));
-                  };
-                } catch (const std::exception &e) {
-                  throw std::runtime_error(std::string("Image scan failed: ") +
-                                           e.what());
-                }
-              });
-            });
+        return [imagePath, scanMode]() -> SettleFn {
+          try {
+            ScanResult scanResult =
+                ScannerRegistry::scanImageFile(imagePath, scanMode);
+            return [scanResult = std::move(scanResult)](jsi::Runtime &rt,
+                                                        Promise &p) {
+              p.resolve(rt,
+                        utils::JSISerializer::serializeScanResult(rt, scanResult));
+            };
+          } catch (const std::exception &e) {
+            throw std::runtime_error(std::string("Image scan failed: ") +
+                                     e.what());
+          }
+        };
       });
-
-  jsiRuntime->global().setProperty(*jsiRuntime, "scanImage",
-                                   std::move(scanImageFunc));
 
   // Live scan control. All three flip registry state and return at once;
   // nothing here waits on the pipeline.
-  const auto installVoid = [&](const char *name, size_t argCount,
-                               jsi::HostFunctionType fn) {
-    jsiRuntime->global().setProperty(
-        *jsiRuntime, name,
-        jsi::Function::createFromHostFunction(
-            *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, name),
-            argCount, std::move(fn)));
-  };
+  installFunction("pauseScanning", 0,
+                  [](jsi::Runtime &, const jsi::Value &, const jsi::Value *,
+                     size_t) -> jsi::Value {
+                    ScannerRegistry::pauseScanning();
+                    return jsi::Value::undefined();
+                  });
 
-  installVoid("pauseScanning", 0,
-              [](jsi::Runtime &, const jsi::Value &, const jsi::Value *,
-                 size_t) -> jsi::Value {
-                ScannerRegistry::pauseScanning();
-                return jsi::Value::undefined();
-              });
+  installFunction("resumeScanning", 0,
+                  [](jsi::Runtime &, const jsi::Value &, const jsi::Value *,
+                     size_t) -> jsi::Value {
+                    ScannerRegistry::resumeScanning();
+                    return jsi::Value::undefined();
+                  });
 
-  installVoid("resumeScanning", 0,
-              [](jsi::Runtime &, const jsi::Value &, const jsi::Value *,
-                 size_t) -> jsi::Value {
-                ScannerRegistry::resumeScanning();
-                return jsi::Value::undefined();
-              });
+  installFunction(
+      "setScanMode", 1,
+      [](jsi::Runtime &runtime, const jsi::Value &, const jsi::Value *args,
+         size_t count) -> jsi::Value {
+        if (count < 1 || !args[0].isString()) {
+          throw jsi::JSError(runtime, "setScanMode expects a mode string");
+        }
+        try {
+          ScannerRegistry::setScanMode(args[0].asString(runtime).utf8(runtime));
+        } catch (const std::exception &e) {
+          throw jsi::JSError(runtime, std::string("setScanMode: ") + e.what());
+        }
+        return jsi::Value::undefined();
+      });
 
-  installVoid("setScanMode", 1,
-              [](jsi::Runtime &runtime, const jsi::Value &,
-                 const jsi::Value *args, size_t count) -> jsi::Value {
-                if (count < 1 || !args[0].isString()) {
-                  throw jsi::JSError(runtime,
-                                     "setScanMode expects a mode string");
-                }
-                try {
-                  ScannerRegistry::setScanMode(
-                      args[0].asString(runtime).utf8(runtime));
-                } catch (const std::exception &e) {
-                  throw jsi::JSError(runtime,
-                                     std::string("setScanMode: ") + e.what());
-                }
-                return jsi::Value::undefined();
-              });
-
-  auto runBenchmarkFunc = jsi::Function::createFromHostFunction(
-      *jsiRuntime,
-      jsi::PropNameID::forAscii(*jsiRuntime, "runBenchmarkFromImages"), 3,
-      [callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
-                    const jsi::Value *args, size_t count) -> jsi::Value {
+  installAsync(
+      "runBenchmarkFromImages", 3,
+      [](jsi::Runtime &runtime, const jsi::Value *args, size_t count) -> Work {
         if (count < 3 || !args[0].isObject() ||
             !args[0].asObject(runtime).isArray(runtime) || !args[1].isNumber() ||
             !args[2].isNumber()) {
@@ -368,80 +350,59 @@ void CardScannerInstaller::injectJSIBindings(
 
         int warmupIterations = static_cast<int>(warmupRaw);
         int benchmarkIterations = static_cast<int>(benchmarkRaw);
-        return Promise::createPromise(
-            runtime, callInvoker,
-            [images = std::move(images), warmupIterations,
-             benchmarkIterations](std::shared_ptr<Promise> promise) {
-              runAsync(std::move(promise),
-                       [images = std::move(images), warmupIterations,
-                        benchmarkIterations]() -> SettleFn {
-                         auto runResult = ScannerRegistry::runBenchmark(
-                             images, warmupIterations, benchmarkIterations);
+        return [images = std::move(images), warmupIterations,
+                benchmarkIterations]() -> SettleFn {
+          auto runResult = ScannerRegistry::runBenchmark(
+              images, warmupIterations, benchmarkIterations);
 
-                         return [runResult = std::move(runResult)](
-                                    jsi::Runtime &rt, Promise &p) {
-                           jsi::Object result(rt);
-                           result.setProperty(rt, "success", jsi::Value(true));
-                           result.setProperty(rt, "recordCount",
-                                              jsi::Value(static_cast<double>(
-                                                  runResult.recordCount)));
-                           result.setProperty(
-                               rt, "recordsJson",
+          return [runResult = std::move(runResult)](jsi::Runtime &rt,
+                                                    Promise &p) {
+            jsi::Object result(rt);
+            result.setProperty(rt, "success", jsi::Value(true));
+            result.setProperty(
+                rt, "recordCount",
+                jsi::Value(static_cast<double>(runResult.recordCount)));
+            result.setProperty(rt, "recordsJson",
                                jsi::String::createFromUtf8(rt, runResult.json));
-                           p.resolve(rt, std::move(result));
-                         };
-                       });
-            });
+            p.resolve(rt, std::move(result));
+          };
+        };
       });
 
-  jsiRuntime->global().setProperty(*jsiRuntime, "runBenchmarkFromImages",
-                                   std::move(runBenchmarkFunc));
+  installAsync(
+      "listDatabases", 0,
+      [&dbManager](jsi::Runtime &, const jsi::Value *, size_t) -> Work {
+        return [&dbManager]() -> SettleFn {
+          dbManager.scanForExistingStores();
 
-  auto listDatabasesFunc = jsi::Function::createFromHostFunction(
-      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "listDatabases"), 0,
-      [&dbManager,
-       callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
-                    const jsi::Value *args, size_t count) -> jsi::Value {
-        return Promise::createPromise(
-            runtime, callInvoker,
-            [&dbManager](std::shared_ptr<Promise> promise) {
-              runAsync(std::move(promise), [&dbManager]() -> SettleFn {
-                dbManager.scanForExistingStores();
+          std::vector<GameDbInfo> infos;
+          for (const auto &gameName : dbManager.getKnownGames()) {
+            try {
+              infos.push_back(readGameDbInfo(dbManager, gameName));
+            } catch (...) {
+              // Ignore errors for individual games
+            }
+          }
 
-                std::vector<GameDbInfo> infos;
-                for (const auto &gameName : dbManager.getKnownGames()) {
-                  try {
-                    infos.push_back(readGameDbInfo(dbManager, gameName));
-                  } catch (...) {
-                    // Ignore errors for individual games
-                  }
-                }
-
-                return [infos = std::move(infos)](jsi::Runtime &rt,
-                                                  Promise &p) {
-                  jsi::Array result(rt, infos.size());
-                  for (size_t i = 0; i < infos.size(); i++) {
-                    const auto &info = infos[i];
-                    result.setValueAtIndex(
-                        rt, i,
-                        utils::JSISerializer::serializeDatabaseInfo(
-                            rt, info.name, info.path, info.cardCount,
-                            info.creationTimestamp, info.fileSize));
-                  }
-                  p.resolve(rt, std::move(result));
-                };
-              });
-            });
+          return [infos = std::move(infos)](jsi::Runtime &rt, Promise &p) {
+            jsi::Array result(rt, infos.size());
+            for (size_t i = 0; i < infos.size(); i++) {
+              const auto &info = infos[i];
+              result.setValueAtIndex(
+                  rt, i,
+                  utils::JSISerializer::serializeDatabaseInfo(
+                      rt, info.name, info.path, info.cardCount,
+                      info.creationTimestamp, info.fileSize));
+            }
+            p.resolve(rt, std::move(result));
+          };
+        };
       });
 
-  jsiRuntime->global().setProperty(*jsiRuntime, "listDatabases",
-                                   std::move(listDatabasesFunc));
-
-  auto getDatabaseInfoFunc = jsi::Function::createFromHostFunction(
-      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "getDatabaseInfo"), 1,
-      [&dbManager,
-       callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
-                    const jsi::Value *args, size_t count) -> jsi::Value {
+  installAsync(
+      "getDatabaseInfo", 1,
+      [&dbManager](jsi::Runtime &runtime, const jsi::Value *args,
+                   size_t count) -> Work {
         if (count < 1 || !args[0].isString()) {
           throw jsi::JSError(runtime,
                              "getDatabaseInfo expects one string argument "
@@ -450,39 +411,31 @@ void CardScannerInstaller::injectJSIBindings(
 
         std::string gameName = args[0].asString(runtime).utf8(runtime);
 
-        return Promise::createPromise(
-            runtime, callInvoker,
-            [&dbManager, gameName](std::shared_ptr<Promise> promise) {
-              runAsync(std::move(promise), [&dbManager, gameName]() -> SettleFn {
-                try {
-                  if (!std::filesystem::exists(dbManager.getStorePath(gameName))) {
-                    throw std::runtime_error(
-                        std::string("Database not found for game: ") + gameName);
-                  }
+        return [&dbManager, gameName]() -> SettleFn {
+          try {
+            if (!std::filesystem::exists(dbManager.getStorePath(gameName))) {
+              throw std::runtime_error(
+                  std::string("Database not found for game: ") + gameName);
+            }
 
-                  GameDbInfo info = readGameDbInfo(dbManager, gameName);
-                  return [info = std::move(info)](jsi::Runtime &rt, Promise &p) {
-                    p.resolve(rt, utils::JSISerializer::serializeDatabaseInfo(
-                                      rt, info.name, info.path, info.cardCount,
-                                      info.creationTimestamp, info.fileSize));
-                  };
-                } catch (const std::exception &e) {
-                  throw std::runtime_error(
-                      std::string("Failed to get database info for ") +
-                      gameName + ": " + e.what());
-                }
-              });
-            });
+            GameDbInfo info = readGameDbInfo(dbManager, gameName);
+            return [info = std::move(info)](jsi::Runtime &rt, Promise &p) {
+              p.resolve(rt, utils::JSISerializer::serializeDatabaseInfo(
+                                rt, info.name, info.path, info.cardCount,
+                                info.creationTimestamp, info.fileSize));
+            };
+          } catch (const std::exception &e) {
+            throw std::runtime_error(
+                std::string("Failed to get database info for ") + gameName +
+                ": " + e.what());
+          }
+        };
       });
 
-  jsiRuntime->global().setProperty(*jsiRuntime, "getDatabaseInfo",
-                                   std::move(getDatabaseInfoFunc));
-
-  auto doesCardIdExistFunc = jsi::Function::createFromHostFunction(
-      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "doesCardIdExist"), 2,
-      [&dbManager,
-       callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
-                    const jsi::Value *args, size_t count) -> jsi::Value {
+  installAsync(
+      "doesCardIdExist", 2,
+      [&dbManager](jsi::Runtime &runtime, const jsi::Value *args,
+                   size_t count) -> Work {
         if (count < 2 || !args[0].isString() || !args[1].isString()) {
           throw jsi::JSError(runtime,
                              "doesCardIdExist expects two string arguments "
@@ -492,33 +445,24 @@ void CardScannerInstaller::injectJSIBindings(
         std::string gameName = args[0].asString(runtime).utf8(runtime);
         std::string cardId = args[1].asString(runtime).utf8(runtime);
 
-        return Promise::createPromise(
-            runtime, callInvoker,
-            [&dbManager, gameName, cardId](std::shared_ptr<Promise> promise) {
-              runAsync(std::move(promise), [&dbManager, gameName,
-                                            cardId]() -> SettleFn {
-                try {
-                  bool exists = dbManager.cardIdExists(gameName, cardId);
-                  return [exists](jsi::Runtime &rt, Promise &p) {
-                    p.resolve(rt, jsi::Value(exists));
-                  };
-                } catch (const std::exception &e) {
-                  throw std::runtime_error(
-                      std::string("Failed to look up card_id for ") + gameName +
-                      ": " + e.what());
-                }
-              });
-            });
+        return [&dbManager, gameName, cardId]() -> SettleFn {
+          try {
+            bool exists = dbManager.cardIdExists(gameName, cardId);
+            return [exists](jsi::Runtime &rt, Promise &p) {
+              p.resolve(rt, jsi::Value(exists));
+            };
+          } catch (const std::exception &e) {
+            throw std::runtime_error(
+                std::string("Failed to look up card_id for ") + gameName +
+                ": " + e.what());
+          }
+        };
       });
 
-  jsiRuntime->global().setProperty(*jsiRuntime, "doesCardIdExist",
-                                   std::move(doesCardIdExistFunc));
-
-  auto deleteDatabaseFunc = jsi::Function::createFromHostFunction(
-      *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "deleteDatabase"), 1,
-      [&dbManager,
-       callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
-                    const jsi::Value *args, size_t count) -> jsi::Value {
+  installAsync(
+      "deleteDatabase", 1,
+      [&dbManager](jsi::Runtime &runtime, const jsi::Value *args,
+                   size_t count) -> Work {
         if (count < 1 || !args[0].isString()) {
           throw jsi::JSError(runtime,
                              "deleteDatabase expects one string argument "
@@ -527,27 +471,20 @@ void CardScannerInstaller::injectJSIBindings(
 
         std::string gameName = args[0].asString(runtime).utf8(runtime);
 
-        return Promise::createPromise(
-            runtime, callInvoker,
-            [&dbManager, gameName](std::shared_ptr<Promise> promise) {
-              runAsync(std::move(promise), [&dbManager, gameName]() -> SettleFn {
-                try {
-                  const bool success =
-                      ScannerRegistry::deleteDatabase(dbManager, gameName);
-                  return settleOperationResult(
-                      success, success ? ""
-                                       : std::string(
-                                             "Failed to delete database for ") +
-                                             gameName);
-                } catch (const std::exception &e) {
-                  return settleOperationResult(false, e.what());
-                }
-              });
-            });
+        return [&dbManager, gameName]() -> SettleFn {
+          try {
+            const bool success =
+                ScannerRegistry::deleteDatabase(dbManager, gameName);
+            return settleOperationResult(
+                success,
+                success ? ""
+                        : std::string("Failed to delete database for ") +
+                              gameName);
+          } catch (const std::exception &e) {
+            return settleOperationResult(false, e.what());
+          }
+        };
       });
-
-  jsiRuntime->global().setProperty(*jsiRuntime, "deleteDatabase",
-                                   std::move(deleteDatabaseFunc));
 
   // Frame scanning is no longer installed. VisionCamera v5 hands Frames
   // over as Nitro HybridObjects and the plugin is the autolinked

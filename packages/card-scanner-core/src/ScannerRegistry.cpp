@@ -302,7 +302,8 @@ ScanResult ScannerRegistry::scanImageFile(const std::string &imagePath,
   cv::Mat imageRGB = utils::ImageUtils::loadImageRGB(imagePath);
 
   auto scanLock = claimScan();
-  auto result = scan(imageRGB, {scanMode, /*ignoreFrameRate=*/true});
+  auto result =
+      scan(imageRGB, {std::string(scanMode), /*ignoreFrameRate=*/true});
   if (!result) {
     throw std::runtime_error("Scanner busy: benchmark or model reload.");
   }

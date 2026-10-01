@@ -100,7 +100,7 @@ public:
 
     // Convert HWC to CHW and flatten to vector
     // Using direct pointer access for performance (3-5x faster than .at<>())
-    const int channels = model::EMBEDDING_CHANNELS;
+    const int channels = model::RGB_CHANNELS;
     std::vector<float> inputData(1 * channels * imgsz * imgsz);
     const float *data = normalized.ptr<float>();
     size_t hw = imgsz * imgsz;

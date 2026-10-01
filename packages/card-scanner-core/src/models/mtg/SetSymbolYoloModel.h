@@ -39,10 +39,6 @@ private:
   std::vector<SetSymbolBBox>
   postprocess(const cv::Mat &originalImg, std::span<const float> preds,
               const std::vector<long long> &outputShape);
-
-  // Non-max suppression
-  std::vector<int>
-  nonMaxSuppression(const std::vector<SetSymbolBBox> &boxes) const;
 };
 
 } // namespace cardscanner

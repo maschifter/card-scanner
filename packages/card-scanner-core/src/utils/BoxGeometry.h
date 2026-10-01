@@ -1,6 +1,8 @@
 #pragma once
 
 #include <algorithm>
+#include <numeric>
+#include <vector>
 
 namespace cardscanner {
 namespace utils {
@@ -50,6 +52,35 @@ public:
     const float aspectB =
         std::max(1.0f, b.x2 - b.x1) / std::max(1.0f, b.y2 - b.y1);
     return std::max(aspectA / aspectB, aspectB / aspectA);
+  }
+
+  /// Greedy non-maximum suppression: walks the boxes best score first and
+  /// drops every later box that `overlaps` one already kept.
+  /// @return Indices of the kept boxes, best score first
+  template <typename Box, typename Score, typename Overlaps>
+  static std::vector<int> nonMaxSuppression(const std::vector<Box> &boxes,
+                                            Score score, Overlaps overlaps) {
+    std::vector<int> order(boxes.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(), [&](int a, int b) {
+      return score(boxes[a]) > score(boxes[b]);
+    });
+
+    std::vector<int> keep;
+    std::vector<bool> suppressed(boxes.size(), false);
+    for (size_t i = 0; i < order.size(); i++) {
+      if (suppressed[order[i]]) {
+        continue;
+      }
+      keep.push_back(order[i]);
+      for (size_t j = i + 1; j < order.size(); j++) {
+        if (!suppressed[order[j]] &&
+            overlaps(boxes[order[i]], boxes[order[j]])) {
+          suppressed[order[j]] = true;
+        }
+      }
+    }
+    return keep;
   }
 
 private:

@@ -113,16 +113,6 @@ private:
                       const std::vector<float> &maskCoeffs, const BBox &bbox,
                       const cv::Size &imgSize) const;
 
-  /**
-   * @brief Non-maximum suppression
-   *
-   * Suppresses by IoU and by mutual containment, so near-duplicate boxes of
-   * one card are gone before any mask work.
-   *
-   * @param boxes Detected bounding boxes
-   * @return Indices of boxes to keep, highest confidence first
-   */
-  std::vector<int> nonMaxSuppression(const std::vector<BBox> &boxes) const;
 };
 
 } // namespace cardscanner

@@ -1,4 +1,5 @@
 #include "FABColorClassifier.h"
+#include "../../Constants.h"
 #include "../../utils/ImageNetNormalization.h"
 #include <Log.h>
 #include <opencv2/imgproc.hpp>
@@ -10,7 +11,6 @@ namespace cardscanner {
 namespace fab_color {
 constexpr int INPUT_SIZE = 100; // Model input size (100x100)
 constexpr int NUM_CLASSES = 3;  // Yellow, Red, Blue
-constexpr int CHANNELS = 3;     // RGB
 
 // Class label mapping: index -> color name
 // Model output: [yellow_logit, red_logit, blue_logit]
@@ -39,10 +39,9 @@ FABColorClassifier::classifyColor(const cv::Mat &dotsRegion) {
 
     // Run inference
     // Input shape: [batch=1, channels=3, height=100, width=100]
-    auto outputs = session_->run(inputData.data(),
-                                 {1, fab_color::CHANNELS,
-                                  fab_color::INPUT_SIZE,
-                                  fab_color::INPUT_SIZE});
+    auto outputs = session_->run(
+        inputData.data(), {1, constants::model::RGB_CHANNELS,
+                           fab_color::INPUT_SIZE, fab_color::INPUT_SIZE});
     const auto &output = outputs.at(0).data;
     if (output.size() < fab_color::NUM_CLASSES) {
       throw std::runtime_error("Color model returned " +

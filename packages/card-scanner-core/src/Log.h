@@ -1,20 +1,11 @@
 #pragma once
+#include <concepts>
 #include <cstdint>
-#include <exception>
-#include <filesystem>
-#include <ios>
 #include <iostream>
 #include <iterator>
-#include <memory>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <system_error>
-#include <tuple>
-#include <type_traits>
-#include <utility>
-#include <variant>
 
 #ifdef __ANDROID__
 #include <android/log.h>
@@ -32,150 +23,23 @@
 
 namespace low_level_log_implementation {
 
-using namespace std::string_literals;
-
 namespace concepts {
-template <typename T>
-concept Iterable = requires(const T &t) {
-  { std::begin(t) } -> std::input_or_output_iterator;
-  { std::end(t) } -> std::input_or_output_iterator;
-};
-
-template <typename T>
-concept FrontAccessible = requires(T t) {
-  { t.front() };
-  requires !std::is_void_v<decltype(t.front())>;
-};
-
-template <typename T>
-concept TopAccessible = requires(T t) {
-  { t.top() };
-  requires !std::is_void_v<decltype(t.top())>;
-};
-
-template <typename T>
-concept HasPop = requires(T t) {
-  { t.pop() };
-};
-
-template <typename T>
-concept HasEmpty = requires(const T &t) {
-  { t.empty() } -> std::same_as<bool>;
-};
-
-// These two below are needed apart from TopAccessible and FrontAccessible
-// to guarantee that correct templated is matched
-template <typename T>
-concept ReadOnlySequencableFront = requires(const T &t) {
-  { t.front() } -> std::same_as<const typename T::value_type &>;
-} && HasEmpty<T> && !Iterable<T>;
-
-template <typename T>
-concept ReadOnlySequencableTop = requires(const T &t) {
-  { t.top() } -> std::same_as<const typename T::value_type &>;
-} && HasEmpty<T> && !Iterable<T>;
-
-template <typename T>
-concept ReadOnlySequencable =
-    ReadOnlySequencableFront<T> || ReadOnlySequencableTop<T>;
-
-template <typename T>
-concept MutableSequencable = ReadOnlySequencable<T> && HasPop<T>;
-
 template <typename T>
 concept Streamable = requires(std::ostream &os, const T &t) {
   { os << t } -> std::convertible_to<std::ostream &>;
 };
 
 template <typename T>
-concept SmartPointer = requires(const T &a) {
-  *a;
-  { a ? true : false } -> std::convertible_to<bool>;
-} && !std::is_pointer_v<T>; // Ensure that it's not a raw pointer
-
-template <typename T>
-concept WeakPointer = requires(const T &a) {
-  {
-    a.lock()
-  } -> std::convertible_to<
-      std::shared_ptr<typename T::element_type>>; // Verifies if a.lock() can
-                                                  // convert to std::shared_ptr
+concept Iterable = requires(const T &t) {
+  { std::begin(t) } -> std::input_or_output_iterator;
+  { std::end(t) } -> std::input_or_output_iterator;
 };
-
-template <typename T>
-concept Fallback =
-    !Iterable<T> && !Streamable<T> && !SmartPointer<T> && !WeakPointer<T> &&
-    !ReadOnlySequencable<T> && !MutableSequencable<T>;
-
 } // namespace concepts
 
 template <typename T>
-  requires concepts::Streamable<T> && (!concepts::SmartPointer<T>)
-void printElement(std::ostream &os, const T &value);
-
-template <typename T, typename U>
-void printElement(std::ostream &os, const std::pair<T, U> &p);
-
-template <std::size_t N>
-void printElement(std::ostream &os, const char (&array)[N]);
-
-template <typename T, std::size_t N>
-void printElement(std::ostream &os, T (&array)[N]);
-
-template <typename T>
-  requires concepts::Iterable<T> && (!concepts::Streamable<T>)
-void printElement(std::ostream &os, const T &container);
-
-template <typename T> void printSequencable(std::ostream &os, T &&container);
-
-template <typename T>
-  requires concepts::ReadOnlySequencable<T>
-void printElement(std::ostream &os, const T &container);
-
-template <typename T>
-  requires concepts::MutableSequencable<T>
-void printElement(std::ostream &os, T &&container);
-
-template <typename... Args>
-void printElement(std::ostream &os, const std::tuple<Args...> &tpl);
-
-template <concepts::SmartPointer SP>
-void printElement(std::ostream &os, const SP &ptr);
-
-template <concepts::WeakPointer WP>
-void printElement(std::ostream &os, const WP &ptr);
-
-template <typename T>
-void printElement(std::ostream &os, const std::optional<T> &opt);
-
-template <typename... Ts>
-void printElement(std::ostream &os, const std::variant<Ts...> &var);
-
-void printElement(std::ostream &os, const std::exception_ptr &exPtr);
-
-void printElement(std::ostream &os, const std::filesystem::path &path);
-
-void printElement(std::ostream &os,
-                  const std::filesystem::directory_iterator &dir_it);
-
-template <concepts::Fallback UnsupportedArg>
-void printElement(std::ostream &os, const UnsupportedArg &value);
-
-void printElement(std::ostream &os, const std::error_code &ec);
-
-template <typename T>
-  requires concepts::Streamable<T> && (!concepts::SmartPointer<T>)
+  requires concepts::Streamable<T>
 void printElement(std::ostream &os, const T &value) {
   os << value;
-}
-
-template <typename T, typename U>
-void printElement(std::ostream &os, const std::pair<T, U> &p) {
-  os << "(";
-  printElement(os, p.first);
-  os << ", ";
-  printElement(os, p.second);
-  os << ")";
 }
 
 template <std::size_t N>
@@ -186,19 +50,7 @@ void printElement(std::ostream &os, const char (&array)[N]) {
   }
 }
 
-// A special function for C-style arrays deducing size via template
-template <typename T, std::size_t N>
-void printElement(std::ostream &os, T (&array)[N]) {
-  os << "[";
-  for (std::size_t i = 0; i < N; ++i) {
-    if (i > 0) {
-      os << ", ";
-    }
-    printElement(os, array[i]);
-  }
-  os << "]";
-}
-
+/// Containers print as "[a, b, c]", recursively.
 template <typename T>
   requires concepts::Iterable<T> && (!concepts::Streamable<T>)
 void printElement(std::ostream &os, const T &container) {
@@ -212,156 +64,6 @@ void printElement(std::ostream &os, const T &container) {
     }
   }
   os << "]";
-}
-
-template <typename T> void printSequencable(std::ostream &os, T &&container) {
-  os << "[";
-  bool isFirst = true;
-
-  auto printElementLambda = [&isFirst, &os](auto &&element) {
-    if (!isFirst) {
-      os << ", ";
-    }
-    low_level_log_implementation::printElement(
-        os, std::forward<decltype(element)>(element));
-    isFirst = false;
-  };
-
-  while (!container.empty()) {
-    if constexpr (concepts::FrontAccessible<T>) {
-      printElementLambda(container.front());
-    } else if constexpr (concepts::TopAccessible<T>) {
-      printElementLambda(container.top());
-    }
-    container.pop();
-  }
-
-  os << "]";
-}
-
-template <typename T>
-  requires concepts::ReadOnlySequencable<T>
-void printElement(std::ostream &os, const T &container) {
-  T tempContainer = container; // Make a copy to preserve original container
-  printSequencable(
-      os, std::move(tempContainer)); // Use std::move since tempContainer won't
-                                     // be used again
-}
-
-template <typename T>
-  requires concepts::MutableSequencable<T>
-void printElement(std::ostream &os, T &&container) {
-  printSequencable(os, std::forward<T>(container));
-}
-
-template <typename... Args>
-void printElement(std::ostream &os, const std::tuple<Args...> &tpl) {
-  os << "<";
-  std::apply(
-      [&os](const auto &...args) {
-        // Counter to apply commas correctly
-        std::size_t count = 0;
-        std::size_t total = sizeof...(args);
-
-        (
-            [&] {
-              printElement(os, args);
-              if (++count < total) {
-                os << ", ";
-              }
-            }(),
-            ...);
-      },
-      tpl);
-  os << ">";
-}
-
-template <concepts::SmartPointer SP>
-void printElement(std::ostream &os, const SP &ptr) {
-  if (ptr) {
-    printElement(os, *ptr);
-  } else {
-    os << "nullptr";
-  }
-}
-
-template <concepts::WeakPointer WP>
-void printElement(std::ostream &os, const WP &ptr) {
-  auto sp = ptr.lock();
-  if (sp) {
-    printElement(os, *sp);
-  } else {
-    os << "expired";
-  }
-}
-
-template <typename T>
-void printElement(std::ostream &os, const std::optional<T> &opt) {
-  if (opt) {
-    os << "Optional(";
-    printElement(os, *opt);
-    os << ")";
-  } else {
-    os << "nullopt";
-  }
-}
-
-template <typename... Ts>
-void printElement(std::ostream &os, const std::variant<Ts...> &var) {
-  std::visit(
-      [&os](const auto &value) {
-        os << "Variant(";
-        printElement(os, value);
-        os << ")";
-      },
-      var);
-}
-
-inline void printElement(std::ostream &os, const std::error_code &ec) {
-  os << "ErrorCode(" << ec.value() << ", " << ec.category().name() << ")";
-}
-
-inline void printElement(std::ostream &os, const std::exception_ptr &exPtr) {
-  if (exPtr) {
-    try {
-      std::rethrow_exception(exPtr);
-    } catch (const std::exception &ex) {
-      os << "ExceptionPtr(\"" << ex.what() << "\")";
-    } catch (...) {
-      os << "ExceptionPtr(non-standard exception)";
-    }
-  } else {
-    os << "nullptr";
-  }
-}
-
-inline void printElement(std::ostream &os, const std::filesystem::path &path) {
-  os << "Path(" << path << ")";
-}
-
-inline void
-printElement(std::ostream &os,
-             const std::filesystem::directory_iterator &dirIterator) {
-  os << "Directory[";
-  bool first = true;
-  for (const auto &entry : dirIterator) {
-    if (!first) {
-      os << ", ";
-    }
-    os << entry.path().filename(); // Ensuring only filename is captured
-    first = false;
-  }
-  os << "]";
-}
-
-// Fallback
-template <concepts::Fallback UnsupportedArg>
-void printElement(std::ostream &os, const UnsupportedArg &value) {
-  const auto *typeName = typeid(UnsupportedArg).name();
-  throw std::runtime_error(
-      "Type "s + std::string(typeName) +
-      "neither supports << operator for std::ostream nor is supported "
-      "out-of-the-box in logging functionality."s);
 }
 
 } // namespace low_level_log_implementation
@@ -489,15 +191,11 @@ inline std::ostringstream createConfiguredOutputStream() {
 /**
  * @brief Logs given data on a console
  * @details
- * The function takes logging level and variety of data types:
+ * The function takes a logging level and any mix of:
  * - Every data type that implements `operator<<` for `std::ostream`
- * - All STL constainers available in C++20
- * - Static arrays
- * - Smart pointers, `std::variant`, and `std::optional`
- * - `std::tuple` and `std::pair`
- * - `std::error_code` and `std::exception_ptr`
- * - `std::filesystem::path` and `std::filesystem::directory_iterator`
- * - Every combination for mentioned above like `std::vector<std::set<int>>`
+ * - Containers of those, printed as `[a, b, c]`, nested to any depth
+ *
+ * Any other type is a compile error.
  *
  * You can manipulate size of the log message. By default it is set to 1024
  * characters. To change this, specify the template argument like so:

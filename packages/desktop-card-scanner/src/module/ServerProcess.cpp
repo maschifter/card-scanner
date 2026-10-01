@@ -174,6 +174,7 @@ void ServerProcess::start() {
   if (running_.exchange(true)) {
     return;
   }
+  backoff_.rearm();
   supervisor_ = std::thread([this] { superviseLoop(); });
 }
 
@@ -181,6 +182,7 @@ void ServerProcess::stop() {
   if (!running_.exchange(false)) {
     return;
   }
+  backoff_.wake();
   // The supervisor spawns and reaps. Once it is joined the child is ours alone,
   // so nothing can reap it, or close its handle, between the checks below.
   if (supervisor_.joinable()) {
@@ -225,19 +227,16 @@ void ServerProcess::stop() {
 }
 
 void ServerProcess::superviseLoop() {
-  int backoffMs = 500;
-
   while (running_) {
     if (!spawnOnce()) {
       // Almost always a packaging problem, which retrying fast will not fix.
-      for (int slept = 0; slept < 5000 && running_; slept += 100) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      }
+      backoff_.sleepFor(std::chrono::seconds(5));
       continue;
     }
 
     const auto spawnedAt = std::chrono::steady_clock::now();
-    // Polled so shutdown need not interrupt a blocking wait.
+    // Polled so shutdown need not interrupt a blocking wait; stop() cuts the
+    // poll interval short.
     while (running_) {
       const int pid = pid_.load();
       if (pid <= 0) {
@@ -258,7 +257,7 @@ void ServerProcess::superviseLoop() {
         break;
       }
 #endif
-      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      backoff_.sleepFor(std::chrono::milliseconds(200));
     }
 
     if (!running_) {
@@ -268,14 +267,11 @@ void ServerProcess::superviseLoop() {
     // A child that ran for a while was healthy, so its crash is a fresh
     // incident rather than the next round of a startup loop.
     if (std::chrono::steady_clock::now() - spawnedAt > std::chrono::seconds(30)) {
-      backoffMs = 500;
+      backoff_.reset();
     }
 
     // Back off, so a server failing instantly at startup does not spin.
-    for (int slept = 0; slept < backoffMs && running_; slept += 100) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-    backoffMs = backoffMs < 8000 ? backoffMs * 2 : 8000;
+    backoff_.sleep();
   }
 }
 

@@ -23,45 +23,6 @@ std::vector<float> SetSymbolYoloModel::preprocess(const cv::Mat &img) const {
   return utils::YoloPreprocessing::preprocess(img, imgsz_);
 }
 
-std::vector<int> SetSymbolYoloModel::nonMaxSuppression(
-    const std::vector<SetSymbolBBox> &boxes) const {
-
-  std::vector<int> indices(boxes.size());
-  for (size_t i = 0; i < boxes.size(); i++) {
-    indices[i] = i;
-  }
-
-  // Sort by confidence descending
-  std::sort(indices.begin(), indices.end(), [&boxes](int i1, int i2) {
-    return boxes[i1].confidence > boxes[i2].confidence;
-  });
-
-  std::vector<int> keep;
-  std::vector<bool> suppressed(boxes.size(), false);
-
-  for (size_t i = 0; i < indices.size(); i++) {
-    int idx = indices[i];
-    if (suppressed[idx])
-      continue;
-
-    keep.push_back(idx);
-    const SetSymbolBBox &box1 = boxes[idx];
-
-    for (size_t j = i + 1; j < indices.size(); j++) {
-      int idx2 = indices[j];
-      if (suppressed[idx2])
-        continue;
-
-      const SetSymbolBBox &box2 = boxes[idx2];
-      if (BoxGeometry::intersectionOverUnion(box1, box2) > iou_) {
-        suppressed[idx2] = true;
-      }
-    }
-  }
-
-  return keep;
-}
-
 std::vector<SetSymbolBBox>
 SetSymbolYoloModel::postprocess(const cv::Mat &originalImg,
                                 std::span<const float> preds,
@@ -182,7 +143,11 @@ SetSymbolYoloModel::postprocess(const cv::Mat &originalImg,
   }
 
   // Apply NMS
-  std::vector<int> keepIndices = nonMaxSuppression(boxes);
+  std::vector<int> keepIndices = BoxGeometry::nonMaxSuppression(
+      boxes, [](const SetSymbolBBox &b) { return b.confidence; },
+      [this](const SetSymbolBBox &a, const SetSymbolBBox &b) {
+        return BoxGeometry::intersectionOverUnion(a, b) > iou_;
+      });
 
   std::vector<SetSymbolBBox> finalBoxes;
   for (int idx : keepIndices) {
@@ -197,7 +162,8 @@ SetSymbolDetectionResult SetSymbolYoloModel::detect(const cv::Mat &image) {
   std::vector<float> inputData = preprocess(image);
 
   // Inference
-  auto outputs = session_->run(inputData.data(), {1, 3, imgsz_, imgsz_});
+  auto outputs =
+      session_->run(inputData.data(), {1, model::RGB_CHANNELS, imgsz_, imgsz_});
   const auto &output = outputs.at(0);
 
   // postprocess sniffs [1,5,N] vs [1,N,5] from these dims

@@ -83,47 +83,6 @@ void dropGroupBoxes(const std::vector<BBox> &boxes, std::vector<int> &keep) {
 
 } // namespace
 
-std::vector<int>
-YoloSegmentationModel::nonMaxSuppression(const std::vector<BBox> &boxes) const {
-
-  std::vector<int> indices(boxes.size());
-  for (size_t i = 0; i < boxes.size(); i++) {
-    indices[i] = i;
-  }
-
-  // Sort by confidence descending
-  std::sort(indices.begin(), indices.end(), [&boxes](int i1, int i2) {
-    return boxes[i1].conf > boxes[i2].conf;
-  });
-
-  std::vector<int> keep;
-  std::vector<bool> suppressed(boxes.size(), false);
-
-  for (size_t i = 0; i < indices.size(); i++) {
-    int idx = indices[i];
-    if (suppressed[idx])
-      continue;
-
-    keep.push_back(idx);
-    const BBox &box1 = boxes[idx];
-
-    for (size_t j = i + 1; j < indices.size(); j++) {
-      int idx2 = indices[j];
-      if (suppressed[idx2])
-        continue;
-
-      const BBox &box2 = boxes[idx2];
-      if (BoxGeometry::intersectionOverUnion(box1, box2) > iou_ ||
-          BoxGeometry::mutuallyContained(box1, box2,
-                                         selection::CONTAINED_MIN_AREA_FRAC)) {
-        suppressed[idx2] = true;
-      }
-    }
-  }
-
-  return keep;
-}
-
 cv::Mat YoloSegmentationModel::processMask(std::span<const float> protos,
                                            int protoH, int protoW,
                                            const std::vector<float> &maskCoeffs,
@@ -335,7 +294,15 @@ std::vector<Detection> YoloSegmentationModel::postprocess(
   }
 
   // Still required: only an end2end=True export is NMS-free, not this raw head
-  std::vector<int> keep = nonMaxSuppression(boxes);
+  // Suppresses by IoU and by mutual containment, so near-duplicate boxes of
+  // one card are gone before any mask work.
+  std::vector<int> keep = BoxGeometry::nonMaxSuppression(
+      boxes, [](const BBox &b) { return b.conf; },
+      [this](const BBox &a, const BBox &b) {
+        return BoxGeometry::intersectionOverUnion(a, b) > iou_ ||
+               BoxGeometry::mutuallyContained(
+                   a, b, selection::CONTAINED_MIN_AREA_FRAC);
+      });
   dropGroupBoxes(boxes, keep);
 
   // Process masks for kept detections
@@ -389,8 +356,8 @@ SegmentationResult YoloSegmentationModel::segment(const cv::Mat &image,
   std::vector<float> inputData = preprocess(image);
 
   // Run inference
-  auto outputs = session_->run(
-      inputData.data(), {1, model::EMBEDDING_CHANNELS, imgsz_, imgsz_});
+  auto outputs =
+      session_->run(inputData.data(), {1, model::RGB_CHANNELS, imgsz_, imgsz_});
 
   // Segmentation head emits predictions first and prototypes last.
   if (outputs.size() < 2) {

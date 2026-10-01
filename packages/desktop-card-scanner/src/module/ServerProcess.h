@@ -1,5 +1,7 @@
 #pragma once
 
+#include <util/Backoff.h>
+
 #include <atomic>
 #include <cstdint>
 #include <string>
@@ -52,6 +54,9 @@ private:
   void *job_ = nullptr;
 #endif
   std::atomic<bool> running_{false};
+  /// Respawn delay; also the supervisor's sleeps, so stop() wakes them.
+  util::Backoff backoff_{std::chrono::milliseconds(500),
+                         std::chrono::milliseconds(8000)};
   std::thread supervisor_;
 };
 

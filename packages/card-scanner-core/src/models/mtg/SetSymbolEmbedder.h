@@ -26,9 +26,6 @@ public:
 
 private:
   std::unique_ptr<inference::InferenceSession> session_;
-
-  // Preprocess image: resize to 96x96, normalize with ImageNet stats
-  std::vector<float> normalizeImage(const cv::Mat &img) const;
 };
 
 } // namespace cardscanner

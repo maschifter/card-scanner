@@ -2,6 +2,7 @@
 
 #include <ipc/FrameProtocol.h>
 #include <ipc/Socket.h>
+#include <util/Backoff.h>
 
 #include <atomic>
 #include <chrono>
@@ -77,6 +78,11 @@ private:
   /// Replaced by the writer alone; everyone else takes a copy under the lock.
   std::shared_ptr<Connection> connection_;
   mutable std::mutex connectionMutex_;
+  /// Signalled when the writer connects and on stop(); the reader waits on it.
+  std::condition_variable connectionReady_;
+  /// The writer's reconnect delay; stop() wakes it.
+  util::Backoff reconnect_{std::chrono::milliseconds(200),
+                           std::chrono::milliseconds(3000)};
   std::atomic<bool> running_{false};
   /// The writer's view, so submit() can drop without taking a lock.
   std::atomic<bool> connected_{false};

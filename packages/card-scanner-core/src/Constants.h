@@ -17,9 +17,11 @@ namespace model {
 constexpr float DEFAULT_YOLO_IOU_THRESHOLD = 0.7f;
 constexpr int DEFAULT_YOLO_IMAGE_SIZE = 384;
 
+// Every model takes RGB input
+constexpr int RGB_CHANNELS = 3;
+
 // Embedding Model (MobileNet)
 constexpr int EMBEDDING_INPUT_SIZE = 224;
-constexpr int EMBEDDING_CHANNELS = 3;
 constexpr int EMBEDDING_DIMENSION = 256;
 } // namespace model
 

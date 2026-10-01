@@ -344,8 +344,9 @@ function(cardscanner_copy_runtime_dlls target)
 endfunction()
 
 # --- Checks ---
-# Asserts the InferenceSession contract against a committed fixture, so it runs
-# without the card models or databases. -DBUILD_TESTING=OFF skips it.
+# Assert the InferenceSession contract against a committed fixture, and core's
+# config parser against hand-built documents, so neither needs the card models
+# or databases. -DBUILD_TESTING=OFF skips them.
 include(CTest)
 if(BUILD_TESTING)
   add_executable(test_onnx_session tests/test_onnx_session.cpp)
@@ -354,6 +355,11 @@ if(BUILD_TESTING)
       TEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests")
   cardscanner_copy_runtime_dlls(test_onnx_session)
   add_test(NAME onnx_session COMMAND test_onnx_session)
+
+  add_executable(test_config_parse tests/test_config_parse.cpp)
+  target_link_libraries(test_config_parse PRIVATE cardscanner_desktop)
+  cardscanner_copy_runtime_dlls(test_config_parse)
+  add_test(NAME config_parse COMMAND test_config_parse)
 endif()
 
 # Compares two card databases by content. A tool rather than a test, since it

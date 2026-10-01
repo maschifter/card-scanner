@@ -276,18 +276,22 @@ The surviving detections are then narrowed by scan mode:
 **Source:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 ```cpp
-card.croppedImage = utils::ImageUtils::extractCardImage(frameImage, detection);
+card.croppedImage =
+    detection.dewarpedCard.empty()
+        ? utils::ImageUtils::cropRegion(
+              frameImage, utils::ImageUtils::boundingBoxToRect(detection.box))
+        : detection.dewarpedCard.clone();
 if (card.croppedImage.empty()) {
   return card; // Failed, skip this detection
 }
 ```
 
-**Method:** [`ImageUtils::extractCardImage`](../packages/card-scanner-core/src/utils/ImageUtils.h)
+**Method:** [`ImageUtils::cropRegion`](../packages/card-scanner-core/src/utils/ImageUtils.h)
 
 **Logic:**
 
 1. Prefer dewarped image from YOLO if available
-2. Otherwise, crop using bounding box with bounds checking
+2. Otherwise, crop the bounding box, clamped to the frame
 
 **Error Handling:** Returns empty card if extraction fails
 

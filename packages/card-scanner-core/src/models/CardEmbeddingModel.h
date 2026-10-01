@@ -62,16 +62,6 @@ public:
 
 private:
   std::unique_ptr<inference::InferenceSession> session_;
-
-  /**
-   * @brief Preprocess image with ImageNet normalization
-   *
-   * Applies ImageNet mean/std normalization and converts HWC to CHW format.
-   *
-   * @param img Input image (must be 224x224)
-   * @return Normalized CHW tensor data
-   */
-  std::vector<float> normalizeImage(const cv::Mat &img) const;
 };
 
 } // namespace cardscanner

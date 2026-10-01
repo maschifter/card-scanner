@@ -1,8 +1,11 @@
 #pragma once
 
+#include "ConfigValue.h"
+
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace cardscanner {
@@ -108,5 +111,28 @@ struct ScannerConfig {
   /// True for "single", "multiple" and "auto".
   static bool isScanMode(const std::string &mode);
 };
+
+
+/// A parsed config and the keys it held that nothing reads.
+struct ParsedScannerConfig {
+  ScannerConfig config;
+  /// Full dotted paths, e.g. "gameSpecificConfig.mtg.typo", in document order.
+  std::vector<std::string> unknownKeys;
+};
+
+/**
+ * @brief Reads a ScannerConfig from a host's config document.
+ *
+ * The only code that knows the config's keys. A missing or null key keeps the
+ * ScannerConfig default; a key of the wrong type throws std::runtime_error.
+ * Keys starting with "//" are comments. Unknown keys are logged and returned.
+ * Call validate() on the result.
+ *
+ * @param hostKeys Top-level keys the host reads itself, so they are not
+ *   reported as unknown.
+ */
+ParsedScannerConfig
+parseScannerConfig(const ConfigValue &root,
+                   const std::vector<std::string_view> &hostKeys = {});
 
 } // namespace cardscanner

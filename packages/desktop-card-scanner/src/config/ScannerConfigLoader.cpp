@@ -1,11 +1,9 @@
 #include "ScannerConfigLoader.h"
-#include <Log.h>
 #include <PathProvider.h>
-#include <nlohmann/json.hpp>
-#include <algorithm>
 #include <fstream>
-#include <initializer_list>
+#include <nlohmann/json.hpp>
 #include <stdexcept>
+#include <string>
 
 namespace cardscanner {
 namespace desktop {
@@ -37,25 +35,35 @@ void readInto(const json &obj, const char *key, T &target) {
   target = valueOrDefault<T>(obj, key, target);
 }
 
-/**
- * @brief Warns about keys the loader never reads.
- *
- * A misspelled optional key otherwise keeps the default without a trace. 
- * Handle comments as well.
- */
-void warnUnknownKeys(const json &obj, const std::string &prefix,
-                     std::initializer_list<const char *> known) {
-  if (!obj.is_object()) {
-    return;
-  }
-  for (auto it = obj.begin(); it != obj.end(); ++it) {
-    const std::string &key = it.key();
-    if (key.compare(0, 2, "//") == 0 ||
-        std::find(known.begin(), known.end(), key) != known.end()) {
-      continue;
+/// The document in core's neutral shape. Knows no config keys.
+ConfigValue toConfigValue(const json &value) {
+  switch (value.type()) {
+  case json::value_t::boolean:
+    return {value.get<bool>()};
+  case json::value_t::number_integer:
+  case json::value_t::number_unsigned:
+  case json::value_t::number_float:
+    return {value.get<double>()};
+  case json::value_t::string:
+    return {value.get<std::string>()};
+  case json::value_t::array: {
+    ConfigValue::Array items;
+    items.reserve(value.size());
+    for (const auto &item : value) {
+      items.push_back(toConfigValue(item));
     }
-    const std::string fullKey = prefix + key;
-    log(LOG_LEVEL::Info, "[Config]", "ignoring unknown key:", fullKey);
+    return {std::move(items)};
+  }
+  case json::value_t::object: {
+    ConfigValue::Object members;
+    members.reserve(value.size());
+    for (const auto &[key, member] : value.items()) {
+      members.emplace_back(key, toConfigValue(member));
+    }
+    return {std::move(members)};
+  }
+  default:
+    return {};
   }
 }
 
@@ -68,92 +76,6 @@ std::string resolveModel(const std::filesystem::path &modelsDir,
   }
   const std::filesystem::path p(value);
   return p.is_absolute() ? value : (modelsDir / p).string();
-}
-
-/// Parses gameClassMapping's JSON shape; ScannerConfig::validate checks the map.
-GameClassMap parseGameClassMapping(const json &root) {
-  const auto it = root.find("gameClassMapping");
-  if (it == root.end()) {
-    return {}; // validate() reports the missing mapping
-  }
-  if (!it->is_object()) {
-    throw std::runtime_error("config: 'gameClassMapping' must be an object "
-                             "mapping model class ids to database names");
-  }
-
-  GameClassMap mapping;
-  for (const auto &[key, value] : it->items()) {
-    int classId = 0;
-    try {
-      classId = std::stoi(key);
-    } catch (const std::exception &) {
-      throw std::runtime_error("config: gameClassMapping key '" + key +
-                               "' is not an integer class id");
-    }
-
-    std::vector<std::string> games;
-    if (value.is_string()) {
-      games.push_back(value.get<std::string>());
-    } else if (value.is_array() &&
-               std::all_of(value.begin(), value.end(),
-                           [](const json &name) { return name.is_string(); })) {
-      // Several names when the model merges games it cannot tell apart.
-      games = value.get<std::vector<std::string>>();
-    } else {
-      throw std::runtime_error("config: gameClassMapping['" + key +
-                               "'] must be a string or array of strings");
-    }
-
-    mapping[classId] = std::move(games);
-  }
-  return mapping;
-}
-
-ScannerConfig::GameConfig parseGameConfig(const json &obj,
-                                          const std::filesystem::path &modelsDir,
-                                          const std::string &prefix) {
-  warnUnknownKeys(obj, prefix,
-                  {"embeddingModelPath", "confidenceThreshold", "setSymbolDetection",
-                   "colorDetection"});
-
-  ScannerConfig::GameConfig game;
-
-  readInto(obj, "embeddingModelPath", game.embeddingModelPath);
-  game.embeddingModelPath = resolveModel(modelsDir, game.embeddingModelPath);
-
-  const auto confidence = obj.find("confidenceThreshold");
-  if (confidence != obj.end() && !confidence->is_null()) {
-    game.confidenceThreshold = valueOrDefault<float>(obj, "confidenceThreshold", 0.0f);
-  }
-
-  const auto setSymbol = obj.find("setSymbolDetection");
-  if (setSymbol != obj.end() && setSymbol->is_object()) {
-    warnUnknownKeys(*setSymbol, prefix + "setSymbolDetection.",
-                    {"detectionModelPath", "embeddingModelPath", "detectionThreshold",
-                     "confidenceThreshold", "imageSize"});
-    readInto(*setSymbol, "detectionModelPath", game.setSymbolDetectionModelPath);
-    readInto(*setSymbol, "embeddingModelPath", game.setSymbolEmbedderModelPath);
-    game.setSymbolDetectionModelPath =
-        resolveModel(modelsDir, game.setSymbolDetectionModelPath);
-    game.setSymbolEmbedderModelPath =
-        resolveModel(modelsDir, game.setSymbolEmbedderModelPath);
-    readInto(*setSymbol, "detectionThreshold", game.setSymbolDetectionThreshold);
-    readInto(*setSymbol, "confidenceThreshold", game.setSymbolConfidenceThreshold);
-    // Must match the exported model's input_shape or inference fails.
-    readInto(*setSymbol, "imageSize", game.setSymbolImageSize);
-  }
-
-  const auto color = obj.find("colorDetection");
-  if (color != obj.end() && color->is_object()) {
-    warnUnknownKeys(*color, prefix + "colorDetection.",
-                    {"modelPath", "dotsRegionRatio", "minDotsRegionSize"});
-    readInto(*color, "modelPath", game.colorDetectionModelPath);
-    game.colorDetectionModelPath = resolveModel(modelsDir, game.colorDetectionModelPath);
-    readInto(*color, "dotsRegionRatio", game.dotsRegionRatio);
-    readInto(*color, "minDotsRegionSize", game.minDotsRegionSize);
-  }
-
-  return game;
 }
 
 /// Resolves a directory key against the config file's own location.
@@ -180,35 +102,11 @@ LoadedConfig loadConfigFile(const std::filesystem::path &configPath) {
                              "': " + e.what());
   }
 
-  warnUnknownKeys(root, "",
-                  {"modelsDir",
-                   "databasesDir",
-                   "cacheDir",
-                   "segmentationModelPath",
-                   "embeddingModelPath",
-                   "scanMode",
-                   "segmentationThreshold",
-                   "iouThreshold",
-                   "confidenceThreshold",
-                   "disambiguationThreshold",
-                   "minGameConfidence",
-                   "maxMatches",
-                   "searchCandidates",
-                   "captureImage",
-                   "useDetectionSelection",
-                   "useSidewaysFlipCache",
-                   "blurThreshold",
-                   "lowLightThreshold",
-                   "lowLightGamma",
-                   "maxFrameRate",
-                   "minCardsForMulti",
-                   "multiStableFrames",
-                   "freezeOnMulti",
-                   "gameClassMapping",
-                   "gameSpecificConfig",
-                   "productEndpoint",
-                   "productImageBase",
-                   "productImageTransform"});
+  // Core reads every scanner key; this loader reads only its own.
+  auto parsed = parseScannerConfig(toConfigValue(root),
+                                   {"modelsDir", "databasesDir", "cacheDir",
+                                    "productEndpoint", "productImageBase",
+                                    "productImageTransform"});
 
   const std::filesystem::path base =
       std::filesystem::absolute(configPath).parent_path();
@@ -222,53 +120,18 @@ LoadedConfig loadConfigFile(const std::filesystem::path &configPath) {
   readInto(root, "productImageBase", loaded.products.imageBase);
   readInto(root, "productImageTransform", loaded.products.imageTransform);
 
-  ScannerConfig &config = loaded.scanner;
-
-#define SET_CONFIG_OR_DEFAULT(field) readInto(root, #field, config.field)
-
-  SET_CONFIG_OR_DEFAULT(segmentationModelPath);
-  SET_CONFIG_OR_DEFAULT(embeddingModelPath);
-  config.segmentationModelPath = resolveModel(modelsDir, config.segmentationModelPath);
-  config.embeddingModelPath = resolveModel(modelsDir, config.embeddingModelPath);
-
-  SET_CONFIG_OR_DEFAULT(scanMode);
-
-  SET_CONFIG_OR_DEFAULT(segmentationThreshold);
-  SET_CONFIG_OR_DEFAULT(iouThreshold);
-  SET_CONFIG_OR_DEFAULT(confidenceThreshold);
-  SET_CONFIG_OR_DEFAULT(disambiguationThreshold);
-  SET_CONFIG_OR_DEFAULT(minGameConfidence);
-
-  SET_CONFIG_OR_DEFAULT(maxMatches);
-  SET_CONFIG_OR_DEFAULT(searchCandidates);
-  SET_CONFIG_OR_DEFAULT(captureImage);
-
-  SET_CONFIG_OR_DEFAULT(useDetectionSelection);
-  SET_CONFIG_OR_DEFAULT(useSidewaysFlipCache);
-
-  SET_CONFIG_OR_DEFAULT(blurThreshold);
-  SET_CONFIG_OR_DEFAULT(lowLightThreshold);
-  SET_CONFIG_OR_DEFAULT(lowLightGamma);
-  SET_CONFIG_OR_DEFAULT(maxFrameRate);
-
-  SET_CONFIG_OR_DEFAULT(minCardsForMulti);
-  SET_CONFIG_OR_DEFAULT(multiStableFrames);
-  SET_CONFIG_OR_DEFAULT(freezeOnMulti);
-
-#undef SET_CONFIG_OR_DEFAULT
-
-  config.gameClassMapping = parseGameClassMapping(root);
-
-  const auto gameSpecific = root.find("gameSpecificConfig");
-  if (gameSpecific != root.end() && gameSpecific->is_object()) {
-    for (const auto &[game, value] : gameSpecific->items()) {
-      if (!value.is_object()) {
-        throw std::runtime_error("config: gameSpecificConfig['" + game +
-                                 "'] must be an object");
-      }
-      config.gameSpecificConfig[game] =
-          parseGameConfig(value, modelsDir, "gameSpecificConfig." + game + ".");
-    }
+  // Model paths in the file are relative to modelsDir.
+  ScannerConfig &config = loaded.scanner = std::move(parsed.config);
+  const auto resolve = [&modelsDir](std::string &path) {
+    path = resolveModel(modelsDir, path);
+  };
+  resolve(config.segmentationModelPath);
+  resolve(config.embeddingModelPath);
+  for (auto &[game, gameConfig] : config.gameSpecificConfig) {
+    resolve(gameConfig.embeddingModelPath);
+    resolve(gameConfig.setSymbolDetectionModelPath);
+    resolve(gameConfig.setSymbolEmbedderModelPath);
+    resolve(gameConfig.colorDetectionModelPath);
   }
 
   return loaded;

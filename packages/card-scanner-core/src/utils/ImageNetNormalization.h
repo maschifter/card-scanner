@@ -48,29 +48,20 @@ public:
   static std::vector<float> normalizeImage(const cv::Mat &img, int inputSize) {
     using namespace constants;
 
-    // Convert to float
-    cv::Mat floatImg;
-    img.convertTo(floatImg, CV_32FC3);
+    std::vector<cv::Mat> planes;
+    cv::split(img, planes);
 
-    // Prepare input tensor data in NCHW format (N=1)
-    const int channels = 3;
-    std::vector<float> normalizedImageData(1 * channels * inputSize *
-                                           inputSize);
-
-    // Apply ImageNet normalization and convert HWC to CHW
-    for (int c = 0; c < channels; c++) {
-      for (int h = 0; h < inputSize; h++) {
-        for (int w = 0; w < inputSize; w++) {
-          int chw_idx = c * inputSize * inputSize + h * inputSize + w;
-          float pixel = floatImg.at<cv::Vec3f>(h, w)[c];
-          // Apply ImageNet normalization: (pixel/scale - mean) / std
-          normalizedImageData[chw_idx] =
-              (pixel / imagenet::PIXEL_SCALE - imagenet::MEAN[c]) /
-              imagenet::STD[c];
-        }
-      }
+    // One CHW plane per channel, written in place by a vectorised convertTo:
+    // (pixel / scale - mean) / std is a single scale and shift.
+    const int area = inputSize * inputSize;
+    std::vector<float> normalizedImageData(planes.size() * area);
+    for (size_t c = 0; c < planes.size(); c++) {
+      cv::Mat plane(inputSize, inputSize, CV_32F,
+                    normalizedImageData.data() + c * area);
+      planes[c].convertTo(plane, CV_32F,
+                          1.0 / (imagenet::PIXEL_SCALE * imagenet::STD[c]),
+                          -imagenet::MEAN[c] / imagenet::STD[c]);
     }
-
     return normalizedImageData;
   }
 };

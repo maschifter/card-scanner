@@ -121,7 +121,7 @@ int main(int argc, char **argv) {
   // anything, which the socket paths already handle.
   std::signal(SIGPIPE, SIG_IGN);
 #endif
-  cardscanner::util::watchParent(g_running, [] { g_running = false; });
+  const cardscanner::util::ParentWatchdog watchdog([] { g_running = false; });
 
   cardscanner::http::globalInit();
 
