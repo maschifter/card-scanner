@@ -20,7 +20,7 @@ public:
   search_similar_cards(const std::vector<float> &query_embedding, int limit);
 
   // Similarity search for MTG set symbols
-  std::vector<cardscanner::SetSymbolMatch> search_similar_set_symbols(
+  std::vector<cardscanner::SetSymbolInfo> search_similar_set_symbols(
       const std::vector<float> &query_embedding,
       int limit = cardscanner::constants::database::SET_SYMBOL_MAX_RESULTS);
 

@@ -45,8 +45,7 @@ NitroDetectedCard toNitroDetectedCard(const ProcessedCard &card) {
   // Always include predicted game name if available
   if (!card.predictedGameName.empty()) {
     nitroCard.predictedGameName = card.predictedGameName;
-    nitroCard.predictedGameConfidence =
-        static_cast<double>(card.predictedGameConfidence);
+    nitroCard.predictedGameConfidence = card.predictedGameConfidence;
   }
 
   nitroCard.boundingBox =

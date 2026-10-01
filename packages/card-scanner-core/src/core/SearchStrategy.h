@@ -15,10 +15,10 @@ namespace core {
 /// What one card search found.
 struct SearchOutcome {
   /// Matches from the best game (empty if no confident match).
-  std::vector<CardMatch> matches;
+  std::vector<CardSearchResult> matches;
   /// When matches is empty, the best raw candidates (up to maxMatches, best
   /// first).
-  std::vector<CardMatch> nearMisses;
+  std::vector<CardSearchResult> nearMisses;
 };
 
 /**
@@ -111,14 +111,6 @@ private:
   static SearchOutcome
   filterToBestGame(const std::vector<CardSearchResult> &allResults,
                    const ScannerConfig &config);
-
-  /**
-   * @brief Convert CardSearchResult to CardMatch
-   *
-   * @param result Database search result
-   * @return DTO CardMatch
-   */
-  static CardMatch convertToCardMatch(const CardSearchResult &result);
 };
 
 } // namespace core

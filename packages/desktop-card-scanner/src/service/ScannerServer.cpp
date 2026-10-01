@@ -34,7 +34,9 @@ void ScannerServer::onScanUpdate() {
   // and should not queue behind the JSON build and websocket sends.
   const auto d = service_.diagnostics();
   frames_.sendResult(d.sequence, d.roi, d.detections > 0, d.accepted, d.boxX, d.boxY,
-                     d.boxW, d.boxH, d.detectionConfidence, d.topScore);
+                     d.boxW, d.boxH, d.detectionConfidence,
+                     // The wire format carries a float.
+                     static_cast<float>(d.topScore));
   broadcastState();
 }
 

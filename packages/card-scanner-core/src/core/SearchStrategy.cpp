@@ -221,12 +221,12 @@ SearchOutcome SearchStrategy::filterToBestGame(
   benchmark::BenchmarkCollector::set(benchmark::Metric::RawTopScore,
                                      sortedResults[0].score);
   benchmark::BenchmarkCollector::set(benchmark::Label::RawTopCardId,
-                                     sortedResults[0].card_id);
+                                     sortedResults[0].cardId);
 
   // Best match game: highest-scoring result that clears its own game's
   // threshold, so a strict game's near-miss cannot mask another game's hit.
   std::string bestMatchGame;
-  float bestMatchScore = 0.0f;
+  double bestMatchScore = 0.0;
   for (const auto &result : sortedResults) {
     if (result.score >=
         getEffectiveConfidenceThreshold(result.gameName, config)) {
@@ -238,7 +238,7 @@ SearchOutcome SearchStrategy::filterToBestGame(
 
   log(LOG_LEVEL::Debug, "[CardScanner]",
       "best match game:", bestMatchGame.empty() ? "None" : bestMatchGame,
-      "score:", bestMatchScore, "raw top:", sortedResults[0].card_id,
+      "score:", bestMatchScore, "raw top:", sortedResults[0].cardId,
       sortedResults[0].score);
 
   SearchOutcome outcome;
@@ -247,7 +247,7 @@ SearchOutcome SearchStrategy::filterToBestGame(
     const size_t keep =
         std::min(sortedResults.size(), static_cast<size_t>(config.maxMatches));
     for (size_t i = 0; i < keep; i++) {
-      outcome.nearMisses.push_back(convertToCardMatch(sortedResults[i]));
+      outcome.nearMisses.push_back(sortedResults[i]);
     }
     return outcome;
   }
@@ -258,7 +258,7 @@ SearchOutcome SearchStrategy::filterToBestGame(
     float gameThreshold =
         getEffectiveConfidenceThreshold(result.gameName, config);
     if (result.gameName == bestMatchGame && result.score >= gameThreshold) {
-      filteredMatches.push_back(convertToCardMatch(result));
+      filteredMatches.push_back(result);
 
       if (filteredMatches.size() >= static_cast<size_t>(config.maxMatches)) {
         break;
@@ -267,15 +267,6 @@ SearchOutcome SearchStrategy::filterToBestGame(
   }
 
   return outcome;
-}
-
-CardMatch
-SearchStrategy::convertToCardMatch(const CardSearchResult &result) {
-  CardMatch match;
-  match.cardId = result.card_id;
-  match.gameName = result.gameName;
-  match.score = result.score;
-  return match;
 }
 
 } // namespace core

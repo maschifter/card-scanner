@@ -22,20 +22,15 @@ namespace {
 // Margin is adjusted for assumed 30 fps camera.
 constexpr int kScanWaitMarginMs = 20;
 
-// Pre-rotation buffer dims, captured while the frame is alive.
-struct FrameSize {
-  double width = 0;
-  double height = 0;
-};
-
-// Frame accessors go through JSI/JNI and can throw once the Frame is gone.
-std::optional<FrameSize> tryReadFrameSize(
+// Pre-rotation buffer dims, captured while the frame is alive. Frame
+// accessors go through JSI/JNI and can throw once the Frame is gone.
+std::optional<cv::Size2d> tryReadFrameSize(
     const std::shared_ptr<margelo::nitro::camera::HybridFrameSpec> &frame) noexcept {
   try {
     if (frame == nullptr || !frame->getIsValid()) {
       return std::nullopt;
     }
-    return FrameSize{frame->getWidth(), frame->getHeight()};
+    return cv::Size2d{frame->getWidth(), frame->getHeight()};
   } catch (...) {
     return std::nullopt;
   }
@@ -183,7 +178,7 @@ void HybridCardScannerPlugin::scanFrame(
     return;
   }
 
-  const std::optional<FrameSize> frameSize = tryReadFrameSize(ownedFrame.get());
+  const std::optional<cv::Size2d> frameSize = tryReadFrameSize(ownedFrame.get());
   if (!frameSize) {
     return;
   }

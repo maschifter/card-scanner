@@ -10,7 +10,7 @@ namespace core {
 using namespace cardscanner::constants;
 
 SetSymbolInfo SetSymbolProcessor::processSetSymbol(
-    const cv::Mat &cardImage, const std::vector<CardMatch> &cardMatches,
+    const cv::Mat &cardImage, const std::vector<CardSearchResult> &cardMatches,
     float disambiguationThreshold, float confidenceThreshold,
     cardscanner::SetSymbolYoloModel *yoloModel,
     cardscanner::SetSymbolEmbedder *embedder, ObjectBoxDB *database) {
@@ -28,9 +28,9 @@ SetSymbolInfo SetSymbolProcessor::processSetSymbol(
   // If top match is clearly the best (score difference > threshold), skip
   // detection
   if (cardMatches.size() >= 2) {
-    float top1Score = cardMatches[0].score;
-    float top2Score = cardMatches[1].score;
-    float scoreDifference = top1Score - top2Score;
+    double top1Score = cardMatches[0].score;
+    double top2Score = cardMatches[1].score;
+    double scoreDifference = top1Score - top2Score;
 
     // If difference exceeds threshold, top match is clearly best
     if (scoreDifference > disambiguationThreshold) {
@@ -80,7 +80,7 @@ SetSymbolInfo SetSymbolProcessor::processSetSymbol(
 }
 
 bool SetSymbolProcessor::isMTGCard(
-    const std::vector<CardMatch> &cardMatches) {
+    const std::vector<CardSearchResult> &cardMatches) {
   return !cardMatches.empty() && cardMatches[0].gameName == "mtg";
 }
 
@@ -94,12 +94,12 @@ cv::Rect SetSymbolProcessor::detectSetSymbolBox(
     const cv::Mat &cardImage, cardscanner::SetSymbolYoloModel *yoloModel) {
   auto symbolDetection = yoloModel->detect(cardImage);
 
-  if (symbolDetection.detections.empty()) {
+  if (symbolDetection.empty()) {
     return cv::Rect(); // Empty rect
   }
 
   // Convert SetSymbolBBox to cv::Rect
-  const auto &bbox = symbolDetection.detections[0];
+  const auto &bbox = symbolDetection[0];
   int x = static_cast<int>(bbox.x1);
   int y = static_cast<int>(bbox.y1);
   int width = static_cast<int>(bbox.x2 - bbox.x1);
@@ -120,7 +120,7 @@ SetSymbolInfo SetSymbolProcessor::matchSetSymbol(
   }
 
   // Search database (top 1 result)
-  std::vector<SetSymbolMatch> symbolMatches;
+  std::vector<SetSymbolInfo> symbolMatches;
   {
     benchmark::BenchmarkCollector::ScopedTimer timer(
         benchmark::Stage::SetSymbolDbSearch);

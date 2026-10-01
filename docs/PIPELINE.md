@@ -152,22 +152,18 @@ Camera frames enter through the Nitro plugin. The Vision Camera v5 frame worklet
 **Source:** [`packages/card-scanner-core/src/core/ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 ```cpp
-static dto::ScanResult
-processFrame(const cv::Mat &frameImage, const dto::ScannerConfig &config,
-             cardscanner::DatabaseManager &dbManager,
-             cardscanner::YoloSegmentationModel *yoloModel,
-             cardscanner::CardEmbeddingModel *embeddingModel,
-             cardscanner::SetSymbolYoloModel *setSymbolYolo,
-             cardscanner::SetSymbolEmbedder *setSymbolEmbedder,
-             cardscanner::FABColorClassifier *fabColorClassifier);
+static ScanResult processFrame(const cv::Mat &frameImage,
+                               const ScannerContext &ctx,
+                               MultiScanSession *session = nullptr,
+                               bool forceFreeze = false);
 ```
 
 **Parameters:**
 
 - `frameImage` - RGB, upright-rotated camera frame (cv::Mat)
-- `config` - Scanner configuration
-- `dbManager` - Database manager for card lookups
-- Models - ML models (YOLO, embedder, etc.)
+- `ctx` - The scanner configuration and ML models (YOLO, embedders, and so on), snapshotted for this scan. Card lookups go through the `DatabaseManager` singleton.
+- `session` - The multi-card session, or null outside multi-card scanning
+- `forceFreeze` - Freezes on this frame's detections, for the shutter
 
 **Returns:**
 
@@ -179,7 +175,7 @@ processFrame(const cv::Mat &frameImage, const dto::ScannerConfig &config,
 
 ### 1. Blur Detection
 
-**Source:** [`ScannerPipeline.cpp:29-41`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
+**Source:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 **Purpose:** Skip blurry frames to save ML compute
 
@@ -204,7 +200,7 @@ if (config.blurThreshold > 0.0) {
 
 ### 2. Frame Rate Throttling
 
-**Source:** [`ScannerPipeline.cpp:43-62`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
+**Source:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 **Purpose:** Limit ML pipeline to max N FPS (configurable)
 
@@ -233,13 +229,13 @@ if (config.maxFrameRate > 0) {
 
 ### STAGE 1: Card Segmentation
 
-**Source:** [`ScannerPipeline.cpp:64-65`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
+**Source:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 ```cpp
 auto segmentation = performSegmentation(frameImage, config, yoloModel);
 ```
 
-**Implementation:** [`ScannerPipeline.cpp:92-109`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
+**Implementation:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 #### Step 1.1: YOLO Detection
 
@@ -277,7 +273,7 @@ The surviving detections are then narrowed by scan mode:
 
 ### STAGE 2: Image Extraction
 
-**Source:** [`ScannerPipeline.cpp:202-206`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
+**Source:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 ```cpp
 card.croppedImage = utils::ImageUtils::extractCardImage(frameImage, detection);
@@ -299,7 +295,7 @@ if (card.croppedImage.empty()) {
 
 ### STAGE 3: Low-Light Enhancement
 
-**Source:** [`ScannerPipeline.cpp:208-217`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
+**Source:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 **Condition:** `lowLightThreshold > 0` AND image is dark
 
@@ -326,14 +322,14 @@ if (config.lowLightThreshold > 0.0 &&
 
 ### STAGE 4: Card Recognition
 
-**Source:** [`ScannerPipeline.cpp:220-222`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
+**Source:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 ```cpp
 card.matches = recognizeCard(processingImage, detection, config,
                              dbManager, embeddingModel);
 ```
 
-**Implementation:** [`ScannerPipeline.cpp:125`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp) → [`SearchStrategy.cpp`](../packages/card-scanner-core/src/core/SearchStrategy.cpp)
+**Implementation:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp) → [`SearchStrategy.cpp`](../packages/card-scanner-core/src/core/SearchStrategy.cpp)
 
 #### Step 4.1: Compute Embedding
 
@@ -351,7 +347,7 @@ std::vector<float> embedding = embeddingModel->computeEmbedding(cardImage);
 ```cpp
 std::vector<std::string> extractTopGames(
     const cardscanner::Detection &detection,
-    const dto::ScannerConfig &config
+    const ScannerConfig &config
 ) {
   // Drop predictions below config.minGameConfidence (default 0.1)
   // Cap the survivors at MAX_GAME_DATABASES (4), de-duplicating names
@@ -363,7 +359,7 @@ descending order and expands each class through `config.gameClassMapping`, so a
 class covering several games (e.g. `4: ["pokemon", "pokemon-japan"]`) contributes
 one database per game. An unmapped class does not consume one of the
 `MAX_TOP_PREDICTIONS` slots, and the result is capped at `MAX_GAME_DATABASES`.
-See [`SearchStrategy.cpp:50-85`](../packages/card-scanner-core/src/core/SearchStrategy.cpp).
+See [`SearchStrategy.cpp`](../packages/card-scanner-core/src/core/SearchStrategy.cpp).
 
 **Constants:**
 
@@ -386,7 +382,7 @@ lowest-ranked ones rather than searching them.
 std::vector<CardSearchResult> searchMultipleDatabases(
     const std::vector<float> &embedding,
     const std::vector<std::string> &topGames,
-    const dto::ScannerConfig &config,
+    const ScannerConfig &config,
     DatabaseManager &dbManager
 ) {
   std::vector<CardSearchResult> allResults;
@@ -395,7 +391,7 @@ std::vector<CardSearchResult> searchMultipleDatabases(
     const auto &gameToSearch = topGames[i];
 
     try {
-      ObjectBoxDB *gameDb = dbManager.getOrCreateStore(gameToSearch);
+      GameStorePtr gameDb = dbManager.getOrCreateStore(gameToSearch);
       if (!gameDb) continue;
 
       // Search in this game's database
@@ -439,12 +435,12 @@ right one. `MAX_GAME_DATABASES` bounds the worst case.
 
 #### Step 4.4: Filter to Best Game
 
-**Source:** [`SearchStrategy.cpp:114-156`](../packages/card-scanner-core/src/core/SearchStrategy.cpp)
+**Source:** [`SearchStrategy.cpp`](../packages/card-scanner-core/src/core/SearchStrategy.cpp)
 
 ```cpp
-std::vector<dto::CardMatch> filterToBestGame(
+SearchOutcome filterToBestGame(
     const std::vector<CardSearchResult> &allResults,
-    const dto::ScannerConfig &config
+    const ScannerConfig &config
 ) {
   if (allResults.empty()) return {};
 
@@ -467,16 +463,21 @@ std::vector<dto::CardMatch> filterToBestGame(
     }
   }
 
+  SearchOutcome outcome;
   if (bestMatchGame.empty()) {
-    return {}; // No confident match
+    // No confident match: hand back the best raw candidates instead.
+    const size_t keep =
+        std::min(sortedResults.size(), static_cast<size_t>(config.maxMatches));
+    outcome.nearMisses.assign(sortedResults.begin(), sortedResults.begin() + keep);
+    return outcome;
   }
 
   // Filter: keep only cards from best match game
-  std::vector<dto::CardMatch> filteredMatches;
+  auto &filteredMatches = outcome.matches;
   for (const auto &result : sortedResults) {
     if (result.gameName == bestMatchGame &&
         result.score >= getEffectiveConfidenceThreshold(result.gameName, config)) {
-      filteredMatches.push_back(convertToCardMatch(result));
+      filteredMatches.push_back(result);
 
       if (filteredMatches.size() >= static_cast<size_t>(config.maxMatches)) {
         break;
@@ -484,7 +485,7 @@ std::vector<dto::CardMatch> filterToBestGame(
     }
   }
 
-  return filteredMatches;
+  return outcome;
 }
 ```
 
@@ -507,7 +508,7 @@ The `predictedGameConfidence` field contains the YOLO model's confidence score (
 
 ### STAGE 5: Game-Specific Metadata
 
-**Source:** [`ScannerPipeline.cpp:224-233`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
+**Source:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 Only runs if `card.hasMatches()` returns true.
 
@@ -517,11 +518,11 @@ Only runs if `card.hasMatches()` returns true.
 
 ### 5A. MTG Set Symbol Detection
 
-**Source:** [`ScannerPipeline.cpp:142-157`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp) → [`SetSymbolProcessor.cpp`](../packages/card-scanner-core/src/core/SetSymbolProcessor.cpp)
+**Source:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp) → [`SetSymbolProcessor.cpp`](../packages/card-scanner-core/src/core/SetSymbolProcessor.cpp)
 
 #### Conditions
 
-**Source:** [`SetSymbolProcessor.cpp:15-38`](../packages/card-scanner-core/src/core/SetSymbolProcessor.cpp)
+**Source:** [`SetSymbolProcessor.cpp`](../packages/card-scanner-core/src/core/SetSymbolProcessor.cpp)
 
 ```cpp
 // 1. Card is MTG
@@ -532,7 +533,7 @@ if (!yoloModel || !embedder || !database) return empty;
 
 // 3. Disambiguation needed
 if (cardMatches.size() >= 2) {
-  float scoreDiff = cardMatches[0].score - cardMatches[1].score;
+  double scoreDiff = cardMatches[0].score - cardMatches[1].score;
   if (scoreDiff > disambiguationThreshold) {
     return empty; // Top match is clearly best, skip
   }
@@ -543,7 +544,7 @@ if (cardMatches.size() >= 2) {
 
 #### Processing Steps
 
-**Source:** [`SetSymbolProcessor.cpp:40-55`](../packages/card-scanner-core/src/core/SetSymbolProcessor.cpp)
+**Source:** [`SetSymbolProcessor.cpp`](../packages/card-scanner-core/src/core/SetSymbolProcessor.cpp)
 
 ```cpp
 // Step 1: Detect symbol bounding box
@@ -575,11 +576,11 @@ if (!results.empty() && results[0].score >= confidenceThreshold) {
 
 ### 5B. FAB Color Variant Detection
 
-**Source:** [`ScannerPipeline.cpp:159-184`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp) → [`FABColorProcessor.cpp`](../packages/card-scanner-core/src/core/FABColorProcessor.cpp)
+**Source:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp) → [`FABColorProcessor.cpp`](../packages/card-scanner-core/src/core/FABColorProcessor.cpp)
 
 #### Conditions
 
-**Source:** [`FABColorProcessor.cpp:15-38`](../packages/card-scanner-core/src/core/FABColorProcessor.cpp)
+**Source:** [`FABColorProcessor.cpp`](../packages/card-scanner-core/src/core/FABColorProcessor.cpp)
 
 ```cpp
 // 1. Card is FAB
@@ -590,7 +591,7 @@ if (!fabClassifier) return empty;
 
 // 3. Disambiguation needed (same logic as MTG)
 if (cardMatches.size() >= 2) {
-  float scoreDiff = cardMatches[0].score - cardMatches[1].score;
+  double scoreDiff = cardMatches[0].score - cardMatches[1].score;
   if (scoreDiff > disambiguationThreshold) {
     return empty;
   }
@@ -599,7 +600,7 @@ if (cardMatches.size() >= 2) {
 
 #### Processing Steps
 
-**Source:** [`FABColorProcessor.cpp:40-54`](../packages/card-scanner-core/src/core/FABColorProcessor.cpp)
+**Source:** [`FABColorProcessor.cpp`](../packages/card-scanner-core/src/core/FABColorProcessor.cpp)
 
 ```cpp
 // Step 1: Extract dots region (top-left corner)
@@ -609,7 +610,7 @@ cv::Mat dotsRegion = extractDotsRegion(cardImage, dotsRegionRatio, minDotsRegion
 return fabClassifier->classifyColor(dotsRegion);
 ```
 
-**Extract Dots Region:** [`FABColorProcessor.cpp:57-76`](../packages/card-scanner-core/src/core/FABColorProcessor.cpp)
+**Extract Dots Region:** [`FABColorProcessor.cpp`](../packages/card-scanner-core/src/core/FABColorProcessor.cpp)
 
 ```cpp
 cv::Mat extractDotsRegion(const cv::Mat &cardImage,
@@ -636,12 +637,12 @@ cv::Mat extractDotsRegion(const cv::Mat &cardImage,
 
 ### 1. Blur Filtering
 
-- **Where:** [`ScannerPipeline.cpp:29-41`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
+- **Where:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 - **Impact:** Skips ML on bad frames (~1-2ms blur check vs ~200ms ML)
 
 ### 2. Frame Throttling
 
-- **Where:** [`ScannerPipeline.cpp:43-62`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
+- **Where:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 - **Impact:** Limits to 5 FPS max (configurable)
 
 ### 3. Detection Selection

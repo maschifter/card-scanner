@@ -116,26 +116,25 @@ ScanResult ScannerPipeline::processFrame(const cv::Mat &frameImage,
   }
 
   // Stage 1: Segmentation
-  cardscanner::SegmentationResult segResult;
+  cardscanner::SegmentationResult detections;
   {
     benchmark::BenchmarkCollector::ScopedTimer timer(
         benchmark::Stage::YoloSegmentation);
-    segResult = performSegmentation(frameImage, ctx);
+    detections = performSegmentation(frameImage, ctx);
   }
   // Recorded even when zero, so an all-zero row is attributable to YOLO
   // finding nothing rather than to stages measuring 0ms.
   benchmark::BenchmarkCollector::set(
       benchmark::Metric::DetectionCount,
-      static_cast<double>(segResult.detections.size()));
-  if (!segResult.detections.empty()) {
+      static_cast<double>(detections.size()));
+  if (!detections.empty()) {
     benchmark::BenchmarkCollector::set(benchmark::Metric::YoloConfidence,
-                                       segResult.detections[0].box.conf);
+                                       detections[0].box.conf);
   }
 
   log(LOG_LEVEL::Debug, "[CardScanner]", "detected",
-      segResult.detections.size(), "cards in frame");
+      detections.size(), "cards in frame");
 
-  auto &detections = segResult.detections;
   const bool freeze =
       applyScanMode(detections, frameImage, config, session, forceFreeze,
                     result);
@@ -237,11 +236,11 @@ ScannerPipeline::performSegmentation(const cv::Mat &frameImage,
   // Selection disabled (benchmark): keep the historical highest-confidence
   // pick so results stay comparable across runs.
   if (!config.useDetectionSelection) {
-    if (config.scanMode == "single" && !segResult.detections.empty()) {
+    if (config.scanMode == "single" && !segResult.empty()) {
       auto maxConfDet = std::max_element(
-          segResult.detections.begin(), segResult.detections.end(),
+          segResult.begin(), segResult.end(),
           [](const auto &a, const auto &b) { return a.box.conf < b.box.conf; });
-      segResult.detections = {*maxConfDet};
+      segResult = {*maxConfDet};
     }
   }
 
@@ -335,7 +334,7 @@ void ScannerPipeline::saveCardImages(ScanResult &result,
 
 SetSymbolInfo
 ScannerPipeline::detectSetSymbol(const cv::Mat &cardImage,
-                                 const std::vector<CardMatch> &cardMatches,
+                                 const std::vector<CardSearchResult> &cardMatches,
                                  const ScannerContext &ctx) {
   const ScannerConfig &config = ctx.config;
 
@@ -357,7 +356,7 @@ ScannerPipeline::detectSetSymbol(const cv::Mat &cardImage,
 }
 
 FABColorInfo ScannerPipeline::detectFABColorVariant(
-    const cv::Mat &cardImage, const std::vector<CardMatch> &cardMatches,
+    const cv::Mat &cardImage, const std::vector<CardSearchResult> &cardMatches,
     const ScannerContext &ctx) {
   const ScannerConfig &config = ctx.config;
 
@@ -396,7 +395,7 @@ recognizeInEitherOrientation(ProcessedCard &card, cv::Mat &processingImage,
   }
   auto recognize = [&](const cv::Mat &image) {
     if (image.empty() || ctx.embedding == nullptr) {
-      return std::vector<CardMatch>{};
+      return std::vector<CardSearchResult>{};
     }
     auto outcome = SearchStrategy::searchCard(image, detection, config,
                                               *ctx.embedding, ctx.gameEmbedders);

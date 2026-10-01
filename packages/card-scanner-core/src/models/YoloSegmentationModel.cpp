@@ -438,7 +438,7 @@ SegmentationResult YoloSegmentationModel::segment(const cv::Mat &image,
       postprocess(image, preds, protos, protoH, protoW, classNames_,
                   conf.value_or(conf_), bestFitQuads);
 
-  return SegmentationResult{detections};
+  return detections;
 }
 
 } // namespace cardscanner

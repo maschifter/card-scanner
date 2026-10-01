@@ -1,5 +1,6 @@
 #pragma once
 
+#include "SearchResults.h"
 #include <opencv2/opencv.hpp>
 #include <optional>
 #include <string>
@@ -15,33 +16,6 @@ struct MultiVerdict {
   /// Why it did not qualify: "count", "angle", "overlap", "size", "small",
   /// "blur" or "unstable". Empty when it did.
   std::string reason;
-};
-
-/**
- * @struct CardMatch
- * @brief Single card match from database search
- */
-struct CardMatch {
-  std::string cardId;
-  std::string gameName;
-  float score;
-};
-
-/**
- * @struct SetSymbolInfo
- * @brief MTG set symbol detection result
- */
-struct SetSymbolInfo {
-  std::string setCode; // e.g., "BRO" (Brother's War)
-  float similarity;    // Confidence score [0.0, 1.0]
-
-  // Default constructor for empty results
-  SetSymbolInfo() : setCode(""), similarity(0.0f) {}
-
-  SetSymbolInfo(const std::string &code, float sim)
-      : setCode(code), similarity(sim) {}
-
-  bool isEmpty() const { return setCode.empty(); }
 };
 
 /**
@@ -86,11 +60,11 @@ struct ProcessedCard {
   long imageFileSize; // File size in bytes
 
   // Recognition results
-  std::vector<CardMatch> matches;
+  std::vector<CardSearchResult> matches;
   // Best below-threshold candidates when matches is empty (thorough scans)
-  std::vector<CardMatch> nearMisses;
+  std::vector<CardSearchResult> nearMisses;
   std::string predictedGameName;
-  float predictedGameConfidence; // YOLO confidence for predicted game (0.0-1.0)
+  double predictedGameConfidence; // YOLO confidence for predicted game (0.0-1.0)
 
   // Game-specific metadata
   SetSymbolInfo setSymbol; // MTG: set symbol detection
@@ -98,7 +72,7 @@ struct ProcessedCard {
 
   ProcessedCard()
       : detectionConfidence(0.0f), imageWidth(0), imageHeight(0),
-        imageFileSize(0), predictedGameConfidence(0.0f) {}
+        imageFileSize(0), predictedGameConfidence(0.0) {}
 
   bool hasMatches() const { return !matches.empty(); }
 };

@@ -71,7 +71,7 @@ ObjectBoxDB::search_similar_cards(const std::vector<float> &query_embedding,
   // Calculate dot product similarity for each candidate
   for (const auto &card : cards) {
     cardscanner::CardSearchResult result;
-    result.card_id = card.card_id;
+    result.cardId = card.card_id;
 
     // Calculate similarity score using dot product (cosine similarity for
     // normalized embeddings)
@@ -98,9 +98,9 @@ ObjectBoxDB::search_similar_cards(const std::vector<float> &query_embedding,
   return results;
 }
 
-std::vector<cardscanner::SetSymbolMatch> ObjectBoxDB::search_similar_set_symbols(
+std::vector<cardscanner::SetSymbolInfo> ObjectBoxDB::search_similar_set_symbols(
     const std::vector<float> &query_embedding, int limit) {
-  std::vector<cardscanner::SetSymbolMatch> results;
+  std::vector<cardscanner::SetSymbolInfo> results;
 
   try {
     obx::Box<SetSymbol> box(*store);
@@ -115,7 +115,7 @@ std::vector<cardscanner::SetSymbolMatch> ObjectBoxDB::search_similar_set_symbols
 
     // Calculate dot product similarity for each symbol
     for (const auto &symbol : symbols) {
-      cardscanner::SetSymbolMatch match;
+      cardscanner::SetSymbolInfo match;
       match.setCode = symbol.set_code;
 
       // Calculate cosine similarity (dot product of normalized vectors)
@@ -130,7 +130,7 @@ std::vector<cardscanner::SetSymbolMatch> ObjectBoxDB::search_similar_set_symbols
 
     // Sort by similarity (highest first)
     std::sort(results.begin(), results.end(),
-              [](const cardscanner::SetSymbolMatch &a, const cardscanner::SetSymbolMatch &b) {
+              [](const cardscanner::SetSymbolInfo &a, const cardscanner::SetSymbolInfo &b) {
                 return a.similarity > b.similarity;
               });
 

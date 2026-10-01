@@ -4,6 +4,7 @@
 #include "core/ScannerContext.h"
 #include "core/ScannerPipeline.h"
 #include "types/BenchmarkRecord.h"
+#include "types/ScanOptions.h"
 #include "types/ScanResults.h"
 #include "types/ScannerConfig.h"
 #include <DatabaseManager.h>
@@ -24,15 +25,6 @@ namespace cardscanner {
  * before scan() takes the pipeline lease, never after.
  */
 std::unique_lock<std::mutex> tryClaimScan(); // Drops rather than queues.
-
-/// Per-scan overrides, applied to a local copy of the config.
-struct ScanOptions {
-  std::string_view scanMode;    // empty: the config's mode
-  bool ignoreFrameRate = false; // stills bypass the live-feed throttle
-  bool recordTimings = false;   // benchmark record around the pipeline
-  bool live = false;            // camera frame: a multi-card layout may freeze
-  bool forceFreeze = false;     // shutter: live frame freezes on any cards
-};
 
 /**
  * @class ScannerRegistry

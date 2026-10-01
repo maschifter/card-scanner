@@ -9,13 +9,11 @@
 namespace cardscanner {
 namespace desktop {
 
-using core::CardInfo;
-
 namespace {
 
 using json = nlohmann::json;
 
-json cardToJson(const CardInfo &card, ProductClient &products) {
+json cardToJson(const CardSearchResult &card, ProductClient &products) {
   json out = {{"cardId", card.cardId},
               {"game", card.gameName},
               {"score", card.score},

@@ -193,8 +193,6 @@ SetSymbolYoloModel::postprocess(const cv::Mat &originalImg,
 }
 
 SetSymbolDetectionResult SetSymbolYoloModel::detect(const cv::Mat &image) {
-  SetSymbolDetectionResult result;
-
   // Preprocessing
   std::vector<float> inputData = preprocess(image);
 
@@ -208,8 +206,7 @@ SetSymbolDetectionResult SetSymbolYoloModel::detect(const cv::Mat &image) {
   const std::span<const float> preds = output.data;
 
   // Postprocessing
-  result.detections = postprocess(image, preds, outputShape);
-  return result;
+  return postprocess(image, preds, outputShape);
 }
 
 } // namespace cardscanner

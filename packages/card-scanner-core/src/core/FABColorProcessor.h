@@ -37,7 +37,7 @@ public:
    */
   static FABColorInfo
   processColorVariant(const cv::Mat &cardImage,
-                      const std::vector<CardMatch> &cardMatches,
+                      const std::vector<CardSearchResult> &cardMatches,
                       float disambiguationThreshold,
                       cardscanner::FABColorClassifier *fabClassifier,
                       double dotsRegionRatio, int minDotsRegionSize);
@@ -49,7 +49,7 @@ private:
    * @param cardMatches Recognition results
    * @return True if first match is FAB
    */
-  static bool isFABCard(const std::vector<CardMatch> &cardMatches);
+  static bool isFABCard(const std::vector<CardSearchResult> &cardMatches);
 
   /**
    * @brief Extract the 3-dots indicator region from the top-left corner

@@ -267,8 +267,8 @@ BenchmarkRunner::run(const std::vector<BenchmarkImageInput> &images,
           BenchmarkCollector::getBenchmarkedLabel(Label::YoloPredictedGames);
 
       // Kept even on a rejected match, so a near-miss stays legible.
-      record.rawTopScore = static_cast<float>(
-          BenchmarkCollector::getBenchmarkedValue(Metric::RawTopScore));
+      record.rawTopScore =
+          BenchmarkCollector::getBenchmarkedValue(Metric::RawTopScore);
       record.rawTopCardId =
           BenchmarkCollector::getBenchmarkedLabel(Label::RawTopCardId);
 

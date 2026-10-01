@@ -75,10 +75,10 @@ struct BenchmarkRecord {
 
   // The match as the scanner would report it; blank/0 when nothing met confidenceThreshold.
   std::string topMatchCardId;
-  float topScore = 0.0f;
+  double topScore = 0.0;
   bool matchCorrect = false;
 
-  float rawTopScore = 0.0f;
+  double rawTopScore = 0.0;
   std::string rawTopCardId;
 
   ScanOutcome outcome = ScanOutcome::NoDetection;

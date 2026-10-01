@@ -41,9 +41,9 @@ struct Diagnostics {
   int detections = 0;
   float detectionConfidence = 0.0f;
   std::string predictedGame;
-  float predictedGameConfidence = 0.0f;
+  double predictedGameConfidence = 0.0;
   /// Top score even when below the accept threshold.
-  float topScore = 0.0f;
+  double topScore = 0.0;
   std::string topCardId;
   bool accepted = false;
   /// Box within roi, as fractions of it.

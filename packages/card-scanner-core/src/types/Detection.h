@@ -35,12 +35,7 @@ struct Detection {
   std::string predictedGame;     ///< Canonical name of the top predicted class
 };
 
-/**
- * @struct SegmentationResult
- * @brief Everything one segmentation pass found in a frame.
- */
-struct SegmentationResult {
-  std::vector<Detection> detections; ///< All detected cards
-};
+/// Every card one segmentation pass found in a frame.
+using SegmentationResult = std::vector<Detection>;
 
 } // namespace cardscanner

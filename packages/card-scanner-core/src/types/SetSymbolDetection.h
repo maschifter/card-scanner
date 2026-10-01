@@ -17,12 +17,7 @@ struct SetSymbolBBox {
   float confidence;
 };
 
-/**
- * @struct SetSymbolDetectionResult
- * @brief Every set symbol found in one card image.
- */
-struct SetSymbolDetectionResult {
-  std::vector<SetSymbolBBox> detections;
-};
+/// Every set symbol found in one card image.
+using SetSymbolDetectionResult = std::vector<SetSymbolBBox>;
 
 } // namespace cardscanner

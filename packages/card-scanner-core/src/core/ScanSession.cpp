@@ -115,16 +115,16 @@ void ScanSession::clearEmitted() {
 
 void ScanSession::emitFromHistory(const std::string &cardId) {
   std::lock_guard<std::mutex> lock(mutex_);
-  const auto found =
-      std::find_if(history_.begin(), history_.end(),
-                   [&](const CardInfo &entry) { return entry.cardId == cardId; });
+  const auto found = std::find_if(
+      history_.begin(), history_.end(),
+      [&](const CardSearchResult &entry) { return entry.cardId == cardId; });
   if (found == history_.end()) {
     return;
   }
 
   // Copied out first: recordHistoryLocked reorders history_, which would
   // leave a reference into it dangling.
-  const CardInfo card = *found;
+  const CardSearchResult card = *found;
   emitted_ = card;
   emittedAt_ = Clock::now();
   status_ = Status::Emitted;
@@ -132,7 +132,7 @@ void ScanSession::emitFromHistory(const std::string &cardId) {
   recordHistoryLocked(card);
 }
 
-void ScanSession::recordHistoryLocked(const CardInfo &card) {
+void ScanSession::recordHistoryLocked(const CardSearchResult &card) {
   for (size_t i = 0; i < history_.size(); i++) {
     if (history_[i].cardId == card.cardId) {
       history_.erase(history_.begin() + long(i));
@@ -195,7 +195,8 @@ bool ScanSession::onScanResult(const ScanResult &result) {
     candidate_->score = top.score;
     ambiguous_ = ambiguous_ || ambiguousNow;
   } else {
-    candidate_ = CardInfo{top.cardId, top.gameName, top.score, 1};
+    candidate_ = top;
+    candidate_->detections = 1;
     ambiguous_ = ambiguousNow;
     status_ = Status::Detecting;
   }

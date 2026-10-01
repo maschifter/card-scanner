@@ -84,7 +84,7 @@ if (!result.success) {
 }
 ```
 
-**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp:240-340`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
+**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
 
 ---
 
@@ -108,7 +108,7 @@ useEffect(() => {
 }, []);
 ```
 
-**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp:97-113`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
+**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
 
 ---
 
@@ -284,7 +284,7 @@ if (result.success && result.cards.length > 0) {
   - iOS: `Library/Caches/card-images/`
   - Android: `cache/card-images/`
 
-**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp:186-250`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
+**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
 
 ---
 
@@ -314,7 +314,7 @@ databases.forEach((db) => {
 });
 ```
 
-**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp:500-576`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
+**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
 
 ---
 
@@ -343,7 +343,7 @@ if (info) {
 }
 ```
 
-**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp:578-656`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
+**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
 
 ---
 
@@ -379,7 +379,7 @@ if (result.success) {
 }
 ```
 
-**Implementation:** [`packages/mobile-card-scanner/src/index.ts:256-270`](../packages/mobile-card-scanner/src/index.ts)
+**Implementation:** [`packages/mobile-card-scanner/src/index.ts`](../packages/mobile-card-scanner/src/index.ts)
 
 ---
 
@@ -417,7 +417,7 @@ if (result.success) {
 - Removes entire database directory
 - Cannot be undone
 
-**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp:658-712`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
+**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
 
 ---
 
@@ -496,7 +496,7 @@ interface ScannerConfig {
 }
 ```
 
-**Implementation:** [`packages/mobile-card-scanner/src/index.ts:8-42`](../packages/mobile-card-scanner/src/index.ts)
+**Implementation:** [`packages/mobile-card-scanner/src/index.ts`](../packages/mobile-card-scanner/src/index.ts)
 
 ---
 
@@ -886,7 +886,7 @@ const result = await initializeScanner({
 
 ### Implementation Details
 
-The per-game embedding computation happens in [`SearchStrategy.cpp:100-125`](../packages/card-scanner-core/src/core/SearchStrategy.cpp).
+The per-game embedding computation happens in [`SearchStrategy.cpp`](../packages/card-scanner-core/src/core/SearchStrategy.cpp).
 The embedders are passed down as a `GameEmbedders` map rather than fetched from a
 registry, so the search has no global state to reach for:
 

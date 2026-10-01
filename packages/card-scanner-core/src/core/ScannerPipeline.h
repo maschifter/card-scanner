@@ -107,7 +107,7 @@ private:
    */
   static SetSymbolInfo
   detectSetSymbol(const cv::Mat &cardImage,
-                  const std::vector<CardMatch> &cardMatches,
+                  const std::vector<CardSearchResult> &cardMatches,
                   const ScannerContext &ctx);
 
   /**
@@ -120,7 +120,7 @@ private:
    */
   static FABColorInfo
   detectFABColorVariant(const cv::Mat &cardImage,
-                        const std::vector<CardMatch> &cardMatches,
+                        const std::vector<CardSearchResult> &cardMatches,
                         const ScannerContext &ctx);
 
   /**

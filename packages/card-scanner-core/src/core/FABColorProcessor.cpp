@@ -8,7 +8,7 @@ namespace core {
 using cardscanner::LOG_LEVEL;
 
 FABColorInfo FABColorProcessor::processColorVariant(
-    const cv::Mat &cardImage, const std::vector<CardMatch> &cardMatches,
+    const cv::Mat &cardImage, const std::vector<CardSearchResult> &cardMatches,
     float disambiguationThreshold,
     cardscanner::FABColorClassifier *fabClassifier, double dotsRegionRatio,
     int minDotsRegionSize) {
@@ -26,9 +26,9 @@ FABColorInfo FABColorProcessor::processColorVariant(
   // If top match is clearly the best (score difference > threshold), skip
   // detection
   if (cardMatches.size() >= 2) {
-    float top1Score = cardMatches[0].score;
-    float top2Score = cardMatches[1].score;
-    float scoreDifference = top1Score - top2Score;
+    double top1Score = cardMatches[0].score;
+    double top2Score = cardMatches[1].score;
+    double scoreDifference = top1Score - top2Score;
 
     // If difference exceeds threshold, top match is clearly best
     if (scoreDifference > disambiguationThreshold) {
@@ -67,7 +67,7 @@ FABColorInfo FABColorProcessor::processColorVariant(
 }
 
 bool FABColorProcessor::isFABCard(
-    const std::vector<CardMatch> &cardMatches) {
+    const std::vector<CardSearchResult> &cardMatches) {
   return !cardMatches.empty() && cardMatches[0].gameName == "fab";
 }
 

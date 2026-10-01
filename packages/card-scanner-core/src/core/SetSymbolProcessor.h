@@ -41,7 +41,7 @@ public:
    * @return SetSymbolInfo (empty if not MTG or detection failed)
    */
   static SetSymbolInfo processSetSymbol(
-      const cv::Mat &cardImage, const std::vector<CardMatch> &cardMatches,
+      const cv::Mat &cardImage, const std::vector<CardSearchResult> &cardMatches,
       const float disambiguationThreshold, const float confidenceThreshold,
       cardscanner::SetSymbolYoloModel *yoloModel,
       cardscanner::SetSymbolEmbedder *embedder, ObjectBoxDB *database);
@@ -53,7 +53,7 @@ private:
    * @param cardMatches Recognition results
    * @return True if first match is MTG
    */
-  static bool isMTGCard(const std::vector<CardMatch> &cardMatches);
+  static bool isMTGCard(const std::vector<CardSearchResult> &cardMatches);
 
   /**
    * @brief Check if all set symbol models are available
