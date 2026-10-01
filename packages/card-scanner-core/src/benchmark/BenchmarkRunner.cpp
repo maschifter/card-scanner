@@ -179,25 +179,19 @@ std::string BenchmarkRunner::toJson(
   return json.str();
 }
 
-// Raw pointers are the same as in the scanner pipeline, that's why used
-BenchmarkRunResult BenchmarkRunner::run(
-    const std::vector<BenchmarkImageInput> &images,
-    const ScannerConfig &config, int warmupIterations,
-    int benchmarkIterations, cardscanner::DatabaseManager &dbManager,
-    cardscanner::YoloSegmentationModel *yoloModel,
-    cardscanner::CardEmbeddingModel *embeddingModel,
-    cardscanner::SetSymbolYoloModel *setSymbolYolo,
-    cardscanner::SetSymbolEmbedder *setSymbolEmbedder,
-    cardscanner::FABColorClassifier *fabColorClassifier,
-    const cardscanner::GameEmbedders *gameEmbedders) {
+BenchmarkRunResult
+BenchmarkRunner::run(const std::vector<BenchmarkImageInput> &images,
+                     const core::ScannerContext &ctx, int warmupIterations,
+                     int benchmarkIterations) {
 
-  if (!yoloModel || !embeddingModel) {
+  if (!ctx.yolo || !ctx.embedding) {
     throw std::runtime_error(
         "Benchmark requires initialized YOLO and embedding models");
   }
 
   // Disable frame-rate throttling so every iteration runs the full pipeline.
-  ScannerConfig benchmarkConfig = config;
+  core::ScannerContext benchmarkCtx = ctx;
+  ScannerConfig &benchmarkConfig = benchmarkCtx.config;
   benchmarkConfig.maxFrameRate = 0;
   // Images are unrelated prepared single cards - cross-frame state (sticky
   // tracking, flip cache) would make results depend on run order.
@@ -240,10 +234,7 @@ BenchmarkRunResult BenchmarkRunner::run(
       BenchmarkCollector::beginBenchmarkRecord();
 
       auto scanResult =
-          core::ScannerPipeline::processFrame(
-              imageRGB, benchmarkConfig, dbManager, yoloModel, embeddingModel,
-              setSymbolYolo, setSymbolEmbedder, fabColorClassifier,
-                gameEmbedders);
+          core::ScannerPipeline::processFrame(imageRGB, benchmarkCtx);
 
       // processFrame closes the record after the first detection; reopen it
       // so the deferred save stage still lands in this record's saveMs.

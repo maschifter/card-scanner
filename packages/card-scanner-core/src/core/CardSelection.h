@@ -14,5 +14,8 @@ namespace core {
 void selectCenterMost(std::vector<Detection> &detections,
                       const cv::Size &frameSize);
 
+/// Forgets the tracked card, so the next frame picks afresh.
+void resetSelection();
+
 } // namespace core
 } // namespace cardscanner

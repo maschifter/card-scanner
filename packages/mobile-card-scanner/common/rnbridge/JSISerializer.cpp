@@ -49,21 +49,15 @@ JSISerializer::parseScannerConfig(jsi::Runtime &runtime,
   config.confidenceThreshold = static_cast<float>(
       configObj.getProperty(runtime, "confidenceThreshold").asNumber());
 
-  // Parse disambiguation threshold (optional)
-  auto disambiguationThresholdProp =
-      configObj.getProperty(runtime, "disambiguationThreshold");
-  config.disambiguationThreshold =
-      disambiguationThresholdProp.isNumber()
-          ? static_cast<float>(disambiguationThresholdProp.asNumber())
-          : config.disambiguationThreshold;
-
-  // Parse min game confidence (optional)
-  auto minGameConfidenceProp =
-      configObj.getProperty(runtime, "minGameConfidence");
-  config.minGameConfidence =
-      minGameConfidenceProp.isNumber()
-          ? static_cast<float>(minGameConfidenceProp.asNumber())
-          : config.minGameConfidence;
+  // Optional numbers keep their ScannerConfig default when absent
+  const auto numberOr = [&](const char *name, double fallback) {
+    auto prop = configObj.getProperty(runtime, name);
+    return prop.isNumber() ? prop.asNumber() : fallback;
+  };
+  config.disambiguationThreshold = static_cast<float>(
+      numberOr("disambiguationThreshold", config.disambiguationThreshold));
+  config.minGameConfidence = static_cast<float>(
+      numberOr("minGameConfidence", config.minGameConfidence));
 
   // 3. Parse Search Parameters (Ints)
   config.maxMatches =
@@ -78,34 +72,24 @@ JSISerializer::parseScannerConfig(jsi::Runtime &runtime,
   config.captureImage = captureImageProp.isBool() ? captureImageProp.asBool()
                                                   : config.captureImage;
 
-
-  // 4b. Parse blur threshold (optional)
-  auto blurThresholdProp = configObj.getProperty(runtime, "blurThreshold");
-  config.blurThreshold = blurThresholdProp.isNumber()
-                             ? static_cast<double>(blurThresholdProp.asNumber())
-                             : config.blurThreshold;
-
-  // 4c. Parse low light threshold (optional)
-  auto lowLightThresholdProp =
-      configObj.getProperty(runtime, "lowLightThreshold");
+  // 4b. Optional frame gates and low-light correction
+  config.blurThreshold = numberOr("blurThreshold", config.blurThreshold);
   config.lowLightThreshold =
-      lowLightThresholdProp.isNumber()
-          ? static_cast<double>(lowLightThresholdProp.asNumber())
-          : config.lowLightThreshold;
+      numberOr("lowLightThreshold", config.lowLightThreshold);
+  config.lowLightGamma = numberOr("lowLightGamma", config.lowLightGamma);
+  config.maxFrameRate =
+      static_cast<int>(numberOr("maxFrameRate", config.maxFrameRate));
 
-  // 4d. Parse low light gamma (optional)
-  auto lowLightGammaProp = configObj.getProperty(runtime, "lowLightGamma");
-  config.lowLightGamma = lowLightGammaProp.isNumber()
-                             ? static_cast<double>(lowLightGammaProp.asNumber())
-                             : config.lowLightGamma;
+  // 4c. Multi-card freeze tunables (optional); validate() range-checks them
+  config.minCardsForMulti =
+      static_cast<int>(numberOr("minCardsForMulti", config.minCardsForMulti));
+  config.multiStableFrames =
+      static_cast<int>(numberOr("multiStableFrames", config.multiStableFrames));
+  auto freezeOnMultiProp = configObj.getProperty(runtime, "freezeOnMulti");
+  config.freezeOnMulti = freezeOnMultiProp.isBool() ? freezeOnMultiProp.asBool()
+                                                    : config.freezeOnMulti;
 
-  // 4e. Parse max frame rate (optional)
-  auto maxFrameRateProp = configObj.getProperty(runtime, "maxFrameRate");
-  config.maxFrameRate = maxFrameRateProp.isNumber()
-                            ? static_cast<int>(maxFrameRateProp.asNumber())
-                            : config.maxFrameRate;
-
-  // 4f. Parse game class mapping; validate() checks the map itself
+  // 4d. Parse game class mapping; validate() checks the map itself
   auto gameClassMappingProp =
       configObj.getProperty(runtime, "gameClassMapping");
   if (!gameClassMappingProp.isUndefined() &&

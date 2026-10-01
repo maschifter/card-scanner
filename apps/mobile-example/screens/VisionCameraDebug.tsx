@@ -22,6 +22,7 @@ import { type Detection, type DetectedCard } from '@cardnexus/card-scanner';
 import Svg, { Rect } from 'react-native-svg';
 import { createSynchronizable } from 'react-native-worklets';
 import { useDetectionListener } from '../hooks/useDetectionListener';
+import { useScanMode } from '../hooks/useScanMode';
 import { useScannerLoader } from '../hooks/useScannerLoader';
 import { checkDatabaseStatus } from '../utils/database';
 import {
@@ -31,6 +32,7 @@ import {
   type ViewBox,
 } from '../utils/cameraCoords';
 import { createScanOnFrame } from '../utils/scanOnFrame';
+import { fileUri } from '../utils/format';
 
 const isScanningSync = createSynchronizable(false);
 
@@ -53,6 +55,9 @@ export default function VisionCameraDebug() {
   const [emptyDatabases, setEmptyDatabases] = useState<Set<string>>(new Set());
 
   const { isLoading, error, retry } = useScannerLoader();
+  // No freeze UI here: in "auto" a multi-card layout would pause native with
+  // nothing on this screen to resume it.
+  useScanMode('single', !isLoading);
 
   useEffect(() => {
     isScanningSync.setBlocking(isScanning);
@@ -201,6 +206,8 @@ export default function VisionCameraDebug() {
           ref={cameraRef}
           style={StyleSheet.absoluteFill}
           device={device}
+          // Frames oriented to the portrait UI, not the phone.
+          orientationSource="interface"
           isActive={true}
           outputs={[frameOutput]}
           constraints={[{ fps: 30 }, { videoStabilizationMode: 'off' }]}
@@ -319,11 +326,7 @@ export default function VisionCameraDebug() {
             </Text>
             {croppedImagePath && (
               <Image
-                source={{
-                  uri: croppedImagePath.startsWith('file://')
-                    ? croppedImagePath
-                    : `file://${croppedImagePath}`,
-                }}
+                source={{ uri: fileUri(croppedImagePath) }}
                 style={styles.croppedImage}
                 resizeMode="contain"
               />

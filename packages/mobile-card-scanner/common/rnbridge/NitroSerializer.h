@@ -1,8 +1,10 @@
 #pragma once
 
+#include <core/MultiScanSession.h>
 #include <types/ScanResults.h>
 #include "NitroDetection.hpp"
 #include <string>
+#include <vector>
 
 namespace cardscanner {
 namespace utils {
@@ -25,6 +27,15 @@ public:
    */
   static margelo::nitro::cardscanner::NitroDetection
   serializeScanResult(const ScanResult &result);
+
+  /// One processed card as its own detection, for the `multiCard` event.
+  static margelo::nitro::cardscanner::NitroDetection
+  serializeCard(const ProcessedCard &card);
+
+  /// The frozen frame's cards before recognition (box, quad and predicted
+  /// game only), for the `multiStart` event.
+  static margelo::nitro::cardscanner::NitroDetection serializePlaceholders(
+      const std::vector<core::MultiScanSession::Slot> &slots);
 
   /**
    * @brief Build a failed NitroDetection

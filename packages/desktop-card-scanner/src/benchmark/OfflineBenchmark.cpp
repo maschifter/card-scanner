@@ -96,8 +96,7 @@ size_t runOfflineBenchmark(const OfflineBenchmarkOptions &options) {
   }
 
   const auto runResult = ScannerRegistry::runBenchmark(
-      images, options.warmupIterations, options.benchmarkIterations,
-      DatabaseManager::getInstance());
+      images, options.warmupIterations, options.benchmarkIterations);
 
   std::ofstream out(options.outPath);
   out << runResult.json;

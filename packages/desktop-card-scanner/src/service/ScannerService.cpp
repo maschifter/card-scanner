@@ -110,8 +110,6 @@ void ScannerService::workerLoop() {
     if (!job.image.empty()) {
       lastFrameAt = std::chrono::steady_clock::now();
       try {
-        auto &dbManager = DatabaseManager::getInstance();
-
         using benchmark::BenchmarkCollector;
         using benchmark::Stage;
 
@@ -120,7 +118,7 @@ void ScannerService::workerLoop() {
         const bool timings = reportTimings_.load(std::memory_order_relaxed);
         ScanOptions options;
         options.recordTimings = timings;
-        const auto scanned = ScannerRegistry::scan(job.image, dbManager, options);
+        const auto scanned = ScannerRegistry::scan(job.image, options);
         if (scanned) {
           const ScanResult &result = *scanned;
 

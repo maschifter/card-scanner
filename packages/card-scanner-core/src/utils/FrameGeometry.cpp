@@ -1,4 +1,5 @@
 #include "FrameGeometry.h"
+#include <algorithm>
 
 #include <opencv2/imgproc.hpp>
 #include <stdexcept>
@@ -26,25 +27,33 @@ cv::Mat rotateFrameUpright(const cv::Mat &frame, FrameOrientation orientation) {
 
 cv::Rect inverseRotateBox(const cv::Rect &box, FrameOrientation orientation,
                           const cv::Size &rotatedSize) {
-  const int x1 = box.x;
-  const int y1 = box.y;
-  const int x2 = box.x + box.width;
-  const int y2 = box.y + box.height;
-  const int rotatedWidth = rotatedSize.width;
-  const int rotatedHeight = rotatedSize.height;
+  const cv::Point2f a = inverseRotatePoint(
+      cv::Point2f(static_cast<float>(box.x), static_cast<float>(box.y)),
+      orientation, rotatedSize);
+  const cv::Point2f b =
+      inverseRotatePoint(cv::Point2f(static_cast<float>(box.x + box.width),
+                                     static_cast<float>(box.y + box.height)),
+                         orientation, rotatedSize);
+  return cv::Rect(cv::Point(static_cast<int>(std::min(a.x, b.x)),
+                            static_cast<int>(std::min(a.y, b.y))),
+                  cv::Point(static_cast<int>(std::max(a.x, b.x)),
+                            static_cast<int>(std::max(a.y, b.y))));
+}
 
+cv::Point2f inverseRotatePoint(const cv::Point2f &p,
+                               FrameOrientation orientation,
+                               const cv::Size &rotatedSize) {
+  const float w = static_cast<float>(rotatedSize.width);
+  const float h = static_cast<float>(rotatedSize.height);
   switch (orientation) {
   case FrameOrientation::Up:
-    return box;
+    return p;
   case FrameOrientation::Left:
-    return cv::Rect(cv::Point(y1, rotatedWidth - x2),
-                    cv::Point(y2, rotatedWidth - x1));
+    return {p.y, w - p.x};
   case FrameOrientation::Right:
-    return cv::Rect(cv::Point(rotatedHeight - y2, x1),
-                    cv::Point(rotatedHeight - y1, x2));
+    return {h - p.y, p.x};
   case FrameOrientation::Down:
-    return cv::Rect(cv::Point(rotatedWidth - x2, rotatedHeight - y2),
-                    cv::Point(rotatedWidth - x1, rotatedHeight - y1));
+    return {w - p.x, h - p.y};
   }
   throw std::runtime_error("Unknown frame orientation");
 }

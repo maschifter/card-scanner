@@ -17,6 +17,7 @@ namespace margelo::nitro::cardscanner {
       prototype.registerHybridMethod("scanFrame", &HybridCardScannerPluginSpec::scanFrame);
       prototype.registerHybridMethod("setDetectionListener", &HybridCardScannerPluginSpec::setDetectionListener);
       prototype.registerHybridMethod("clearDetectionListener", &HybridCardScannerPluginSpec::clearDetectionListener);
+      prototype.registerHybridMethod("requestShutter", &HybridCardScannerPluginSpec::requestShutter);
     });
   }
 

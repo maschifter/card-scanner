@@ -200,13 +200,12 @@ void CardScannerInstaller::injectJSIBindings(
 
   auto scanImageFunc = jsi::Function::createFromHostFunction(
       *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, "scanImage"), 2,
-      [&dbManager,
-       callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
+      [callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
                     const jsi::Value *args, size_t count) -> jsi::Value {
         if (count < 1 || !args[0].isString()) {
           throw jsi::JSError(runtime,
                              "scanImage expects (imagePath: string, "
-                             "mode?: 'single' | 'multiple')");
+                             "mode?: 'single' | 'multiple' | 'auto')");
         }
 
         std::string imagePath = args[0].asString(runtime).utf8(runtime);
@@ -218,21 +217,20 @@ void CardScannerInstaller::injectJSIBindings(
             throw jsi::JSError(runtime, "scanImage: mode must be a string");
           }
           scanMode = args[1].asString(runtime).utf8(runtime);
-          if (scanMode != "single" && scanMode != "multiple") {
-            throw jsi::JSError(runtime, "scanImage: mode must be 'single' or "
-                                        "'multiple', got '" + scanMode + "'");
+          if (!ScannerConfig::isScanMode(scanMode)) {
+            throw jsi::JSError(runtime, "scanImage: mode must be 'single', "
+                                        "'multiple' or 'auto', got '" +
+                                            scanMode + "'");
           }
         }
 
         return Promise::createPromise(
             runtime, callInvoker,
-            [imagePath, scanMode,
-             &dbManager](std::shared_ptr<Promise> promise) {
-              runAsync(std::move(promise), [imagePath, scanMode,
-                                            &dbManager]() -> SettleFn {
+            [imagePath, scanMode](std::shared_ptr<Promise> promise) {
+              runAsync(std::move(promise), [imagePath, scanMode]() -> SettleFn {
                 try {
-                  ScanResult scanResult = ScannerRegistry::scanImageFile(
-                      imagePath, dbManager, scanMode);
+                  ScanResult scanResult =
+                      ScannerRegistry::scanImageFile(imagePath, scanMode);
                   return [scanResult = std::move(scanResult)](jsi::Runtime &rt,
                                                               Promise &p) {
                     p.resolve(rt, utils::JSISerializer::serializeScanResult(
@@ -249,11 +247,52 @@ void CardScannerInstaller::injectJSIBindings(
   jsiRuntime->global().setProperty(*jsiRuntime, "scanImage",
                                    std::move(scanImageFunc));
 
+  // Live scan control. All three flip registry state and return at once;
+  // nothing here waits on the pipeline.
+  const auto installVoid = [&](const char *name, size_t argCount,
+                               jsi::HostFunctionType fn) {
+    jsiRuntime->global().setProperty(
+        *jsiRuntime, name,
+        jsi::Function::createFromHostFunction(
+            *jsiRuntime, jsi::PropNameID::forAscii(*jsiRuntime, name),
+            argCount, std::move(fn)));
+  };
+
+  installVoid("pauseScanning", 0,
+              [](jsi::Runtime &, const jsi::Value &, const jsi::Value *,
+                 size_t) -> jsi::Value {
+                ScannerRegistry::pauseScanning();
+                return jsi::Value::undefined();
+              });
+
+  installVoid("resumeScanning", 0,
+              [](jsi::Runtime &, const jsi::Value &, const jsi::Value *,
+                 size_t) -> jsi::Value {
+                ScannerRegistry::resumeScanning();
+                return jsi::Value::undefined();
+              });
+
+  installVoid("setScanMode", 1,
+              [](jsi::Runtime &runtime, const jsi::Value &,
+                 const jsi::Value *args, size_t count) -> jsi::Value {
+                if (count < 1 || !args[0].isString()) {
+                  throw jsi::JSError(runtime,
+                                     "setScanMode expects a mode string");
+                }
+                try {
+                  ScannerRegistry::setScanMode(
+                      args[0].asString(runtime).utf8(runtime));
+                } catch (const std::exception &e) {
+                  throw jsi::JSError(runtime,
+                                     std::string("setScanMode: ") + e.what());
+                }
+                return jsi::Value::undefined();
+              });
+
   auto runBenchmarkFunc = jsi::Function::createFromHostFunction(
       *jsiRuntime,
       jsi::PropNameID::forAscii(*jsiRuntime, "runBenchmarkFromImages"), 3,
-      [&dbManager,
-       callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
+      [callInvoker](jsi::Runtime &runtime, const jsi::Value &thisValue,
                     const jsi::Value *args, size_t count) -> jsi::Value {
         if (count < 3 || !args[0].isObject() ||
             !args[0].asObject(runtime).isArray(runtime) || !args[1].isNumber() ||
@@ -331,27 +370,27 @@ void CardScannerInstaller::injectJSIBindings(
         int benchmarkIterations = static_cast<int>(benchmarkRaw);
         return Promise::createPromise(
             runtime, callInvoker,
-            [&dbManager, images = std::move(images), warmupIterations,
+            [images = std::move(images), warmupIterations,
              benchmarkIterations](std::shared_ptr<Promise> promise) {
-              runAsync(std::move(promise), [&dbManager, images = std::move(images),
-                                            warmupIterations,
-                                            benchmarkIterations]() -> SettleFn {
-                auto runResult = ScannerRegistry::runBenchmark(
-                    images, warmupIterations, benchmarkIterations, dbManager);
+              runAsync(std::move(promise),
+                       [images = std::move(images), warmupIterations,
+                        benchmarkIterations]() -> SettleFn {
+                         auto runResult = ScannerRegistry::runBenchmark(
+                             images, warmupIterations, benchmarkIterations);
 
-                return [runResult =
-                            std::move(runResult)](jsi::Runtime &rt, Promise &p) {
-                  jsi::Object result(rt);
-                  result.setProperty(rt, "success", jsi::Value(true));
-                  result.setProperty(
-                      rt, "recordCount",
-                      jsi::Value(static_cast<double>(runResult.recordCount)));
-                  result.setProperty(
-                      rt, "recordsJson",
-                      jsi::String::createFromUtf8(rt, runResult.json));
-                  p.resolve(rt, std::move(result));
-                };
-              });
+                         return [runResult = std::move(runResult)](
+                                    jsi::Runtime &rt, Promise &p) {
+                           jsi::Object result(rt);
+                           result.setProperty(rt, "success", jsi::Value(true));
+                           result.setProperty(rt, "recordCount",
+                                              jsi::Value(static_cast<double>(
+                                                  runResult.recordCount)));
+                           result.setProperty(
+                               rt, "recordsJson",
+                               jsi::String::createFromUtf8(rt, runResult.json));
+                           p.resolve(rt, std::move(result));
+                         };
+                       });
             });
       });
 

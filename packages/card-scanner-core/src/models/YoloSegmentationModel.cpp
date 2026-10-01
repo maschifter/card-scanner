@@ -1,6 +1,7 @@
 #include "YoloSegmentationModel.h"
 #include "../Constants.h"
 #include "../utils/BoxGeometry.h"
+#include "../utils/QuadGeometry.h"
 #include "../utils/YoloPreprocessing.h"
 #include <algorithm>
 #include <cmath>
@@ -245,7 +246,7 @@ cv::Mat YoloSegmentationModel::processMask(std::span<const float> protos,
 std::vector<Detection> YoloSegmentationModel::postprocess(
     const cv::Mat &originalImg, std::span<const float> preds,
     std::span<const float> protos, int protoH, int protoW,
-    const GameClassMap &classNames) {
+    const GameClassMap &classNames, float conf, bool bestFitQuads) {
   // Parse predictions tensor: [1, 4 + numClasses + 32, anchors], channels-first
 
   std::vector<BBox> boxes;
@@ -278,7 +279,7 @@ std::vector<Detection> YoloSegmentationModel::postprocess(
       }
     }
 
-    if (maxConf < conf_)
+    if (maxConf < conf)
       continue;
 
     std::vector<std::pair<float, int>> class_confs;
@@ -352,11 +353,14 @@ std::vector<Detection> YoloSegmentationModel::postprocess(
     det.maskBinary = processMask(protos, protoH, protoW, maskCoeffs[idx],
                                  boxes[idx], originalImg.size());
 
-    // Extract quad from mask and dewarp. The mask already is at
-    // MASK_DOWNSAMPLE_SCALE (see processMask); the quad scales back up.
+    // Extract quad from mask. The mask already is at MASK_DOWNSAMPLE_SCALE
+    // (see processMask); the quad scales back up. The pipeline dewarps the
+    // cards it keeps.
     if (!det.maskBinary.empty()) {
       constexpr float scale = yolo::MASK_DOWNSAMPLE_SCALE;
-      auto quadSmall = quadFromMask(det.maskBinary, &det.quadWasSideways);
+      const auto [quadSmall, sideways] =
+          utils::quadFromMask(det.maskBinary, bestFitQuads);
+      det.quadWasSideways = sideways;
 
       // Scale quad coordinates back to full resolution
       if (quadSmall.size() == 4) {
@@ -366,12 +370,6 @@ std::vector<Detection> YoloSegmentationModel::postprocess(
           det.quad[i].y = quadSmall[i].y / scale;
         }
       }
-
-      // Dewarp if we have a valid quad
-      if (det.quad.size() == 4) {
-        det.dewarpedCard = warpPerspectiveCard(
-            originalImg, det.quad, card::DEWARP_HEIGHT, card::ASPECT_RATIO);
-      }
     }
 
     detections.push_back(det);
@@ -380,225 +378,9 @@ std::vector<Detection> YoloSegmentationModel::postprocess(
   return detections;
 }
 
-std::vector<cv::Point2f>
-YoloSegmentationModel::orderQuad(const std::vector<cv::Point2f> &pts) const {
-  // Port of Python's order_quad:
-  // Order as [TL, TR, BR, BL] using sum and diff
-  // TL has min(x+y), BR has max(x+y)
-  // TR has min(y-x), BL has max(y-x)
-
-  if (pts.size() != 4) {
-    return pts;
-  }
-
-  cv::Point2f tl, tr, br, bl;
-  float minSum = FLT_MAX, maxSum = -FLT_MAX;
-  float minDiff = FLT_MAX, maxDiff = -FLT_MAX;
-
-  for (const auto &p : pts) {
-    float sum = p.x + p.y;
-    float diff = p.y - p.x;
-
-    if (sum < minSum) {
-      minSum = sum;
-      tl = p;
-    }
-    if (sum > maxSum) {
-      maxSum = sum;
-      br = p;
-    }
-    if (diff < minDiff) {
-      minDiff = diff;
-      tr = p;
-    }
-    if (diff > maxDiff) {
-      maxDiff = diff;
-      bl = p;
-    }
-  }
-
-  return {tl, tr, br, bl};
-}
-
-bool YoloSegmentationModel::isValidQuad(
-    const std::vector<cv::Point2f> &quad) const {
-  if (quad.size() != 4)
-    return false;
-
-  // Check for degenerate points (too close together)
-  for (size_t i = 0; i < 4; i++) {
-    for (size_t j = i + 1; j < 4; j++) {
-      if (cv::norm(quad[i] - quad[j]) < yolo::MIN_POINT_DISTANCE)
-        return false;
-    }
-  }
-
-  // Check area
-  std::vector<cv::Point> intQuad;
-  for (const auto &p : quad) {
-    intQuad.push_back(cv::Point(p.x, p.y));
-  }
-
-  double area = cv::contourArea(intQuad);
-  return area >= yolo::MIN_QUAD_AREA;
-}
-
-std::vector<cv::Point2f>
-YoloSegmentationModel::orientQuad(const std::vector<cv::Point2f> &quad,
-                                  bool *wasSideways) const {
-  if (wasSideways != nullptr) {
-    *wasSideways = false;
-  }
-
-  // Port of Python's _orient_quad_topmost_upright:
-  // Find the edge with the smallest mid-y (topmost edge) and orient from there
-
-  // Calculate midpoints of all 4 edges
-  std::vector<cv::Point2f> mids(4);
-  for (int i = 0; i < 4; i++) {
-    cv::Point2f a = quad[i];
-    cv::Point2f b = quad[(i + 1) % 4];
-    mids[i] = (a + b) * 0.5f;
-  }
-
-  // Find the edge with smallest mid-y
-  float minMidY = mids[0].y;
-  for (int i = 1; i < 4; i++) {
-    if (mids[i].y < minMidY) {
-      minMidY = mids[i].y;
-    }
-  }
-
-  // Find all edges within tolerance of the minimum
-  std::vector<int> candidates;
-  for (int i = 0; i < 4; i++) {
-    if (mids[i].y <= minMidY + yolo::TOPMOST_TIE_TOLERANCE) {
-      candidates.push_back(i);
-    }
-  }
-
-  // If multiple candidates, break tie by smallest y, then leftmost x
-  int topIdx = candidates[0];
-  if (candidates.size() > 1) {
-    std::sort(candidates.begin(), candidates.end(), [&mids](int i1, int i2) {
-      if (std::abs(mids[i1].y - mids[i2].y) < yolo::ORIENT_Y_TOLERANCE) {
-        return mids[i1].x < mids[i2].x; // leftmost
-      }
-      return mids[i1].y < mids[i2].y; // topmost
-    });
-    topIdx = candidates[0];
-  }
-
-  // Get points starting from the topmost edge
-  cv::Point2f a = quad[topIdx];
-  cv::Point2f b = quad[(topIdx + 1) % 4];
-  cv::Point2f c = quad[(topIdx + 2) % 4];
-  cv::Point2f d = quad[(topIdx + 3) % 4];
-
-  // Ensure top edge goes left to right
-  cv::Point2f tl, tr;
-  if (a.x <= b.x) {
-    tl = a;
-    tr = b;
-  } else {
-    tl = b;
-    tr = a;
-  }
-
-  // Assign bottom corners based on distance to TR
-  cv::Point2f br, bl;
-  if (cv::norm(c - tr) <= cv::norm(d - tr)) {
-    br = c;
-    bl = d;
-  } else {
-    br = d;
-    bl = c;
-  }
-
-  // A card's top edge is its short edge - a sideways quad (stale/lagging
-  // orientation metadata) would otherwise dewarp rotated 90 degrees.
-  if (cv::norm(tr - tl) > cv::norm(br - tr)) {
-    if (wasSideways != nullptr) {
-      *wasSideways = true;
-    }
-    return {tr, br, bl, tl};
-  }
-  return {tl, tr, br, bl};
-}
-
-std::vector<cv::Point2f>
-YoloSegmentationModel::quadFromMask(const cv::Mat &maskU8,
-                                    bool *wasSideways) const {
-  // Use CHAIN_APPROX_SIMPLE for faster contour detection
-  std::vector<std::vector<cv::Point>> contours;
-  cv::findContours(maskU8, contours, cv::RETR_EXTERNAL,
-                   cv::CHAIN_APPROX_SIMPLE);
-
-  if (contours.empty()) {
-    return {};
-  }
-
-  // Get largest contour
-  auto largestContour = *std::max_element(
-      contours.begin(), contours.end(), [](const auto &a, const auto &b) {
-        return cv::contourArea(a) < cv::contourArea(b);
-      });
-
-  // Get convex hull
-  std::vector<cv::Point> hull;
-  cv::convexHull(largestContour, hull);
-
-  // Try polygon approximation - start with most likely epsilon values first
-  float perimeter = cv::arcLength(hull, true);
-
-  for (float frac : yolo::QUAD_EPSILON_FRACS) {
-    std::vector<cv::Point> approx;
-    cv::approxPolyDP(hull, approx, frac * perimeter, true);
-
-    if (approx.size() == 4) {
-      std::vector<cv::Point2f> quadF;
-      quadF.reserve(4);
-      for (const auto &p : approx) {
-        quadF.push_back(cv::Point2f(p.x, p.y));
-      }
-
-      auto ordered = orderQuad(quadF);
-      if (isValidQuad(ordered)) {
-        return orientQuad(ordered, wasSideways);
-      }
-    }
-  }
-
-  // Fallback to minimum area rectangle
-  cv::RotatedRect rect = cv::minAreaRect(hull);
-  cv::Point2f vertices[4];
-  rect.points(vertices);
-
-  std::vector<cv::Point2f> quadF(vertices, vertices + 4);
-  auto ordered = orderQuad(quadF);
-  return orientQuad(ordered, wasSideways);
-}
-
-cv::Mat
-YoloSegmentationModel::warpPerspectiveCard(const cv::Mat &img,
-                                           const std::vector<cv::Point2f> &quad,
-                                           int targetH, float aspect) const {
-
-  int W = static_cast<int>(std::round(targetH * aspect));
-  int H = targetH;
-
-  std::vector<cv::Point2f> dst = {cv::Point2f(0, 0), cv::Point2f(W - 1, 0),
-                                  cv::Point2f(W - 1, H - 1),
-                                  cv::Point2f(0, H - 1)};
-
-  cv::Mat M = cv::getPerspectiveTransform(quad, dst);
-  cv::Mat warped;
-  cv::warpPerspective(img, warped, M, cv::Size(W, H), cv::INTER_LINEAR);
-
-  return warped;
-}
-
-SegmentationResult YoloSegmentationModel::segment(const cv::Mat &image) {
+SegmentationResult YoloSegmentationModel::segment(const cv::Mat &image,
+                                                  std::optional<float> conf,
+                                                  bool bestFitQuads) {
   if (image.empty()) {
     throw std::runtime_error("Empty image provided to segment()");
   }
@@ -653,7 +435,8 @@ SegmentationResult YoloSegmentationModel::segment(const cv::Mat &image) {
 
   // Postprocess
   std::vector<Detection> detections =
-      postprocess(image, preds, protos, protoH, protoW, classNames_);
+      postprocess(image, preds, protos, protoH, protoW, classNames_,
+                  conf.value_or(conf_), bestFitQuads);
 
   return SegmentationResult{detections};
 }

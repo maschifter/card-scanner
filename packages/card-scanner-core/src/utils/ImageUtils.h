@@ -94,19 +94,27 @@ public:
 
       std::string filename = "card_" + std::to_string(timestamp) + "_" +
                              std::to_string(index) + ".jpg";
-      std::string imagePath = cacheDir + "/" + filename;
+      return saveImageRGB(cardImage, cacheDir + "/" + filename);
+    } catch (const std::exception &e) {
+      return "";
+    }
+  }
 
-      // Convert RGB to BGR for correct color display
-      cv::Mat cardImgBGR;
-      cv::cvtColor(cardImage, cardImgBGR, cv::COLOR_RGB2BGR);
-
-      // Save image as JPEG
-      std::vector<int> compression_params;
-      compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
-      compression_params.push_back(constants::card::JPEG_QUALITY);
-
-      bool success = cv::imwrite(imagePath, cardImgBGR, compression_params);
-      return success ? imagePath : "";
+  /**
+   * @brief Writes an RGB image as JPEG to an exact path, overwriting.
+   * @return The path if written, empty string otherwise
+   */
+  static std::string saveImageRGB(const cv::Mat &image,
+                                  const std::string &imagePath) {
+    if (image.empty()) {
+      return "";
+    }
+    try {
+      cv::Mat bgr;
+      cv::cvtColor(image, bgr, cv::COLOR_RGB2BGR);
+      const std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY,
+                                       constants::card::JPEG_QUALITY};
+      return cv::imwrite(imagePath, bgr, params) ? imagePath : "";
     } catch (const std::exception &e) {
       return "";
     }

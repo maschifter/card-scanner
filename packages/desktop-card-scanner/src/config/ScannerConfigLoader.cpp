@@ -181,14 +181,34 @@ LoadedConfig loadConfigFile(const std::filesystem::path &configPath) {
   }
 
   warnUnknownKeys(root, "",
-                  {"modelsDir", "databasesDir", "cacheDir", "segmentationModelPath",
-                   "embeddingModelPath", "scanMode", "segmentationThreshold",
-                   "iouThreshold", "confidenceThreshold", "disambiguationThreshold",
-                   "minGameConfidence", "maxMatches", "searchCandidates",
-                   "captureImage", "useDetectionSelection", "useSidewaysFlipCache",
-                   "blurThreshold", "lowLightThreshold", "lowLightGamma",
-                   "maxFrameRate", "gameClassMapping", "gameSpecificConfig",
-                   "productEndpoint", "productImageBase", "productImageTransform"});
+                  {"modelsDir",
+                   "databasesDir",
+                   "cacheDir",
+                   "segmentationModelPath",
+                   "embeddingModelPath",
+                   "scanMode",
+                   "segmentationThreshold",
+                   "iouThreshold",
+                   "confidenceThreshold",
+                   "disambiguationThreshold",
+                   "minGameConfidence",
+                   "maxMatches",
+                   "searchCandidates",
+                   "captureImage",
+                   "useDetectionSelection",
+                   "useSidewaysFlipCache",
+                   "blurThreshold",
+                   "lowLightThreshold",
+                   "lowLightGamma",
+                   "maxFrameRate",
+                   "minCardsForMulti",
+                   "multiStableFrames",
+                   "freezeOnMulti",
+                   "gameClassMapping",
+                   "gameSpecificConfig",
+                   "productEndpoint",
+                   "productImageBase",
+                   "productImageTransform"});
 
   const std::filesystem::path base =
       std::filesystem::absolute(configPath).parent_path();
@@ -230,6 +250,10 @@ LoadedConfig loadConfigFile(const std::filesystem::path &configPath) {
   SET_CONFIG_OR_DEFAULT(lowLightThreshold);
   SET_CONFIG_OR_DEFAULT(lowLightGamma);
   SET_CONFIG_OR_DEFAULT(maxFrameRate);
+
+  SET_CONFIG_OR_DEFAULT(minCardsForMulti);
+  SET_CONFIG_OR_DEFAULT(multiStableFrames);
+  SET_CONFIG_OR_DEFAULT(freezeOnMulti);
 
 #undef SET_CONFIG_OR_DEFAULT
 

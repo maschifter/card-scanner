@@ -39,6 +39,11 @@ cv::Point2f cardCenter(const Detection &det) {
 
 } // namespace
 
+void resetSelection() {
+  std::lock_guard<std::mutex> lock(stickyMutex);
+  stickyState.valid = false;
+}
+
 void selectCenterMost(std::vector<Detection> &detections,
                       const cv::Size &frameSize) {
   if (detections.size() <= 1) {

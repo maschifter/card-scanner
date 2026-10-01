@@ -17,10 +17,18 @@ import type {
 // Configuration Types
 // ============================================================================
 
+/**
+ * `single`: the center-most card only. `multiple`: every card, live.
+ * `auto`: single until a stable multi-card layout appears, then multi.
+ * In `auto` and `multiple`, a qualifying frame freezes scanning and streams
+ * its cards through the detection listener (see `AsyncScanResult.type`).
+ */
+export type ScanMode = 'single' | 'multiple' | 'auto';
+
 export interface ScannerConfig {
   segmentationModelPath: string;
   embeddingModelPath: string;
-  scanMode: 'single' | 'multiple'; // Single: highest confidence only
+  scanMode: ScanMode;
   segmentationThreshold: number; // YOLO confidence threshold (default: 0.7)
   iouThreshold: number; // NMS IOU threshold (default: 0.7)
   confidenceThreshold: number; // Min similarity score (default: 0.6)
@@ -33,6 +41,11 @@ export interface ScannerConfig {
   lowLightThreshold?: number; // Min brightness for gamma correction (0-255, 0 = disabled, default: 65)
   lowLightGamma?: number; // Gamma correction value for low-light enhancement (default: 2.0)
   maxFrameRate?: number; // Maximum frame rate for ML pipeline in FPS (default: 5)
+
+  // Multi-card freeze (auto / multiple)
+  minCardsForMulti?: number; // Min detections to consider multi (default: 6)
+  multiStableFrames?: number; // Consecutive qualifying frames before freezing (default: 2)
+  freezeOnMulti?: boolean; // Freeze and stream on a qualifying frame (default: true)
 
   gameClassMapping: Record<number, string | string[]>;
 
@@ -243,10 +256,12 @@ declare global {
   var doesCardIdExist: (gameName: string, cardId: string) => Promise<boolean>;
 
   // Image scanning
-  var scanImage: (
-    imagePath: string,
-    mode?: 'single' | 'multiple',
-  ) => Promise<Detection>;
+  var scanImage: (imagePath: string, mode?: ScanMode) => Promise<Detection>;
+
+  // Live scan control
+  var pauseScanning: () => void;
+  var resumeScanning: () => void;
+  var setScanMode: (mode: ScanMode) => void;
 
   // Benchmarking. Resolves with the records as raw JSON.
   var runBenchmarkFromImages: (
@@ -416,9 +431,37 @@ export async function doesCardIdExist(
  */
 export async function scanImage(
   imagePath: string,
-  mode?: 'single' | 'multiple',
+  mode?: ScanMode,
 ): Promise<Detection> {
   return await global.scanImage(imagePath, mode);
+}
+
+// ============================================================================
+// Live Scan Control
+// ============================================================================
+
+/**
+ * Stop accepting camera frames. The multi-card freeze calls this natively;
+ * call it yourself to hold the pipeline without tearing down the camera.
+ */
+export function pauseScanning(): void {
+  global.pauseScanning();
+}
+
+/**
+ * Accept camera frames again after a freeze or a manual pause. Also forgets
+ * the tracked card and restarts the multi-card stability window.
+ */
+export function resumeScanning(): void {
+  global.resumeScanning();
+}
+
+/**
+ * Switch the scan mode without reloading models. Takes effect on the next
+ * frame.
+ */
+export function setScanMode(mode: ScanMode): void {
+  global.setScanMode(mode);
 }
 
 // ============================================================================

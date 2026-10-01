@@ -1,6 +1,17 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Detection, DetectedCard } from '@cardnexus/card-scanner';
 
+const HISTORY_CAP = 20;
+
+/** A history entry; `confirmed` once the user picked or confirmed it. */
+export type ScannedCard = DetectedCard & { confirmed?: boolean };
+
+/** Prepends a card to the history unless it is already there. */
+const withCard = (history: ScannedCard[], card: ScannedCard) =>
+  history.some((c) => c.cardId === card.cardId)
+    ? history
+    : [card, ...history].slice(0, HISTORY_CAP);
+
 /**
  * Card only lands in the history after enough consecutive detections,
  * with the threshold raised for ambiguous matches.
@@ -9,9 +20,9 @@ import type { Detection, DetectedCard } from '@cardnexus/card-scanner';
  * The counters live in refs, not state - none of them are rendered.
  */
 export function useCardConfirmation() {
-  const [scannedCardsHistory, setScannedCardsHistory] = useState<
-    DetectedCard[]
-  >([]);
+  const [scannedCardsHistory, setScannedCardsHistory] = useState<ScannedCard[]>(
+    [],
+  );
 
   const lastScannedCardIdRef = useRef<string | null>(null);
   const consecutiveDetectionsRef = useRef(0);
@@ -99,17 +110,7 @@ export function useCardConfirmation() {
           : '';
       console.log(`Card confirmed after ${newCount} detections${reason}`);
 
-      // Card fully identified - add to history (check for duplicates)
-      setScannedCardsHistory((prev) => {
-        const isDuplicate = prev.some(
-          (card) => card.cardId === finalCard.cardId,
-        );
-        if (isDuplicate) {
-          console.log('Card already in history, skipping duplicate');
-          return prev;
-        }
-        return [finalCard, ...prev].slice(0, 10); // Keep only last 10
-      });
+      setScannedCardsHistory((prev) => withCard(prev, finalCard));
 
       pendingSetSymbolsRef.current = [];
       lastScannedCardIdRef.current = null;
@@ -121,5 +122,44 @@ export function useCardConfirmation() {
     setScannedCardsHistory((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  return { scannedCardsHistory, confirmDetection, removeCard };
+  /** Adds an already-confirmed card, deduped. The multi-card freeze gives
+   *  one reading per card, so it skips the consecutive-detection gate. */
+  const addCard = useCallback((card: DetectedCard) => {
+    setScannedCardsHistory((prev) => withCard(prev, card));
+  }, []);
+
+  /** Puts the user's pick where the old entry was. A copy listed elsewhere
+   *  moves there; with the old entry already deleted, the pick is added. */
+  const replaceCard = useCallback((oldCardId: string, card: DetectedCard) => {
+    const picked: ScannedCard = { ...card, confirmed: true };
+    setScannedCardsHistory((prev) => {
+      const rest = prev.filter(
+        (c) => c.cardId !== card.cardId || c.cardId === oldCardId,
+      );
+      const at = rest.findIndex((c) => c.cardId === oldCardId);
+      return at === -1
+        ? [picked, ...rest].slice(0, HISTORY_CAP)
+        : rest.map((c, i) => (i === at ? picked : c));
+    });
+  }, []);
+
+  /** Marks a card the user confirmed as is, adding it if it is not listed. */
+  const confirmCard = useCallback((card: DetectedCard) => {
+    setScannedCardsHistory((prev) =>
+      prev.some((c) => c.cardId === card.cardId)
+        ? prev.map((c) =>
+            c.cardId === card.cardId ? { ...c, confirmed: true } : c,
+          )
+        : [{ ...card, confirmed: true }, ...prev].slice(0, HISTORY_CAP),
+    );
+  }, []);
+
+  return {
+    scannedCardsHistory,
+    confirmDetection,
+    removeCard,
+    addCard,
+    replaceCard,
+    confirmCard,
+  };
 }

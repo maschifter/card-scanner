@@ -12,6 +12,15 @@
 namespace cardscanner {
 namespace core {
 
+/// What one card search found.
+struct SearchOutcome {
+  /// Matches from the best game (empty if no confident match).
+  std::vector<CardMatch> matches;
+  /// When matches is empty, the best raw candidates (up to maxMatches, best
+  /// first).
+  std::vector<CardMatch> nearMisses;
+};
+
 /**
  * @class SearchStrategy
  * @brief Implements the multi-database adaptive search logic
@@ -40,17 +49,15 @@ public:
    * @param cardImage Cropped card image
    * @param detection YOLO detection with game predictions
    * @param config Scan configuration
-   * @param dbManager Database manager
    * @param defaultEmbedder Default embedding model (fallback)
-   * @return Vector of matches from best game (empty if no confident match)
+   * @param gameEmbedders Game-specific embedders, keyed by game
+   * @return The best game's matches, or the near misses
    */
-  static std::vector<CardMatch>
-  searchCard(const cv::Mat &cardImage,
-             const cardscanner::Detection &detection,
+  static SearchOutcome
+  searchCard(const cv::Mat &cardImage, const cardscanner::Detection &detection,
              const ScannerConfig &config,
-             cardscanner::DatabaseManager &dbManager,
              cardscanner::CardEmbeddingModel &defaultEmbedder,
-             const cardscanner::GameEmbedders *gameEmbedders);
+             const cardscanner::GameEmbedders &gameEmbedders);
 
 private:
   /**
@@ -78,7 +85,6 @@ private:
    * @param cardImage Cropped card image
    * @param topGames Game names to search
    * @param config Scan configuration
-   * @param dbManager Database manager
    * @param defaultEmbedder Default embedding model (fallback)
    * @return All results from all databases (unsorted)
    */
@@ -86,9 +92,8 @@ private:
   searchMultipleDatabases(const cv::Mat &cardImage,
                           const std::vector<std::string> &topGames,
                           const ScannerConfig &config,
-                          cardscanner::DatabaseManager &dbManager,
                           cardscanner::CardEmbeddingModel &defaultEmbedder,
-                          const cardscanner::GameEmbedders *gameEmbedders);
+                          const cardscanner::GameEmbedders &gameEmbedders);
 
   /**
    * @brief Filter results to best-matching game only
@@ -100,9 +105,10 @@ private:
    *
    * @param allResults All search results
    * @param config Scan configuration
-   * @return Filtered matches from best game (up to maxMatches)
+   * @return Filtered matches from best game (up to maxMatches), or the near
+   *   misses when no game clears its threshold
    */
-  static std::vector<CardMatch>
+  static SearchOutcome
   filterToBestGame(const std::vector<CardSearchResult> &allResults,
                    const ScannerConfig &config);
 

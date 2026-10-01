@@ -1,4 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   View,
   Text,
@@ -9,7 +15,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useIsFocused } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import {
   Camera,
   CommonResolutions,
@@ -19,12 +25,26 @@ import {
   useFrameOutput,
   type CameraRef,
 } from 'react-native-vision-camera';
-import { type Detection } from '@cardnexus/card-scanner';
-import { useSharedValue } from 'react-native-reanimated';
+import {
+  cardScannerPlugin,
+  setScanMode,
+  type AsyncScanResult,
+  type DetectedCard,
+  type Detection,
+  type ScanMode,
+} from '@cardnexus/card-scanner';
+import Animated, {
+  FadeIn,
+  FadeOut,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { createSynchronizable } from 'react-native-worklets';
 import { BoundingBox } from '../components/BoundingBox';
+import { FrozenMultiView } from '../components/FrozenMultiView';
 import { useCardConfirmation } from '../hooks/useCardConfirmation';
 import { useDetectionListener } from '../hooks/useDetectionListener';
+import { useMultiScan } from '../hooks/useMultiScan';
+import { useScanMode } from '../hooks/useScanMode';
 import { useScannerLoader } from '../hooks/useScannerLoader';
 import {
   snapshotBoxToCameraSpace,
@@ -34,12 +54,19 @@ import {
 } from '../utils/cameraCoords';
 import { createScanOnFrame } from '../utils/scanOnFrame';
 import { cardLabel } from '../utils/cardNames';
-import { pct } from '../utils/format';
+import { fileUri, pct } from '../utils/format';
 
 // Whether frame worklet should scan. Thread-safe, only mutated via setBlocking() from the JS thread.
 // Read via getDirty() inside `onFrame` instead of capturing React state.
 const isScanningSync = createSynchronizable(false);
 const BOX_CLEAR_GRACE_MS = 400;
+// Multi-card freeze: how long after a rescan native accepts frames again, and
+// how long a still stays up before it rescans on its own (0 = only on tap).
+const RESCAN_COOLDOWN_MS = 1500;
+const AUTO_RESUME_MS = 0;
+// "multiple" stays a native mode: the shutter scans its one frame with it.
+const SCAN_MODES: ScanMode[] = ['single', 'auto'];
+const NOTICE_MS = 1500;
 
 export default function VisionCameraScanner() {
   const insets = useSafeAreaInsets();
@@ -61,10 +88,22 @@ export default function VisionCameraScanner() {
   }, [isScanning, box]);
 
   const [isCameraRunning, setIsCameraRunning] = useState(false);
-  const { scannedCardsHistory, confirmDetection, removeCard } =
-    useCardConfirmation();
+  const {
+    scannedCardsHistory,
+    confirmDetection,
+    removeCard,
+    addCard,
+    replaceCard: replaceHistoryCard,
+    confirmCard: confirmHistoryCard,
+  } = useCardConfirmation();
 
   const { isLoading, error, retry } = useScannerLoader();
+
+  // Switched in place on the native side; the models stay loaded.
+  const [scanMode, setMode] = useState<ScanMode>('auto');
+  useScanMode(scanMode, !isLoading);
+  // The card inspector wants the height the carousel would take.
+  const [inspecting, setInspecting] = useState(false);
 
   // JS thread (via the Nitro listener). Finishes the box mapping - camera->
   // view needs the PreviewView ref - then feeds the confirmation bookkeeping.
@@ -88,19 +127,96 @@ export default function VisionCameraScanner() {
     }
   };
 
-  // Scan results arrive through the plugin's single native listener slot.
-  useDetectionListener((res) => {
-    const cameraBox =
-      res.detection.success && res.detection.cards.length > 0
-        ? snapshotBoxToCameraSpace(
-            res.detection.cards[0].boundingBox,
-            res.frameWidth,
-            res.frameHeight,
-            res.coordinateSnapshot,
-          )
-        : null;
-    processDetection(res.detection, cameraBox);
+  // The freeze owns the listener: it keeps its own stream and hands live
+  // frames back only while no still is up.
+  const multi = useMultiScan({
+    cooldownMs: RESCAN_COOLDOWN_MS,
+    autoResumeMs: AUTO_RESUME_MS,
+    onCardResolved: addCard,
+    onFrame: (res) => {
+      const cameraBox =
+        res.detection.success && res.detection.cards.length > 0
+          ? snapshotBoxToCameraSpace(
+              res.detection.cards[0].boundingBox,
+              res.frameWidth,
+              res.frameHeight,
+              res.coordinateSnapshot,
+            )
+          : null;
+      processDetection(res.detection, cameraBox);
+    },
   });
+
+  // The shutter: in single mode, one frame scanned as a page and frozen on
+  // whatever cards it holds. Pending until that frame's result comes back.
+  const shutterPending = useRef(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (notice === null) {
+      return;
+    }
+    const timer = setTimeout(() => setNotice(null), NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  const cancelShutter = useCallback(() => {
+    shutterPending.current = false;
+    cardScannerPlugin.requestShutter(false);
+  }, []);
+
+  const pressShutter = () => {
+    shutterPending.current = true;
+    setIsScanning(true);
+    cardScannerPlugin.requestShutter(true);
+  };
+
+  // A request must not outlive the screen: Debug View would freeze on it.
+  useFocusEffect(useCallback(() => cancelShutter, [cancelShutter]));
+
+  // Scan results arrive through the plugin's single native listener slot.
+  // Single mode reports no multi verdict, so one here answers the shutter.
+  useDetectionListener((res: AsyncScanResult) => {
+    if (shutterPending.current) {
+      if (res.type === 'multiStart') {
+        shutterPending.current = false;
+      } else if (res.multiRejectReason) {
+        shutterPending.current = false;
+        setNotice('No cards found');
+      }
+    }
+    multi.onEvent(res);
+  });
+
+  const selectMode = (mode: ScanMode) => {
+    cancelShutter();
+    setMode(mode);
+    setScanMode(mode);
+    multi.rescan();
+  };
+
+  const pickAlternative = (index: number, card: DetectedCard) => {
+    const slots = multi.frozen?.cards ?? [];
+    const previous = slots[index]?.card?.cardId;
+    // Another slot still showing the old card keeps its history entry.
+    const stillShown = slots.some(
+      (slot, i) => i !== index && slot.card?.cardId === previous,
+    );
+    multi.replaceCard(index, card, true);
+    if (previous && !stillShown) {
+      replaceHistoryCard(previous, card);
+    } else {
+      confirmHistoryCard(card);
+    }
+  };
+
+  const confirmSlot = (index: number) => {
+    const card = multi.frozen?.cards[index]?.card;
+    if (!card?.cardId) {
+      return;
+    }
+    multi.replaceCard(index, card, true);
+    confirmHistoryCard(card);
+  };
 
   const asyncRunner = useAsyncRunner();
 
@@ -202,7 +318,12 @@ export default function VisionCameraScanner() {
             ref={cameraRef}
             style={styles.camera}
             device={device}
-            isActive={true}
+            // Frames oriented to the portrait UI, not the phone: a frozen
+            // still then matches the preview however the phone is held.
+            orientationSource="interface"
+            // Off behind a still: nothing live under it, and no frames
+            // streaming into a paused pipeline.
+            isActive={!multi.frozen}
             outputs={[frameOutput]}
             constraints={[{ fps: 30 }, { videoStabilizationMode: 'off' }]}
             torchMode={
@@ -217,31 +338,80 @@ export default function VisionCameraScanner() {
         <View style={styles.boundingBoxOverlay} pointerEvents="none">
           <BoundingBox box={box} />
         </View>
+
+        {/* Multi-card freeze: the still with the crops popping in over it. */}
+        {multi.frozen && (
+          <FrozenMultiView
+            frame={multi.frozen}
+            onReplaceCard={pickAlternative}
+            onConfirmCard={confirmSlot}
+            onInspecting={setInspecting}
+          />
+        )}
+
+        {notice !== null && (
+          <Animated.View
+            entering={FadeIn}
+            exiting={FadeOut}
+            style={styles.notice}
+            pointerEvents="none"
+          >
+            <Text style={styles.noticeText}>{notice}</Text>
+          </Animated.View>
+        )}
+
+        <View style={styles.modePicker}>
+          {SCAN_MODES.map((mode) => (
+            <TouchableOpacity
+              key={mode}
+              style={[
+                styles.modeButton,
+                mode === scanMode && styles.modeActive,
+              ]}
+              onPress={() => selectMode(mode)}
+            >
+              <Text style={styles.modeText}>{mode}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       {/* Bottom Overlay Container */}
       <View style={[styles.bottomOverlay, { paddingBottom: insets.bottom }]}>
-        {/* Pause/Play Button - centered at top of bottom bar */}
+        {/* Rescan while a still is up, pause/play otherwise */}
         <View style={styles.bottomControlsContainer}>
+          {scanMode === 'single' && !multi.frozen && (
+            <TouchableOpacity
+              style={styles.shutterButton}
+              onPress={pressShutter}
+              accessibilityLabel="Scan every card in view"
+            >
+              <View style={styles.shutterInner} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={styles.bottomIconButton}
-            onPress={toggleScanning}
+            onPress={multi.frozen ? multi.rescan : toggleScanning}
           >
-            <View style={styles.pausePlayIcon}>
-              {isScanning ? (
-                <>
-                  <View style={styles.pauseBar} />
-                  <View style={styles.pauseBar} />
-                </>
-              ) : (
-                <View style={styles.playTriangle} />
-              )}
-            </View>
+            {multi.frozen ? (
+              <Text style={styles.rescanIcon}>↻</Text>
+            ) : (
+              <View style={styles.pausePlayIcon}>
+                {isScanning ? (
+                  <>
+                    <View style={styles.pauseBar} />
+                    <View style={styles.pauseBar} />
+                  </>
+                ) : (
+                  <View style={styles.playTriangle} />
+                )}
+              </View>
+            )}
           </TouchableOpacity>
         </View>
 
         {/* Bottom Card Carousel */}
-        {scannedCardsHistory.length > 0 && (
+        {scannedCardsHistory.length > 0 && !inspecting && (
           <View style={styles.bottomCarousel}>
             <ScrollView
               horizontal
@@ -265,11 +435,7 @@ export default function VisionCameraScanner() {
                   <View style={styles.cardImagePlaceholder}>
                     {card.capturedImage?.uri ? (
                       <Image
-                        source={{
-                          uri: card.capturedImage.uri.startsWith('file://')
-                            ? card.capturedImage.uri
-                            : `file://${card.capturedImage.uri}`,
-                        }}
+                        source={{ uri: fileUri(card.capturedImage.uri) }}
                         style={styles.cardImage}
                         resizeMode="cover"
                       />
@@ -283,6 +449,7 @@ export default function VisionCameraScanner() {
                   {/* Card Name */}
                   <View style={styles.cardNameContainer}>
                     <Text style={styles.cardNameText} numberOfLines={2}>
+                      {card.confirmed ? '✓ ' : ''}
                       {cardLabel(card.cardId)} {pct(card.confidenceScore)}
                     </Text>
                     <Text style={styles.cardIdText} numberOfLines={1}>
@@ -405,15 +572,70 @@ const styles = StyleSheet.create({
   boundingBoxOverlay: {
     ...StyleSheet.absoluteFillObject,
   },
+  modePicker: {
+    position: 'absolute',
+    top: 10,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 20,
+    padding: 3,
+  },
+  modeButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 17,
+  },
+  modeActive: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  modeText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  rescanIcon: {
+    color: '#fff',
+    fontSize: 28,
+    lineHeight: 32,
+  },
   bottomOverlay: {
     backgroundColor: 'rgba(0,0,0,0.9)',
     paddingTop: 10,
     zIndex: 10,
   },
   bottomControlsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
+    gap: 24,
     paddingVertical: 10,
   },
+  shutterButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 3,
+    borderColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  shutterInner: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#4CAF50',
+  },
+  notice: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: '45%',
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+  },
+  noticeText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   bottomIconButton: {
     width: 56,
     height: 56,

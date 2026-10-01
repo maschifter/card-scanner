@@ -37,6 +37,10 @@ std::string checkAtLeastOne(const std::string &prefix,
 
 } // namespace
 
+bool ScannerConfig::isScanMode(const std::string &mode) {
+  return mode == "single" || mode == "multiple" || mode == "auto";
+}
+
 std::string ScannerConfig::validate() const {
   if (segmentationModelPath.empty()) {
     return "segmentationModelPath is required";
@@ -44,8 +48,9 @@ std::string ScannerConfig::validate() const {
   if (embeddingModelPath.empty()) {
     return "embeddingModelPath is required";
   }
-  if (scanMode != "single" && scanMode != "multiple") {
-    return "scanMode must be 'single' or 'multiple', got '" + scanMode + "'";
+  if (!isScanMode(scanMode)) {
+    return "scanMode must be 'single', 'multiple' or 'auto', got '" + scanMode +
+           "'";
   }
 
   if (const auto error = checkUnitRange(
@@ -58,11 +63,13 @@ std::string ScannerConfig::validate() const {
     return error;
   }
   if (const auto error = checkAtLeastOne(
-          "", {{"maxMatches", maxMatches}, {"searchCandidates", searchCandidates}});
+          "", {{"maxMatches", maxMatches},
+               {"searchCandidates", searchCandidates},
+               {"minCardsForMulti", minCardsForMulti},
+               {"multiStableFrames", multiStableFrames}});
       !error.empty()) {
     return error;
   }
-
   if (maxFrameRate < 0) {
     return "maxFrameRate must be 0 (unthrottled) or positive, got " +
            std::to_string(maxFrameRate);

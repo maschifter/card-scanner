@@ -31,6 +31,7 @@
 
 
 #include <string>
+#include <optional>
 
 namespace margelo::nitro::cardscanner {
 
@@ -41,10 +42,11 @@ namespace margelo::nitro::cardscanner {
   public:
     std::string cardId     SWIFT_PRIVATE;
     double confidence     SWIFT_PRIVATE;
+    std::optional<std::string> gameName     SWIFT_PRIVATE;
 
   public:
     NitroAlternativeMatch() = default;
-    explicit NitroAlternativeMatch(std::string cardId, double confidence): cardId(cardId), confidence(confidence) {}
+    explicit NitroAlternativeMatch(std::string cardId, double confidence, std::optional<std::string> gameName): cardId(cardId), confidence(confidence), gameName(gameName) {}
 
   public:
     friend bool operator==(const NitroAlternativeMatch& lhs, const NitroAlternativeMatch& rhs) = default;
@@ -61,13 +63,15 @@ namespace margelo::nitro {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::cardscanner::NitroAlternativeMatch(
         JSIConverter<std::string>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "cardId"))),
-        JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "confidence")))
+        JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "confidence"))),
+        JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "gameName")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::cardscanner::NitroAlternativeMatch& arg) {
       jsi::Object obj(runtime);
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "cardId"), JSIConverter<std::string>::toJSI(runtime, arg.cardId));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "confidence"), JSIConverter<double>::toJSI(runtime, arg.confidence));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "gameName"), JSIConverter<std::optional<std::string>>::toJSI(runtime, arg.gameName));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -80,6 +84,7 @@ namespace margelo::nitro {
       }
       if (!JSIConverter<std::string>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "cardId")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "confidence")))) return false;
+      if (!JSIConverter<std::optional<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "gameName")))) return false;
       return true;
     }
   };

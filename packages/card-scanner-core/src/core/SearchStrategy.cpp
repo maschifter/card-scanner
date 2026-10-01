@@ -9,11 +9,12 @@
 namespace cardscanner {
 namespace core {
 
-std::vector<CardMatch> SearchStrategy::searchCard(
-    const cv::Mat &cardImage, const cardscanner::Detection &detection,
-    const ScannerConfig &config, cardscanner::DatabaseManager &dbManager,
-    cardscanner::CardEmbeddingModel &defaultEmbedder,
-    const cardscanner::GameEmbedders *gameEmbedders) {
+SearchOutcome
+SearchStrategy::searchCard(const cv::Mat &cardImage,
+                           const cardscanner::Detection &detection,
+                           const ScannerConfig &config,
+                           cardscanner::CardEmbeddingModel &defaultEmbedder,
+                           const cardscanner::GameEmbedders &gameEmbedders) {
   // Extract top game predictions from YOLO
   auto topGames = extractTopGames(detection, config);
   log(LOG_LEVEL::Debug, "[CardScanner]", "top YOLO game predictions:",
@@ -29,9 +30,8 @@ std::vector<CardMatch> SearchStrategy::searchCard(
   }
 
   // Adaptive multi-database search with per-game embeddings
-  auto allResults =
-      searchMultipleDatabases(cardImage, topGames, config, dbManager,
-                              defaultEmbedder, gameEmbedders);
+  auto allResults = searchMultipleDatabases(cardImage, topGames, config,
+                                            defaultEmbedder, gameEmbedders);
 
   log(LOG_LEVEL::Debug, "[CardScanner]", "retrieved", allResults.size(),
       "total matches from databases");
@@ -108,9 +108,9 @@ bool shareYoloClass(const std::string &a, const std::string &b,
 
 std::vector<CardSearchResult> SearchStrategy::searchMultipleDatabases(
     const cv::Mat &cardImage, const std::vector<std::string> &topGames,
-    const ScannerConfig &config, cardscanner::DatabaseManager &dbManager,
+    const ScannerConfig &config,
     cardscanner::CardEmbeddingModel &defaultEmbedder,
-    const cardscanner::GameEmbedders *gameEmbedders) {
+    const cardscanner::GameEmbedders &gameEmbedders) {
   std::vector<CardSearchResult> allResults;
   bool confidentMatch = false;
 
@@ -126,20 +126,20 @@ std::vector<CardSearchResult> SearchStrategy::searchMultipleDatabases(
     const auto &gameToSearch = topGames[i];
 
     try {
-      GameStorePtr gameDb = dbManager.getOrCreateStore(gameToSearch);
+      GameStorePtr gameDb =
+          cardscanner::DatabaseManager::getInstance().getOrCreateStore(
+              gameToSearch);
       if (!gameDb) {
         continue;
       }
 
       // Select game-specific embedder, or leave empty to use the default
       std::shared_ptr<cardscanner::CardEmbeddingModel> gameEmbedder;
-      if (gameEmbedders != nullptr) {
-        const auto it = gameEmbedders->find(gameToSearch);
-        if (it != gameEmbedders->end() && it->second) {
-          gameEmbedder = it->second;
-          log(LOG_LEVEL::Debug, "[CardScanner]",
-              "using game-specific embedder for", gameToSearch);
-        }
+      const auto it = gameEmbedders.find(gameToSearch);
+      if (it != gameEmbedders.end() && it->second) {
+        gameEmbedder = it->second;
+        log(LOG_LEVEL::Debug, "[CardScanner]",
+            "using game-specific embedder for", gameToSearch);
       }
 
       CardEmbeddingResult gameEmbedding;
@@ -202,7 +202,7 @@ std::vector<CardSearchResult> SearchStrategy::searchMultipleDatabases(
   return allResults;
 }
 
-std::vector<CardMatch> SearchStrategy::filterToBestGame(
+SearchOutcome SearchStrategy::filterToBestGame(
     const std::vector<CardSearchResult> &allResults,
     const ScannerConfig &config) {
   if (allResults.empty()) {
@@ -236,15 +236,24 @@ std::vector<CardMatch> SearchStrategy::filterToBestGame(
     }
   }
 
-  log(LOG_LEVEL::Debug, "[CardScanner]", "best match game:",
-      bestMatchGame.empty() ? "None" : bestMatchGame, "score:", bestMatchScore);
+  log(LOG_LEVEL::Debug, "[CardScanner]",
+      "best match game:", bestMatchGame.empty() ? "None" : bestMatchGame,
+      "score:", bestMatchScore, "raw top:", sortedResults[0].card_id,
+      sortedResults[0].score);
 
+  SearchOutcome outcome;
   if (bestMatchGame.empty()) {
-    return {}; // No confident match
+    // No confident match: hand back the best raw candidates instead.
+    const size_t keep =
+        std::min(sortedResults.size(), static_cast<size_t>(config.maxMatches));
+    for (size_t i = 0; i < keep; i++) {
+      outcome.nearMisses.push_back(convertToCardMatch(sortedResults[i]));
+    }
+    return outcome;
   }
 
   // Filter: keep only cards from best match game
-  std::vector<CardMatch> filteredMatches;
+  auto &filteredMatches = outcome.matches;
   for (const auto &result : sortedResults) {
     float gameThreshold =
         getEffectiveConfidenceThreshold(result.gameName, config);
@@ -257,7 +266,7 @@ std::vector<CardMatch> SearchStrategy::filterToBestGame(
     }
   }
 
-  return filteredMatches;
+  return outcome;
 }
 
 CardMatch

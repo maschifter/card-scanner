@@ -8,6 +8,7 @@
 #include <memory>
 #include <opencv2/opencv.hpp>
 #include <span>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -61,9 +62,13 @@ public:
    * @brief Run segmentation on an image
    *
    * @param image Input image (any size, will be letterbox resized)
+   * @param conf Per-call confidence threshold; defaults to the constructor's
+   * @param bestFitQuads See utils::quadFromMask
    * @return SegmentationResult with all detected cards
    */
-  SegmentationResult segment(const cv::Mat &image);
+  SegmentationResult segment(const cv::Mat &image,
+                             std::optional<float> conf = std::nullopt,
+                             bool bestFitQuads = false);
 
 private:
   std::unique_ptr<inference::InferenceSession> session_;
@@ -92,7 +97,7 @@ private:
   std::vector<Detection>
   postprocess(const cv::Mat &originalImg, std::span<const float> preds,
               std::span<const float> protos, int protoH, int protoW,
-              const GameClassMap &classNames);
+              const GameClassMap &classNames, float conf, bool bestFitQuads);
 
   /**
    * @brief Generate binary mask from prototypes and coefficients
@@ -118,51 +123,6 @@ private:
    * @return Indices of boxes to keep, highest confidence first
    */
   std::vector<int> nonMaxSuppression(const std::vector<BBox> &boxes) const;
-
-  /**
-   * @brief Extract 4-point quadrilateral from segmentation mask
-   * @param maskU8 Binary mask (CV_8U)
-   * @param wasSideways Whether the quad needed the sideways 90-deg fixup
-   * @return 4 corner points or empty if extraction fails
-   */
-  std::vector<cv::Point2f> quadFromMask(const cv::Mat &maskU8,
-                                        bool *wasSideways = nullptr) const;
-
-  /**
-   * @brief Order quad points as [TL, TR, BR, BL]
-   * @param pts Input 4 points (any order)
-   * @return Ordered points
-   */
-  std::vector<cv::Point2f> orderQuad(const std::vector<cv::Point2f> &pts) const;
-
-  /**
-   * @brief Rotate quad so top edge is on top
-   * @param quad Input quad [TL, TR, BR, BL]
-   * @param wasSideways Whether the short-edge-as-top fixup fired
-   * @return Oriented quad
-   */
-  std::vector<cv::Point2f>
-  orientQuad(const std::vector<cv::Point2f> &quad,
-             bool *wasSideways = nullptr) const;
-
-  /**
-   * @brief Check if quad is valid (not degenerate)
-   * @param quad Quadrilateral points
-   * @return true if valid, false otherwise
-   */
-  bool isValidQuad(const std::vector<cv::Point2f> &quad) const;
-
-  /**
-   * @brief Apply perspective transform to dewarp card
-   * @param img Input image
-   * @param quad 4 corner points [TL, TR, BR, BL]
-   * @param targetH Target height in pixels
-   * @param aspect Width/height ratio
-   * @return Dewarped rectangular card image
-   */
-  cv::Mat warpPerspectiveCard(const cv::Mat &img,
-                              const std::vector<cv::Point2f> &quad,
-                              int targetH, float aspect) const;
 };
 
 } // namespace cardscanner

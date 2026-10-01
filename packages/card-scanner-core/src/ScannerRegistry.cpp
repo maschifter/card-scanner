@@ -2,6 +2,7 @@
 #include "Constants.h"
 #include "benchmark/BenchmarkCollector.h"
 #include "benchmark/BenchmarkRunner.h"
+#include "core/CardSelection.h"
 #include "models/CardEmbeddingModel.h"
 #include "models/YoloSegmentationModel.h"
 #include "models/fab/FABColorClassifier.h"
@@ -33,19 +34,7 @@ std::shared_timed_mutex ScannerRegistry::pipelineMutex_;
 std::atomic<bool> ScannerRegistry::benchmarkRunning_{false};
 ScannerConfig ScannerRegistry::config_ = {};
 std::atomic<int> ScannerRegistry::maxFrameRate_{0};
-
-/// Config and model set one scan runs against, captured under one lock so a
-/// concurrent model swap cannot mix generations.
-struct ScannerRegistry::ScannerContext {
-  ScannerConfig config;
-  std::shared_ptr<cardscanner::YoloSegmentationModel> yoloModel;
-  std::shared_ptr<cardscanner::CardEmbeddingModel> embeddingModel;
-  /// Per-game embedders; games absent here use embeddingModel.
-  GameEmbedders gameEmbeddingModels;
-  std::shared_ptr<cardscanner::SetSymbolYoloModel> setSymbolYoloModel;
-  std::shared_ptr<cardscanner::SetSymbolEmbedder> setSymbolEmbedder;
-  std::shared_ptr<cardscanner::FABColorClassifier> fabColorClassifier;
-};
+std::atomic<bool> ScannerRegistry::paused_{false};
 
 /// Permission to run one scan: holds the shared pipeline lock, contextually
 /// false while a benchmark, an initialize or a release owns the scanner.
@@ -69,8 +58,13 @@ ScannerRegistry::ScanLease::ScanLease() {
 }
 
 static std::mutex scanMutex;
+// Makes a freeze's pause latch and resumeScanning() atomic with each other.
+static std::mutex pauseMutex;
 
 std::unique_lock<std::mutex> tryClaimScan() {
+  if (ScannerRegistry::isScanningPaused()) {
+    return {};
+  }
   return std::unique_lock<std::mutex>(scanMutex, std::try_to_lock);
 }
 
@@ -86,6 +80,40 @@ void ScannerRegistry::setConfig(ScannerConfig config) {
   std::lock_guard<std::mutex> lock(modelMutex_);
   config_ = std::move(config);
   maxFrameRate_.store(config_.maxFrameRate, std::memory_order_relaxed);
+}
+
+core::MultiScanSession &ScannerRegistry::multiScanSession() {
+  static core::MultiScanSession session;
+  return session;
+}
+
+void ScannerRegistry::resetFrameState() {
+  multiScanSession().reset();
+  core::resetSelection();
+  core::ScannerPipeline::resetSidewaysFlipCache();
+}
+
+void ScannerRegistry::pauseScanning() { paused_.store(true); }
+
+void ScannerRegistry::resumeScanning() {
+  std::lock_guard<std::mutex> lock(pauseMutex);
+  resetFrameState();
+  paused_.store(false);
+}
+
+bool ScannerRegistry::isScanningPaused() { return paused_.load(); }
+
+void ScannerRegistry::setScanMode(const std::string &scanMode) {
+  if (!ScannerConfig::isScanMode(scanMode)) {
+    throw std::runtime_error(
+        "scanMode must be 'single', 'multiple' or 'auto', got '" + scanMode +
+        "'");
+  }
+  {
+    std::lock_guard<std::mutex> lock(modelMutex_);
+    config_.scanMode = scanMode;
+  }
+  resetFrameState();
 }
 
 void ScannerRegistry::resetModelsLocked() {
@@ -119,6 +147,8 @@ void ScannerRegistry::initializeModels() {
   std::lock_guard<std::mutex> lock(modelMutex_);
 
   resetModelsLocked();
+  // A fresh scanner never starts frozen or remembering the last card.
+  resumeScanning();
 
   try {
     if (!config_.segmentationModelPath.empty()) {
@@ -193,18 +223,22 @@ bool ScannerRegistry::releaseModels() {
 
   std::lock_guard<std::mutex> lock(modelMutex_);
   resetModelsLocked();
+  resumeScanning();
   return true;
 }
 
-ScannerRegistry::ScannerContext ScannerRegistry::getScannerContext() {
+core::ScannerContext ScannerRegistry::getScannerContext() {
   std::lock_guard<std::mutex> lock(modelMutex_);
-  return {config_,          yoloModel_,          embeddingModel_,
-          gameEmbeddingModels_, setSymbolYoloModel_, setSymbolEmbedder_,
-          fabColorClassifier_};
+  return {config_,
+          yoloModel_,
+          embeddingModel_,
+          setSymbolYoloModel_,
+          setSymbolEmbedder_,
+          fabColorClassifier_,
+          gameEmbeddingModels_};
 }
 
 std::optional<ScanResult> ScannerRegistry::scan(const cv::Mat &rgb,
-                                                DatabaseManager &dbManager,
                                                 const ScanOptions &options) {
   ScanResult result;
   ScannerConfig config;
@@ -216,7 +250,7 @@ std::optional<ScanResult> ScannerRegistry::scan(const cv::Mat &rgb,
 
     // Snapshot under the lease, so a swap cannot slip in between.
     auto ctx = getScannerContext();
-    if (!ctx.yoloModel || !ctx.embeddingModel) {
+    if (!ctx.yolo || !ctx.embedding) {
       throw std::runtime_error(
           "Models not initialized. Call initializeScanner() first.");
     }
@@ -232,12 +266,11 @@ std::optional<ScanResult> ScannerRegistry::scan(const cv::Mat &rgb,
       benchmark::BenchmarkCollector::reset();
       benchmark::BenchmarkCollector::beginBenchmarkRecord();
     }
+    const int generation = options.live ? multiScanSession().generation() : 0;
     try {
       result = core::ScannerPipeline::processFrame(
-          rgb, ctx.config, dbManager, ctx.yoloModel.get(),
-          ctx.embeddingModel.get(), ctx.setSymbolYoloModel.get(),
-          ctx.setSymbolEmbedder.get(), ctx.fabColorClassifier.get(),
-          &ctx.gameEmbeddingModels);
+          rgb, ctx, options.live ? &multiScanSession() : nullptr,
+          options.forceFreeze);
     } catch (...) {
       if (options.recordTimings) {
         benchmark::BenchmarkCollector::endBenchmarkRecord();
@@ -247,22 +280,29 @@ std::optional<ScanResult> ScannerRegistry::scan(const cv::Mat &rgb,
     if (options.recordTimings) {
       benchmark::BenchmarkCollector::endBenchmarkRecord();
     }
+    // Pause under the scan claim so no frame slips in; a resume that landed
+    // mid-stream wins.
+    if (result.frozen) {
+      std::lock_guard<std::mutex> lock(pauseMutex);
+      if (multiScanSession().generation() == generation) {
+        paused_.store(true);
+      }
+    }
     config = std::move(ctx.config);
   }
 
-  // Disk I/O off the lease - a swap waiting on the pipeline lock is not
+  // Disk I/O off the lease, so a swap waiting on the pipeline lock isn't
   // blocked by JPEG encoding.
   core::ScannerPipeline::saveCardImages(result, config);
   return result;
 }
 
 ScanResult ScannerRegistry::scanImageFile(const std::string &imagePath,
-                                          DatabaseManager &dbManager,
                                           std::string_view scanMode) {
   cv::Mat imageRGB = utils::ImageUtils::loadImageRGB(imagePath);
 
   auto scanLock = claimScan();
-  auto result = scan(imageRGB, dbManager, {scanMode, /*ignoreFrameRate=*/true});
+  auto result = scan(imageRGB, {scanMode, /*ignoreFrameRate=*/true});
   if (!result) {
     throw std::runtime_error("Scanner busy: benchmark or model reload.");
   }
@@ -314,8 +354,7 @@ void ScannerRegistry::endBenchmark() { benchmarkRunning_.store(false); }
 
 BenchmarkRunResult
 ScannerRegistry::runBenchmark(const std::vector<BenchmarkImageInput> &images,
-                              int warmupIterations, int benchmarkIterations,
-                              DatabaseManager &dbManager) {
+                              int warmupIterations, int benchmarkIterations) {
   beginBenchmark();
   // Declared before the lock, so unwinding releases the scanner first and
   // gives up the slot second.
@@ -328,16 +367,13 @@ ScannerRegistry::runBenchmark(const std::vector<BenchmarkImageInput> &images,
   std::unique_lock<std::shared_timed_mutex> exclusive(pipelineMutex_);
 
   const auto ctx = getScannerContext();
-  if (!ctx.yoloModel || !ctx.embeddingModel) {
+  if (!ctx.yolo || !ctx.embedding) {
     throw std::runtime_error(
         "benchmark: models not initialized; initialize the scanner first");
   }
 
-  return benchmark::BenchmarkRunner::run(
-      images, ctx.config, warmupIterations, benchmarkIterations, dbManager,
-      ctx.yoloModel.get(), ctx.embeddingModel.get(),
-      ctx.setSymbolYoloModel.get(), ctx.setSymbolEmbedder.get(),
-      ctx.fabColorClassifier.get(), &ctx.gameEmbeddingModels);
+  return benchmark::BenchmarkRunner::run(images, ctx, warmupIterations,
+                                         benchmarkIterations);
 }
 
 } // namespace cardscanner

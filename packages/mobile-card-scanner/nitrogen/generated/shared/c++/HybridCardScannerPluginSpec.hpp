@@ -58,6 +58,7 @@ namespace margelo::nitro::cardscanner {
       virtual void scanFrame(const std::shared_ptr<margelo::nitro::camera::HybridFrameSpec>& frame, const std::vector<double>& coordinateSnapshot) = 0;
       virtual void setDetectionListener(const std::function<void(const NitroAsyncScanResult& /* result */)>& listener) = 0;
       virtual void clearDetectionListener() = 0;
+      virtual void requestShutter(bool requested) = 0;
 
     protected:
       // Hybrid Setup

@@ -1,10 +1,21 @@
 #pragma once
 
 #include <opencv2/opencv.hpp>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace cardscanner {
+
+/**
+ * @brief Whether a frame's detections form a layout worth freezing on.
+ */
+struct MultiVerdict {
+  bool qualifies = false;
+  /// Why it did not qualify: "count", "angle", "overlap", "size", "small",
+  /// "blur" or "unstable". Empty when it did.
+  std::string reason;
+};
 
 /**
  * @struct CardMatch
@@ -61,6 +72,8 @@ struct ProcessedCard {
   // Original detection info
   cv::Rect boundingBox;
   float detectionConfidence;
+  // Oriented quad [TL, TR, BR, BL] in frame coordinates; empty without a mask
+  std::vector<cv::Point2f> quad;
 
   // Extracted images
   cv::Mat croppedImage;
@@ -74,6 +87,8 @@ struct ProcessedCard {
 
   // Recognition results
   std::vector<CardMatch> matches;
+  // Best below-threshold candidates when matches is empty (thorough scans)
+  std::vector<CardMatch> nearMisses;
   std::string predictedGameName;
   float predictedGameConfidence; // YOLO confidence for predicted game (0.0-1.0)
 
@@ -101,6 +116,9 @@ struct ScanResult {
 
   // Timing
   double processingTimeMs;
+
+  std::optional<MultiVerdict> multi; // The multi-card check; absent in single
+  bool frozen = false; // The freeze path ran and streamed the cards
 
   ScanResult() : processingTimeMs(0.0) {}
 };

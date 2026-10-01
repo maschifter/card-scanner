@@ -1,13 +1,15 @@
 #pragma once
 
-#include "../types/ScanResults.h"
-#include "../types/ScannerConfig.h"
 #include "../models/fab/FABColorClassifier.h"
 #include "../models/mtg/SetSymbolEmbedder.h"
 #include "../models/mtg/SetSymbolYoloModel.h"
+#include "../types/ScanResults.h"
+#include "../types/ScannerConfig.h"
+#include "FABColorProcessor.h"
+#include "MultiScanSession.h"
+#include "ScannerContext.h"
 #include "SearchStrategy.h"
 #include "SetSymbolProcessor.h"
-#include "FABColorProcessor.h"
 #include <CardEmbeddingModel.h>
 #include <DatabaseManager.h>
 #include <ObjectBoxDB.h>
@@ -41,24 +43,21 @@ public:
    * @brief Process a single frame through the complete pipeline
    *
    * @param frameImage Input frame (RGB)
-   * @param config Scan configuration
-   * @param dbManager Database manager
-   * @param yoloModel Segmentation model
-   * @param embeddingModel Card embedding model
-   * @param setSymbolYolo Set symbol detector (nullable)
-   * @param setSymbolEmbedder Set symbol embedder (nullable)
-   * @param fabColorClassifier FAB color classifier (nullable)
-   * @return ScanResult with all processed cards. Empty if no cards detected or benchmark is running.
+   * @param ctx Config and models; yolo and embedding must be set
+   * @param session Live multi-card session, or null for a still image
+   * @param forceFreeze The shutter: freeze on any cards, skipping the layout
+   *   checks and the stability window. Needs a session.
+   * @return ScanResult with all processed cards. Empty if no cards detected or
+   * benchmark is running.
    */
-  static ScanResult
-  processFrame(const cv::Mat &frameImage, const ScannerConfig &config,
-               cardscanner::DatabaseManager &dbManager,
-               cardscanner::YoloSegmentationModel *yoloModel,
-               cardscanner::CardEmbeddingModel *embeddingModel,
-               cardscanner::SetSymbolYoloModel *setSymbolYolo,
-               cardscanner::SetSymbolEmbedder *setSymbolEmbedder,
-               cardscanner::FABColorClassifier *fabColorClassifier,
-               const cardscanner::GameEmbedders *gameEmbedders);
+  static ScanResult processFrame(const cv::Mat &frameImage,
+                                 const ScannerContext &ctx,
+                                 MultiScanSession *session = nullptr,
+                                 bool forceFreeze = false);
+
+  /// Forgets the resolved 180-degree flip. The registry calls it whenever
+  /// the sticky pick is forgotten too.
+  static void resetSidewaysFlipCache();
 
   /**
    * @brief Writes each card's pending capture image to disk (if enabled).
@@ -69,93 +68,76 @@ public:
   static void saveCardImages(ScanResult &result, const ScannerConfig &config);
 
 private:
+  /// Writes one card's pending capture image and releases it.
+  static void saveCardImage(ProcessedCard &card, const std::string &cacheDir,
+                            size_t index);
+
   /**
-   * @brief Stage 1: Run YOLO segmentation and select reportable detections
-   * (group/duplicate filtering, scan-mode selection)
+   * @brief Narrows detections per scan mode: "single" keeps the center-most
+   * card; "auto" and "multiple" run the multi trigger and fall back to
+   * center-most / everything when it fails. Records the outcome on result.
+   *
+   * @param session Live session, or null for a still image
+   * @return true when the frame takes the freeze path
+   */
+  static bool applyScanMode(std::vector<cardscanner::Detection> &detections,
+                            const cv::Mat &frameImage,
+                            const ScannerConfig &config,
+                            MultiScanSession *session, bool forceFreeze,
+                            ScanResult &result);
+
+  /**
+   * @brief Stage 1: Run YOLO segmentation. Scan-mode selection follows in
+   * applyScanMode, except the benchmark's fixed highest-confidence pick.
    *
    * @param frameImage Input frame
-   * @param config Scan configuration
-   * @param yoloModel Segmentation model
+   * @param ctx Config and the segmentation model
    * @return Segmentation result (filtered by scan mode)
    */
   static cardscanner::SegmentationResult
-  performSegmentation(const cv::Mat &frameImage,
-                      const ScannerConfig &config,
-                      cardscanner::YoloSegmentationModel *yoloModel);
-
-  /**
-   * @brief Stage 3: Recognize card using embedding and database search
-   *
-   * @param cardImage Cropped card image
-   * @param detection YOLO detection (for game predictions)
-   * @param config Scan configuration
-   * @param dbManager Database manager
-   * @param embeddingModel Card embedding model
-   * @return Vector of card matches (empty if no confident match)
-   */
-  static std::vector<CardMatch> recognizeCard(
-      const cv::Mat &cardImage, const cardscanner::Detection &detection,
-      const ScannerConfig &config, cardscanner::DatabaseManager &dbManager,
-      cardscanner::CardEmbeddingModel *embeddingModel,
-      const cardscanner::GameEmbedders *gameEmbedders);
+  performSegmentation(const cv::Mat &frameImage, const ScannerContext &ctx);
 
   /**
    * @brief Stage 4: Detect and match MTG set symbol
    *
    * @param cardImage Cropped card image
    * @param cardMatches Recognition results
-   * @param config Scan configuration
-   * @param setSymbolYolo Set symbol detector
-   * @param setSymbolEmbedder Set symbol embedder
+   * @param ctx Config and the set symbol detector and embedder
    * @return SetSymbolInfo (empty if not MTG or detection failed)
    */
   static SetSymbolInfo
   detectSetSymbol(const cv::Mat &cardImage,
                   const std::vector<CardMatch> &cardMatches,
-                  const ScannerConfig &config,
-                  cardscanner::SetSymbolYoloModel *setSymbolYolo,
-                  cardscanner::SetSymbolEmbedder *setSymbolEmbedder,
-                  cardscanner::DatabaseManager &dbManager);
+                  const ScannerContext &ctx);
 
   /**
    * @brief Stage 5: Detect FAB color variant
    *
    * @param cardImage Cropped card image
    * @param cardMatches Recognition results
-   * @param config Scan configuration
-   * @param fabColorClassifier FAB color classifier model
+   * @param ctx Config and the FAB color classifier
    * @return FABColorInfo (empty if detection failed)
    */
   static FABColorInfo
   detectFABColorVariant(const cv::Mat &cardImage,
                         const std::vector<CardMatch> &cardMatches,
-                        const ScannerConfig &config,
-                        cardscanner::FABColorClassifier *fabColorClassifier);
+                        const ScannerContext &ctx);
 
   /**
    * @brief Process a single detection through the pipeline
    *
    * @param frameImage Original frame
    * @param detection YOLO detection
-   * @param index Card index
-   * @param config Scan configuration
-   * @param dbManager Database manager
-   * @param embeddingModel Card embedding model
-   * @param setSymbolYolo Set symbol detector
-   * @param setSymbolEmbedder Set symbol embedder
-   * @param fabColorClassifier FAB color classifier
+   * @param ctx Config and models
+   * @param thorough A miss is final for the user (frozen page, still image):
+   *   retry the other orientation and the box crop, and keep the near misses.
+   * @param capture Keep the crop for saving, whatever config.captureImage says.
    * @return ProcessedCard with all results
    */
-  static ProcessedCard
-  processDetection(const cv::Mat &frameImage,
-                   const cardscanner::Detection &detection, size_t index,
-                   const ScannerConfig &config,
-                   cardscanner::DatabaseManager &dbManager,
-                   cardscanner::CardEmbeddingModel *embeddingModel,
-                   cardscanner::SetSymbolYoloModel *setSymbolYolo,
-                   cardscanner::SetSymbolEmbedder *setSymbolEmbedder,
-                   cardscanner::FABColorClassifier *fabColorClassifier,
-    const cardscanner::GameEmbedders *gameEmbedders);
+  static ProcessedCard processDetection(const cv::Mat &frameImage,
+                                        const cardscanner::Detection &detection,
+                                        const ScannerContext &ctx,
+                                        bool thorough, bool capture);
 };
 
 } // namespace core

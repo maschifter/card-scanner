@@ -97,7 +97,7 @@ int run(const std::filesystem::path &configPath,
   }
 
   const auto result =
-      cardscanner::ScannerRegistry::scanImageFile(imagePath.string(), dbManager);
+      cardscanner::ScannerRegistry::scanImageFile(imagePath.string());
 
   std::cout << "\nscanned " << imagePath.filename() << " in " << std::fixed
             << std::setprecision(1) << result.processingTimeMs << " ms - "

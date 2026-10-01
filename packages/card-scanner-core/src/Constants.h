@@ -102,6 +102,9 @@ constexpr float TOPMOST_TIE_TOLERANCE = 2.0f;
 constexpr double MIN_QUAD_AREA = 5.0;
 // Minimum distance between quad points to avoid degenerate cases
 constexpr float MIN_POINT_DISTANCE = 1.0f;
+// Max distance the mask's hull may sit outside a fitted quad, as a fraction of
+// the quad's shortest side; above it the fit chopped a corner and is dropped
+constexpr float MAX_HULL_DEVIATION_FRAC = 0.10f;
 // Orientation tolerance for Y-coordinate comparison
 constexpr float ORIENT_Y_TOLERANCE = 0.01f;
 } // namespace yolo
@@ -124,6 +127,28 @@ constexpr std::chrono::milliseconds TRACKING_LOST_AFTER{500};
 // Radius as a fraction of the frame's smaller dimension
 constexpr float DEAD_CENTER_RADIUS_FRAC = 0.1f;
 } // namespace selection
+
+// ============================================================================
+// Multi-Card Freeze ("auto" / "multiple" scan modes)
+// ============================================================================
+namespace multi {
+// YOLO confidence while looking for a layout, so faint cards still count
+constexpr float SEGMENTATION_THRESHOLD = 0.3f;
+// Min cards at config.segmentationThreshold for the geometry to judge the page
+constexpr size_t MIN_CONFIDENT_CARDS = 3;
+// Max spread of quad orientations, degrees, modulo 180
+constexpr float MAX_ANGLE_SPREAD_DEG = 20.0f;
+// Max pairwise quad IoU
+constexpr float MAX_OVERLAP = 0.05f;
+// Every quad area within this ratio of the median, both directions
+constexpr float SIZE_RATIO = 2.0f;
+// Min card long edge as a fraction of the frame's long side
+constexpr float MIN_CARD_FRAC = 0.12f;
+// Grow each quad about its centre by this fraction before a thorough dewarp
+constexpr float DEWARP_PADDING = 0.005f;
+// Min Laplacian variance of each card's own pixels for the page to freeze
+constexpr double CARD_BLUR_THRESHOLD = 100.0;
+} // namespace multi
 
 // ============================================================================
 // Card Dewarping (Perspective Transform)

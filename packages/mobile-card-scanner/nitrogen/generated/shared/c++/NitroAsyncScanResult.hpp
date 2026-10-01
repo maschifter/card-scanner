@@ -31,6 +31,8 @@
 // Forward declaration of `NitroDetection` to properly resolve imports.
 namespace margelo::nitro::cardscanner { struct NitroDetection; }
 
+#include <string>
+#include <optional>
 #include "NitroDetection.hpp"
 #include <vector>
 
@@ -41,14 +43,20 @@ namespace margelo::nitro::cardscanner {
    */
   struct NitroAsyncScanResult final {
   public:
+    std::optional<std::string> type     SWIFT_PRIVATE;
     NitroDetection detection     SWIFT_PRIVATE;
     double frameWidth     SWIFT_PRIVATE;
     double frameHeight     SWIFT_PRIVATE;
     std::vector<double> coordinateSnapshot     SWIFT_PRIVATE;
+    std::optional<std::string> frameUri     SWIFT_PRIVATE;
+    std::optional<double> cardIndex     SWIFT_PRIVATE;
+    std::optional<double> total     SWIFT_PRIVATE;
+    std::optional<std::string> multiRejectReason     SWIFT_PRIVATE;
+    std::optional<bool> multi     SWIFT_PRIVATE;
 
   public:
     NitroAsyncScanResult() = default;
-    explicit NitroAsyncScanResult(NitroDetection detection, double frameWidth, double frameHeight, std::vector<double> coordinateSnapshot): detection(detection), frameWidth(frameWidth), frameHeight(frameHeight), coordinateSnapshot(coordinateSnapshot) {}
+    explicit NitroAsyncScanResult(std::optional<std::string> type, NitroDetection detection, double frameWidth, double frameHeight, std::vector<double> coordinateSnapshot, std::optional<std::string> frameUri, std::optional<double> cardIndex, std::optional<double> total, std::optional<std::string> multiRejectReason, std::optional<bool> multi): type(type), detection(detection), frameWidth(frameWidth), frameHeight(frameHeight), coordinateSnapshot(coordinateSnapshot), frameUri(frameUri), cardIndex(cardIndex), total(total), multiRejectReason(multiRejectReason), multi(multi) {}
 
   public:
     friend bool operator==(const NitroAsyncScanResult& lhs, const NitroAsyncScanResult& rhs) = default;
@@ -64,18 +72,30 @@ namespace margelo::nitro {
     static inline margelo::nitro::cardscanner::NitroAsyncScanResult fromJSI(jsi::Runtime& runtime, const jsi::Value& arg) {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::cardscanner::NitroAsyncScanResult(
+        JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "type"))),
         JSIConverter<margelo::nitro::cardscanner::NitroDetection>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "detection"))),
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "frameWidth"))),
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "frameHeight"))),
-        JSIConverter<std::vector<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "coordinateSnapshot")))
+        JSIConverter<std::vector<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "coordinateSnapshot"))),
+        JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "frameUri"))),
+        JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "cardIndex"))),
+        JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "total"))),
+        JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "multiRejectReason"))),
+        JSIConverter<std::optional<bool>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "multi")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::cardscanner::NitroAsyncScanResult& arg) {
       jsi::Object obj(runtime);
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "type"), JSIConverter<std::optional<std::string>>::toJSI(runtime, arg.type));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "detection"), JSIConverter<margelo::nitro::cardscanner::NitroDetection>::toJSI(runtime, arg.detection));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "frameWidth"), JSIConverter<double>::toJSI(runtime, arg.frameWidth));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "frameHeight"), JSIConverter<double>::toJSI(runtime, arg.frameHeight));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "coordinateSnapshot"), JSIConverter<std::vector<double>>::toJSI(runtime, arg.coordinateSnapshot));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "frameUri"), JSIConverter<std::optional<std::string>>::toJSI(runtime, arg.frameUri));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "cardIndex"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.cardIndex));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "total"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.total));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "multiRejectReason"), JSIConverter<std::optional<std::string>>::toJSI(runtime, arg.multiRejectReason));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "multi"), JSIConverter<std::optional<bool>>::toJSI(runtime, arg.multi));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -86,10 +106,16 @@ namespace margelo::nitro {
       if (!nitro::isPlainObject(runtime, obj)) {
         return false;
       }
+      if (!JSIConverter<std::optional<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "type")))) return false;
       if (!JSIConverter<margelo::nitro::cardscanner::NitroDetection>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "detection")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "frameWidth")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "frameHeight")))) return false;
       if (!JSIConverter<std::vector<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "coordinateSnapshot")))) return false;
+      if (!JSIConverter<std::optional<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "frameUri")))) return false;
+      if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "cardIndex")))) return false;
+      if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "total")))) return false;
+      if (!JSIConverter<std::optional<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "multiRejectReason")))) return false;
+      if (!JSIConverter<std::optional<bool>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "multi")))) return false;
       return true;
     }
   };

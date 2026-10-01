@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/MultiScanSession.h"
+#include "core/ScannerContext.h"
 #include "core/ScannerPipeline.h"
 #include "types/BenchmarkRecord.h"
 #include "types/ScanResults.h"
@@ -28,6 +30,8 @@ struct ScanOptions {
   std::string_view scanMode;    // empty: the config's mode
   bool ignoreFrameRate = false; // stills bypass the live-feed throttle
   bool recordTimings = false;   // benchmark record around the pipeline
+  bool live = false;            // camera frame: a multi-card layout may freeze
+  bool forceFreeze = false;     // shutter: live frame freezes on any cards
 };
 
 /**
@@ -39,7 +43,7 @@ struct ScanOptions {
  *
  * ponytail: process-global statics. The pipeline reads this from the hot path,
  * so an instance would have to be threaded through processFrame ->
- * processDetection -> recognizeCard -> searchAcrossGames. Make it an instance
+ * processDetection -> SearchStrategy::searchCard. Make it an instance
  * only if one process ever needs two independent scanners.
  */
 class ScannerRegistry {
@@ -64,14 +68,33 @@ public:
 
   /// One scan under the lease (the claim is the caller's), image save after it.
   /// Nullopt while a benchmark or reload owns the scanner; throws if no models.
+  /// A live scan that freezes pauses the registry before returning, so the
+  /// next claim is turned away until resumeScanning().
   static std::optional<ScanResult> scan(const cv::Mat &rgb,
-                                        DatabaseManager &dbManager,
                                         const ScanOptions &options = {});
+
+  /// The multi-card freeze state. Hosts set its listener once to receive the
+  /// stream; the pipeline drives it during a live scan().
+  static core::MultiScanSession &multiScanSession();
+
+  /// Turns live frames away at tryClaimScan() until resumeScanning(). The
+  /// multi-card freeze latches this itself; still-image scans ignore it.
+  static void pauseScanning();
+
+  /// Accepts frames again: clears the pause, every session, and the caches
+  /// that carry state across frames (sticky pick, sideways flip).
+  static void resumeScanning();
+
+  static bool isScanningPaused();
+
+  /// Switches the scan mode in place, no model reload; the next frame picks
+  /// it up. Resets the sessions and cross-frame caches like resumeScanning().
+  /// @throws std::runtime_error on a mode validate() would reject.
+  static void setScanMode(const std::string &scanMode);
 
   /// scan() over an image file read as RGB, like a camera frame; queues on the
   /// scan claim, throttle off. Throws when busy, unreadable or without models.
   static ScanResult scanImageFile(const std::string &imagePath,
-                                  DatabaseManager &dbManager,
                                   std::string_view scanMode = {});
 
   /// Swaps a game's database file under the exclusive lock; false on failure.
@@ -107,17 +130,18 @@ public:
    */
   static BenchmarkRunResult
   runBenchmark(const std::vector<BenchmarkImageInput> &images,
-               int warmupIterations, int benchmarkIterations,
-               DatabaseManager &dbManager);
+               int warmupIterations, int benchmarkIterations);
 
 private:
-  struct ScannerContext;
   class ScanLease;
 
   /// Snapshot of the config and every model the pipeline needs, under one lock.
-  static ScannerContext getScannerContext();
+  static core::ScannerContext getScannerContext();
 
   static void resetModelsLocked();
+
+  /// Every session back to idle and every cross-frame cache cleared.
+  static void resetFrameState();
 
   /**
    * @brief Claims the benchmark slot for the calling thread. Take
@@ -148,6 +172,7 @@ private:
   static std::atomic<bool> benchmarkRunning_;
   static ScannerConfig config_;
   static std::atomic<int> maxFrameRate_;
+  static std::atomic<bool> paused_;
 };
 
 } // namespace cardscanner

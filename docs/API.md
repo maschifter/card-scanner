@@ -12,6 +12,9 @@ Complete API reference for `@cardnexus/card-scanner`.
     - [initializeScanner](#initializescanner)
     - [releaseScanner](#releasescanner)
     - [Frame Scanning (scanFrame)](#frame-scanning-scanframe)
+  - [Multi-card freeze](#multi-card-freeze)
+    - [pauseScanning / resumeScanning](#pausescanning--resumescanning)
+    - [setScanMode](#setscanmode)
   - [Image Scanning](#image-scanning)
     - [scanImage](#scanimage)
   - [Database Management](#database-management)
@@ -119,6 +122,7 @@ cardScannerPlugin.setDetectionListener(
   listener: (result: AsyncScanResult) => void,
 ): void;
 cardScannerPlugin.clearDetectionListener(): void;
+cardScannerPlugin.requestShutter(requested: boolean): void;
 ```
 
 **`scanFrame(frame, coordinateSnapshot)`** — synchronous scan, called from an `AsyncRunner` task:
@@ -128,6 +132,8 @@ cardScannerPlugin.clearDetectionListener(): void;
 - `coordinateSnapshot` - numbers passed through unchanged to the listener result; use it to snapshot frame→camera coordinate mapping while the frame is still alive
 
 **`setDetectionListener(listener)`** — registers the single listener slot. Call from the JS thread (not a worklet); replaces any previous listener. **`clearDetectionListener()`** unregisters it; pending results are dropped.
+
+**`requestShutter(requested)`** — the one-shot multi-card capture. The next frame that reaches the pipeline scans as `multiple` and freezes on whatever cards it holds, whatever the current scan mode, skipping the layout checks and the stability window. It streams `multiStart`, `multiCard` and `multiEnd` like any freeze, and scanning resumes in the current mode on `resumeScanning()`. A frame without a confident card does not freeze and comes back with `multiRejectReason` set. `requestShutter(false)` cancels a request no frame has used yet; cancel it when the screen loses focus.
 
 **Example:**
 
@@ -187,6 +193,41 @@ const frameOutput = useFrameOutput({
 - Returned bounding boxes are in raw frame-buffer coordinates - map them to view coordinates with Vision Camera v5's `frame.convertFramePointToCameraPoint` + `cameraRef.convertCameraPointToViewPoint` (see [`apps/mobile-example/utils/cameraCoords.ts`](../apps/mobile-example/utils/cameraCoords.ts))
 
 **Implementation:** [`packages/mobile-card-scanner/common/rnbridge/HybridCardScannerPlugin.cpp`](../packages/mobile-card-scanner/common/rnbridge/HybridCardScannerPlugin.cpp)
+
+---
+
+## Multi-card freeze
+
+In `auto` and `multiple` scan modes, a frame holding a stable layout of several cards (a binder page, a spread) freezes scanning and streams its cards one at a time, so a UI can show them appearing over the still. `auto` behaves like `single` until such a frame arrives; `multiple` processes every detection live until then.
+
+A frame qualifies when it holds at least `minCardsForMulti` detections that are aligned, not overlapping, similar in size, large enough and sharp, for `multiStableFrames` consecutive frames. The geometry thresholds are pipeline constants (`constants::multi` in core), not config. When a frame does not qualify, the `frame` event's `multiRejectReason` names the check that failed (`count`, `angle`, `overlap`, `size`, `small`, `blur`, `unstable`).
+
+While looking for a layout, segmentation runs at a lower confidence than `segmentationThreshold`, so faint cards in a spread are seen. Detections below `segmentationThreshold` are dropped again whenever the frame does not qualify, and the geometry checks ignore them either way, so a faint false positive can add to the count but never reject a clean page.
+
+The listener then receives, in order:
+
+1. `multiStart` - `frameUri` (the frozen frame as JPEG), `frameWidth`/`frameHeight` of that image, `total`, and every card in `detection.cards` with `boundingBox` and `quad` only.
+2. One `multiCard` per card, in processing order - `cardIndex`, `total`, and the resolved card in `detection.cards[0]`, with `capturedImage` set regardless of `captureImage`.
+3. `multiEnd` - `total`.
+
+Coordinates in `multi*` events are pixels of the frozen image, not raw buffer coordinates. The frozen frame produces no `frame` event. Scanning stays paused until `resumeScanning()`. Set `freezeOnMulti: false` to get qualifying frames as ordinary `frame` events, every card processed and `multi: true` set, without the freeze or the stream. See [`apps/mobile-example/hooks/useMultiScan.ts`](../apps/mobile-example/hooks/useMultiScan.ts) for a listener.
+
+### pauseScanning / resumeScanning
+
+```typescript
+function pauseScanning(): void;
+function resumeScanning(): void;
+```
+
+Synchronous. `pauseScanning` turns camera frames away at the native claim; the freeze calls it itself. `resumeScanning` accepts frames again and clears the freeze, the tracked card and the stability window. Neither affects `scanImage`. Timeouts and cooldowns belong in the app.
+
+### setScanMode
+
+```typescript
+function setScanMode(mode: 'single' | 'multiple' | 'auto'): void;
+```
+
+Switches the mode without reloading models, and resets the multi-card window and the sticky card pick. It doesn't resume a paused scanner; call `resumeScanning()` for that. Takes effect on the next frame.
 
 ---
 
@@ -393,7 +434,7 @@ interface ScannerConfig {
   embeddingModelPath: string;
 
   // Required: Behavior
-  scanMode: 'single' | 'multiple'; // scanImage can override this per call
+  scanMode: 'single' | 'multiple' | 'auto'; // scanImage can override this per call
 
   // Required: Thresholds
   segmentationThreshold: number; // YOLO confidence (default: 0.7)
@@ -414,6 +455,11 @@ interface ScannerConfig {
   lowLightThreshold?: number; // Min brightness (default: 65, 0 = disabled)
   lowLightGamma?: number; // Gamma correction (default: 2.0)
   maxFrameRate?: number; // Max FPS for ML (default: 5)
+
+  // Optional: Multi-card freeze (auto / multiple)
+  minCardsForMulti?: number; // Min detections (default: 6)
+  multiStableFrames?: number; // Consecutive qualifying frames (default: 2)
+  freezeOnMulti?: boolean; // Freeze and stream on a qualifying frame (default: true)
 
   // Required: Game class mapping
   gameClassMapping: Record<number, string | string[]>; // YOLO class ID → game name(s)
@@ -475,12 +521,20 @@ Result delivered to the detection listener. The Frame is disposed by then, so bu
 
 ```typescript
 interface AsyncScanResult {
+  type?: 'multiStart' | 'multiCard' | 'multiEnd'; // multi* events only; absent on a frame result
   detection: Detection;
-  frameWidth: number; // Frame buffer width in pixels
-  frameHeight: number; // Frame buffer height in pixels
-  coordinateSnapshot: number[]; // Values passed to scanFrame, unchanged
+  frameWidth: number; // Frame buffer width; the frozen image's width for multi*
+  frameHeight: number; // Frame buffer height; the frozen image's height for multi*
+  coordinateSnapshot: number[]; // Values passed to scanFrame, unchanged ([] for multi*)
+  frameUri?: string; // multiStart: the frozen frame as JPEG
+  cardIndex?: number; // multiCard: which card on the frozen frame
+  total?: number; // multi*: cards on the frozen frame
+  multiRejectReason?: string; // frame: why auto/multiple did not freeze
+  multi?: boolean; // frame: true when the layout qualified (freezeOnMulti off)
 }
 ```
+
+See [Multi-card freeze](#multi-card-freeze) for the event sequence.
 
 ---
 
@@ -495,6 +549,9 @@ interface DetectedCard {
   gameName?: string; // From best match (multi-game search)
   confidenceScore?: number; // Match confidence [0.0, 1.0]
 
+  // Oriented quad [TL, TR, BR, BL] as 8 numbers, same space as boundingBox
+  quad?: number[];
+
   // Game prediction
   predictedGameName?: string; // Game predicted by YOLO, even if no DB match
   predictedGameConfidence?: number; // YOLO confidence for predicted game [0.0, 1.0]
@@ -505,7 +562,8 @@ interface DetectedCard {
   // Image
   capturedImage?: CapturedImage;
 
-  // Alternative matches
+  // Alternative matches. On a multi-card page a card with no cardId
+  // carries its best below-threshold candidates here, for confirmation.
   alternativeCards: AlternativeMatch[];
 
   // Game-specific metadata

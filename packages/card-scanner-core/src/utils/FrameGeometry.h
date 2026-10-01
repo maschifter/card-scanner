@@ -35,5 +35,10 @@ cv::Mat rotateFrameUpright(const cv::Mat &frame, FrameOrientation orientation);
 cv::Rect inverseRotateBox(const cv::Rect &box, FrameOrientation orientation,
                           const cv::Size &rotatedSize);
 
+/// Same mapping for a single point.
+cv::Point2f inverseRotatePoint(const cv::Point2f &p,
+                               FrameOrientation orientation,
+                               const cv::Size &rotatedSize);
+
 } // namespace utils
 } // namespace cardscanner

@@ -22,7 +22,16 @@ using GameClassMap = std::map<int, std::vector<std::string>>;
  */
 struct ScannerConfig {
   // Scan behavior
-  std::string scanMode = "single"; // "single" or "multiple"
+  std::string scanMode = "single"; // "single", "multiple" or "auto"
+
+  // Multi-card freeze ("auto" and "multiple"). What counts as a page and how
+  // long it must hold; the geometry thresholds are pipeline constants in
+  // Constants.h (constants::multi).
+  int minCardsForMulti = 6;
+  // Consecutive qualifying frames before the freeze; 1 = decide per frame
+  int multiStableFrames = 2;
+  // Freeze and stream on a qualifying frame; false = process all, no freeze
+  bool freezeOnMulti = true;
 
   // Thresholds
   float segmentationThreshold = 0.7f; // YOLO confidence threshold
@@ -95,6 +104,9 @@ struct ScannerConfig {
 
   /// Empty means valid, else the first violation. Callers add their own prefix.
   std::string validate() const;
+
+  /// True for "single", "multiple" and "auto".
+  static bool isScanMode(const std::string &mode);
 };
 
 } // namespace cardscanner

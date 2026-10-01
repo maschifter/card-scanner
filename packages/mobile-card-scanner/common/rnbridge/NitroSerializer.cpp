@@ -17,6 +17,20 @@ NitroBoundingBox toNitroBoundingBox(const cv::Rect &box, float confidence) {
   return nitroBox;
 }
 
+std::optional<std::vector<double>>
+toNitroQuad(const std::vector<cv::Point2f> &quad) {
+  if (quad.size() != 4) {
+    return std::nullopt;
+  }
+  std::vector<double> flat;
+  flat.reserve(8);
+  for (const auto &p : quad) {
+    flat.push_back(p.x);
+    flat.push_back(p.y);
+  }
+  return flat;
+}
+
 NitroDetectedCard toNitroDetectedCard(const ProcessedCard &card) {
   NitroDetectedCard nitroCard;
 
@@ -37,16 +51,20 @@ NitroDetectedCard toNitroDetectedCard(const ProcessedCard &card) {
 
   nitroCard.boundingBox =
       toNitroBoundingBox(card.boundingBox, card.detectionConfidence);
+  nitroCard.quad = toNitroQuad(card.quad);
 
-  // Alternative cards (matches[1:])
-  if (card.matches.size() > 1) {
-    nitroCard.alternativeCards.reserve(card.matches.size() - 1);
-    for (size_t i = 1; i < card.matches.size(); i++) {
-      NitroAlternativeMatch alternative;
-      alternative.cardId = card.matches[i].cardId;
-      alternative.confidence = card.matches[i].score;
-      nitroCard.alternativeCards.push_back(std::move(alternative));
+  // Alternative cards: matches[1:], or on an unmatched card the near misses
+  // the pipeline kept, so the host can offer them for confirmation.
+  const bool matched = !card.matches.empty();
+  const auto &alternatives = matched ? card.matches : card.nearMisses;
+  for (size_t i = matched ? 1 : 0; i < alternatives.size(); i++) {
+    NitroAlternativeMatch alternative;
+    alternative.cardId = alternatives[i].cardId;
+    alternative.confidence = alternatives[i].score;
+    if (!alternatives[i].gameName.empty()) {
+      alternative.gameName = alternatives[i].gameName;
     }
+    nitroCard.alternativeCards.push_back(std::move(alternative));
   }
 
   // Captured image (optional)
@@ -88,6 +106,34 @@ NitroSerializer::serializeScanResult(const ScanResult &result) {
   detection.cards.reserve(result.cards.size());
   for (const auto &card : result.cards) {
     detection.cards.push_back(toNitroDetectedCard(card));
+  }
+  return detection;
+}
+
+NitroDetection NitroSerializer::serializeCard(const ProcessedCard &card) {
+  NitroDetection detection;
+  detection.success = true;
+  detection.processingTime = 0;
+  detection.cards.push_back(toNitroDetectedCard(card));
+  return detection;
+}
+
+NitroDetection NitroSerializer::serializePlaceholders(
+    const std::vector<core::MultiScanSession::Slot> &slots) {
+  NitroDetection detection;
+  detection.success = true;
+  detection.processingTime = 0;
+  detection.cards.reserve(slots.size());
+  for (const auto &slot : slots) {
+    NitroDetectedCard card;
+    card.boundingBox = toNitroBoundingBox(slot.box, slot.detectionConfidence);
+    card.quad = toNitroQuad(slot.quad);
+    if (!slot.predictedGame.empty()) {
+      card.predictedGameName = slot.predictedGame;
+      card.predictedGameConfidence =
+          static_cast<double>(slot.detectionConfidence);
+    }
+    detection.cards.push_back(std::move(card));
   }
   return detection;
 }

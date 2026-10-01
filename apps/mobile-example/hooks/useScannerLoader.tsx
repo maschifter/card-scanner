@@ -47,7 +47,7 @@ const loadScanner = async () => {
   const result = await initializeScanner({
     segmentationModelPath: yoloPath,
     embeddingModelPath: embedPath,
-    scanMode: 'single',
+    scanMode: 'auto',
     segmentationThreshold: 0.6,
     iouThreshold: 0.7,
     confidenceThreshold: 0.6,
