@@ -9,7 +9,6 @@
 #include "jsi/Promise.h"
 #include "JSISerializer.h"
 #include <Log.h>
-#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -182,23 +181,8 @@ void CardScannerInstaller::injectJSIBindings(
              &dbManager](std::shared_ptr<Promise> promise) {
               runAsync(std::move(promise), [gameName, sourcePath,
                                             &dbManager]() -> SettleFn {
-                // The store being swapped out may be mid-search in a scan.
-                std::unique_lock<std::shared_timed_mutex> exclusive(
-                    ScannerRegistry::pipelineMutex());
-
-                const auto startTime = std::chrono::steady_clock::now();
-                bool success = dbManager.swapDatabaseFile(gameName, sourcePath);
-                const auto duration =
-                    std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::steady_clock::now() - startTime)
-                        .count();
-                log(LOG_LEVEL::Info, "[CardScanner] Swapped database for game",
-                    gameName, "in", duration, "ms.");
-
-                if (success) {
-                  dbManager.scanForExistingStores();
-                }
-
+                const bool success = ScannerRegistry::swapDatabase(
+                    dbManager, gameName, sourcePath);
                 return settleOperationResult(
                     success, success ? "" : "Failed to swap database file");
               });
@@ -503,11 +487,8 @@ void CardScannerInstaller::injectJSIBindings(
             [&dbManager, gameName](std::shared_ptr<Promise> promise) {
               runAsync(std::move(promise), [&dbManager, gameName]() -> SettleFn {
                 try {
-                  // The store being deleted may be mid-search in a scan.
-                  std::unique_lock<std::shared_timed_mutex> exclusive(
-                      ScannerRegistry::pipelineMutex());
-
-                  bool success = dbManager.deleteDatabaseDirectory(gameName);
+                  const bool success =
+                      ScannerRegistry::deleteDatabase(dbManager, gameName);
                   return settleOperationResult(
                       success, success ? ""
                                        : std::string(

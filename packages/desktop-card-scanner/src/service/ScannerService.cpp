@@ -3,7 +3,6 @@
 #include <DatabaseManager.h>
 #include <ScannerRegistry.h>
 #include <benchmark/BenchmarkCollector.h>
-#include <core/ScannerPipeline.h>
 
 #include <util/Log.h>
 #include <util/OpenCvThreads.h>
@@ -109,30 +108,17 @@ void ScannerService::workerLoop() {
       try {
         auto &dbManager = DatabaseManager::getInstance();
 
-        // Skip rather than block while a model swap owns the scanner.
-        ScanLease lease;
-        if (lease) {
-          using benchmark::BenchmarkCollector;
-          using benchmark::Stage;
+        using benchmark::BenchmarkCollector;
+        using benchmark::Stage;
 
-          // Taken inside the lease, mirroring mobile and scanImageFile: the
-          // models cannot be swapped out from under the snapshot.
-          auto ctx = ScannerRegistry::getScannerContext();
-
-          // Off, the frame runs unmeasured: with no record open the
-          // collector ignores every write the pipeline makes.
-          const bool timings = reportTimings_.load(std::memory_order_relaxed);
-          if (timings) {
-            BenchmarkCollector::reset();
-            BenchmarkCollector::beginBenchmarkRecord();
-          }
-          // No rate limit here or in core (maxFrameRate 0): the filter and the
-          // mailbox bound what arrives; a second cap only dropped frames to jitter.
-          const auto result = core::ScannerPipeline::processFrame(
-              job.image, ctx.config, dbManager, ctx.yoloModel.get(),
-              ctx.embeddingModel.get(), ctx.setSymbolYoloModel.get(),
-              ctx.setSymbolEmbedder.get(), ctx.fabColorClassifier.get(),
-              &ctx.gameEmbeddingModels);
+        // Off, the frame runs unmeasured: with no record open the
+        // collector ignores every write the pipeline makes.
+        const bool timings = reportTimings_.load(std::memory_order_relaxed);
+        ScanOptions options;
+        options.recordTimings = timings;
+        const auto scanned = ScannerRegistry::scan(job.image, dbManager, options);
+        if (scanned) {
+          const ScanResult &result = *scanned;
 
           // Recorded whether or not anything matched.
           Diagnostics diag;
@@ -143,7 +129,6 @@ void ScannerService::workerLoop() {
           diag.processingMs = result.processingTimeMs;
           diag.timingsEnabled = timings;
           if (timings) {
-            BenchmarkCollector::endBenchmarkRecord();
             diag.measured =
                 BenchmarkCollector::getBenchmarkedRan(Stage::YoloSegmentation);
           }

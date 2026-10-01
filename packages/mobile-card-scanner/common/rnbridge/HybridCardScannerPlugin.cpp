@@ -74,51 +74,24 @@ private:
 
 NitroDetection HybridCardScannerPlugin::runPipeline(
     const ::cardscanner::ExtractedFrame &extracted) {
-  const cv::Mat &frameImage = extracted.image;
-  const cv::Size rotatedSize = frameImage.size();
+  const cv::Size rotatedSize = extracted.image.size();
 
   // Meyer's singleton; the store accessors the pipeline uses lock internally.
-  auto &dbManager = ::cardscanner::DatabaseManager::getInstance();
-
-  ::cardscanner::ScanResult result;
-  ::cardscanner::ScannerConfig config;
-  {
-    // Skip rather than block while a benchmark or a model swap owns the
-    // scanner. Taken before the context snapshot, so a swap cannot complete
-    // in between and mix model/store generations - and so a frame skips
-    // instead of blocking on the model mutex during a load.
-    ::cardscanner::ScanLease lease;
-    if (!lease) {
-      return ::cardscanner::utils::NitroSerializer::serializeScanResult(
-          ::cardscanner::ScanResult{});
-    }
-
-    auto ctx = ::cardscanner::ScannerRegistry::getScannerContext();
-
-    if (!ctx.yoloModel || !ctx.embeddingModel) {
-      throw std::runtime_error(
-          "Models not initialized. Call initializeScanner() first.");
-    }
-
-    result = ::cardscanner::core::ScannerPipeline::processFrame(
-        frameImage, ctx.config, dbManager, ctx.yoloModel.get(),
-        ctx.embeddingModel.get(), ctx.setSymbolYoloModel.get(),
-        ctx.setSymbolEmbedder.get(), ctx.fabColorClassifier.get(),
-        &ctx.gameEmbeddingModels);
-    config = std::move(ctx.config);
+  auto scanned = ::cardscanner::ScannerRegistry::scan(
+      extracted.image, ::cardscanner::DatabaseManager::getInstance());
+  if (!scanned) {
+    // Busy: skip rather than block.
+    return ::cardscanner::utils::NitroSerializer::serializeScanResult(
+        ::cardscanner::ScanResult{});
   }
 
-  // Disk I/O off the lease - a swap waiting on the pipeline lock is not
-  // blocked by JPEG encoding.
-  ::cardscanner::core::ScannerPipeline::saveCardImages(result, config);
-
   // Contract with JS: boxes go back in raw frame-buffer coordinates.
-  for (auto &card : result.cards) {
+  for (auto &card : scanned->cards) {
     card.boundingBox = ::cardscanner::utils::inverseRotateBox(
         card.boundingBox, extracted.orientation, rotatedSize);
   }
 
-  return ::cardscanner::utils::NitroSerializer::serializeScanResult(result);
+  return ::cardscanner::utils::NitroSerializer::serializeScanResult(*scanned);
 }
 
 void HybridCardScannerPlugin::scanFrame(

@@ -1,5 +1,6 @@
 #include "ScannerRegistry.h"
 #include "Constants.h"
+#include "benchmark/BenchmarkCollector.h"
 #include "benchmark/BenchmarkRunner.h"
 #include "models/CardEmbeddingModel.h"
 #include "models/YoloSegmentationModel.h"
@@ -34,14 +35,38 @@ std::atomic<bool> ScannerRegistry::benchmarkRunning_{false};
 ScannerConfig ScannerRegistry::config_ = {};
 std::atomic<int> ScannerRegistry::maxFrameRate_{0};
 
-ScanLease::ScanLease() {
+/// Config and model set one scan runs against, captured under one lock so a
+/// concurrent model swap cannot mix generations.
+struct ScannerRegistry::ScannerContext {
+  ScannerConfig config;
+  std::shared_ptr<cardscanner::YoloSegmentationModel> yoloModel;
+  std::shared_ptr<cardscanner::CardEmbeddingModel> embeddingModel;
+  /// Per-game embedders; games absent here use embeddingModel.
+  GameEmbedders gameEmbeddingModels;
+  std::shared_ptr<cardscanner::SetSymbolYoloModel> setSymbolYoloModel;
+  std::shared_ptr<cardscanner::SetSymbolEmbedder> setSymbolEmbedder;
+  std::shared_ptr<cardscanner::FABColorClassifier> fabColorClassifier;
+};
+
+/// Permission to run one scan: holds the shared pipeline lock, contextually
+/// false while a benchmark, an initialize or a release owns the scanner.
+class ScannerRegistry::ScanLease {
+public:
+  ScanLease();
+  explicit operator bool() const { return lock_.owns_lock(); }
+
+private:
+  std::shared_lock<std::shared_timed_mutex> lock_;
+};
+
+ScannerRegistry::ScanLease::ScanLease() {
   // Checked before the lock so a live camera feed cannot starve a benchmark
   // waiting for the exclusive acquire.
   if (ScannerRegistry::isBenchmarkRunning()) {
     return;
   }
   lock_ = std::shared_lock<std::shared_timed_mutex>(
-      ScannerRegistry::pipelineMutex(), std::try_to_lock);
+      ScannerRegistry::pipelineMutex_, std::try_to_lock);
 }
 
 static std::mutex scanMutex;
@@ -168,26 +193,22 @@ bool ScannerRegistry::releaseModels() {
   return true;
 }
 
-ScannerContext ScannerRegistry::getScannerContext() {
+ScannerRegistry::ScannerContext ScannerRegistry::getScannerContext() {
   std::lock_guard<std::mutex> lock(modelMutex_);
   return {config_,          yoloModel_,          embeddingModel_,
           gameEmbeddingModels_, setSymbolYoloModel_, setSymbolEmbedder_,
           fabColorClassifier_};
 }
 
-ScanResult ScannerRegistry::scanImageFile(const std::string &imagePath,
-                                          DatabaseManager &dbManager,
-                                          std::string_view scanMode) {
-  cv::Mat imageRGB = utils::ImageUtils::loadImageRGB(imagePath);
-
+std::optional<ScanResult> ScannerRegistry::scan(const cv::Mat &rgb,
+                                                DatabaseManager &dbManager,
+                                                const ScanOptions &options) {
   ScanResult result;
   ScannerConfig config;
   {
-    // Queues behind a live camera scan if one is running (rare).
-    auto scanLock = claimScan();
     ScanLease lease;
     if (!lease) {
-      throw std::runtime_error("Scanner busy: benchmark or model reload.");
+      return std::nullopt;
     }
 
     // Snapshot under the lease, so a swap cannot slip in between.
@@ -197,16 +218,32 @@ ScanResult ScannerRegistry::scanImageFile(const std::string &imagePath,
           "Models not initialized. Call initializeScanner() first.");
     }
 
-    if (!scanMode.empty()) {
-      ctx.config.scanMode = scanMode;
+    if (!options.scanMode.empty()) {
+      ctx.config.scanMode = options.scanMode;
     }
-    ctx.config.maxFrameRate = 0;
+    if (options.ignoreFrameRate) {
+      ctx.config.maxFrameRate = 0;
+    }
 
-    result = core::ScannerPipeline::processFrame(
-        imageRGB, ctx.config, dbManager, ctx.yoloModel.get(),
-        ctx.embeddingModel.get(), ctx.setSymbolYoloModel.get(),
-        ctx.setSymbolEmbedder.get(), ctx.fabColorClassifier.get(),
-        &ctx.gameEmbeddingModels);
+    if (options.recordTimings) {
+      benchmark::BenchmarkCollector::reset();
+      benchmark::BenchmarkCollector::beginBenchmarkRecord();
+    }
+    try {
+      result = core::ScannerPipeline::processFrame(
+          rgb, ctx.config, dbManager, ctx.yoloModel.get(),
+          ctx.embeddingModel.get(), ctx.setSymbolYoloModel.get(),
+          ctx.setSymbolEmbedder.get(), ctx.fabColorClassifier.get(),
+          &ctx.gameEmbeddingModels);
+    } catch (...) {
+      if (options.recordTimings) {
+        benchmark::BenchmarkCollector::endBenchmarkRecord();
+      }
+      throw;
+    }
+    if (options.recordTimings) {
+      benchmark::BenchmarkCollector::endBenchmarkRecord();
+    }
     config = std::move(ctx.config);
   }
 
@@ -216,12 +253,47 @@ ScanResult ScannerRegistry::scanImageFile(const std::string &imagePath,
   return result;
 }
 
-int ScannerRegistry::getMaxFrameRate() {
-  return maxFrameRate_.load(std::memory_order_relaxed);
+ScanResult ScannerRegistry::scanImageFile(const std::string &imagePath,
+                                          DatabaseManager &dbManager,
+                                          std::string_view scanMode) {
+  cv::Mat imageRGB = utils::ImageUtils::loadImageRGB(imagePath);
+
+  auto scanLock = claimScan();
+  auto result = scan(imageRGB, dbManager, {scanMode, /*ignoreFrameRate=*/true});
+  if (!result) {
+    throw std::runtime_error("Scanner busy: benchmark or model reload.");
+  }
+  return std::move(*result);
 }
 
-std::shared_timed_mutex &ScannerRegistry::pipelineMutex() {
-  return pipelineMutex_;
+bool ScannerRegistry::swapDatabase(DatabaseManager &dbManager,
+                                   const std::string &gameName,
+                                   const std::string &sourcePath) {
+  std::unique_lock<std::shared_timed_mutex> exclusive(pipelineMutex_);
+
+  const auto startTime = std::chrono::steady_clock::now();
+  const bool success = dbManager.swapDatabaseFile(gameName, sourcePath);
+  const auto durationMs =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - startTime)
+          .count();
+  log(LOG_LEVEL::Info, "[CardScanner] Swapped database for game", gameName,
+      "in", durationMs, "ms.");
+
+  if (success) {
+    dbManager.scanForExistingStores();
+  }
+  return success;
+}
+
+bool ScannerRegistry::deleteDatabase(DatabaseManager &dbManager,
+                                     const std::string &gameName) {
+  std::unique_lock<std::shared_timed_mutex> exclusive(pipelineMutex_);
+  return dbManager.deleteDatabaseDirectory(gameName);
+}
+
+int ScannerRegistry::getMaxFrameRate() {
+  return maxFrameRate_.load(std::memory_order_relaxed);
 }
 
 bool ScannerRegistry::isBenchmarkRunning() {
