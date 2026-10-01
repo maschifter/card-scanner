@@ -127,14 +127,18 @@ and not only the top-1 count.
 DirectML is compiled into ONNX Runtime, so the build takes the runtime from
 NuGet rather than the GitHub release the other platforms use: those assets are
 CPU-only or CUDA, and CUDA would demand a CUDA and cuDNN install on the user's
-machine. Any Direct3D 12 GPU works, NVIDIA, AMD and Intel alike.
+machine. The `Microsoft.ML.OnnxRuntime.DirectML` package ended at 1.24.4; the
+DirectML-enabled runtime now ships inside `Microsoft.Windows.AI.MachineLearning`
+(Windows ML), which pairs a newer ONNX Runtime with the same DirectML 1.15.4.
+Only its `onnxruntime.dll` and `DirectML.dll` are used; the WinRT layer in
+`Microsoft.Windows.AI.MachineLearning.dll` is not loaded. Any Direct3D 12 GPU
+works, NVIDIA, AMD and Intel alike.
 
 Every DLL the server loads must sit beside the executable.
 `cardscanner_copy_runtime_dlls()` puts the linked ones there (`objectbox.dll`,
-`onnxruntime.dll`) plus two that nothing links:
-`onnxruntime_providers_shared.dll`, which ONNX Runtime loads by hand, and
-`DirectML.dll` — deliberately the redistributable, not the older copy in
-`System32`. OpenCV and libcurl are static, so no DLL of theirs exists to
+`onnxruntime.dll`) plus one that nothing links: `DirectML.dll`, which ONNX
+Runtime delay-loads — deliberately the copy from the package, not the older
+one in `System32`. OpenCV and libcurl are static, so no DLL of theirs exists to
 forget; libcurl is built HTTP-only on Schannel, Windows' own TLS.
 
 Anything assembling a bundle must copy the whole directory rather than

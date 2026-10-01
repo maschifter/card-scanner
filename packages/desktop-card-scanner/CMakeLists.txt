@@ -90,10 +90,10 @@ target_compile_definitions(cardscanner_core PUBLIC CARDSCANNER_LOG_STDERR)
 # one place per platform. Windows needs its own pin: see the branch below.
 set(ONNXRUNTIME_VERSION "1.29.0")
 set(ORT_RELEASES "https://github.com/microsoft/onnxruntime/releases/download")
-# Where an archive keeps headers and libraries: the GitHub releases use
-# include/ and lib/, the NuGet package Windows needs does not.
+# The GitHub release archives use include/ and lib/; the Windows NuGet package
+# has its own layout.
 set(ORT_INCLUDE_SUBDIR "include")
-set(ORT_LIB_SUBDIR "lib")
+set(ORT_RUNTIME_SUBDIR "lib")
 if(APPLE)
   if(CMAKE_OSX_ARCHITECTURES)
     if(NOT CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
@@ -114,17 +114,17 @@ if(APPLE)
   # The install name (otool -D): the copy beside the executable must match it.
   set(ORT_LIBNAME "libonnxruntime.1.dylib")
 elseif(WIN32)
-  # DirectML is compiled into ONNX Runtime and that build ships on NuGet only;
-  # the GitHub assets are CPU-only or CUDA. 1.24.4 is the last DirectML build.
-  set(ONNXRUNTIME_DML_VERSION "1.24.4")
+  # DirectML ORT is NuGet-only; Windows ML 2.3.42 = ORT 1.27.1 + DirectML 1.15.4.
+  set(WINML_VERSION "2.3.42")
   set(ORT_URL
-      "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime.directml/${ONNXRUNTIME_DML_VERSION}/microsoft.ml.onnxruntime.directml.${ONNXRUNTIME_DML_VERSION}.nupkg")
-  set(ORT_SHA256 "57e9f11b73437bef7a309496135d4c1f96b1a8e9ddba60013fa27bfc1d788681")
+      "https://api.nuget.org/v3-flatcontainer/microsoft.windows.ai.machinelearning/${WINML_VERSION}/microsoft.windows.ai.machinelearning.${WINML_VERSION}.nupkg")
+  set(ORT_SHA256 "6487e2602a303e27cf699cf40ea158823b0b98ba2c18d96698a930f47260734d")
   # A .nupkg is a zip, but CMake's extractor dispatches on the extension and
   # does not know that one, so the download is renamed on its way in.
-  set(ORT_ARCHIVE "onnxruntime-directml-${ONNXRUNTIME_DML_VERSION}.zip")
-  set(ORT_INCLUDE_SUBDIR "build/native/include")
-  set(ORT_LIB_SUBDIR "runtimes/win-x64/native")
+  set(ORT_ARCHIVE "winml-${WINML_VERSION}.zip")
+  set(ORT_INCLUDE_SUBDIR "include/winml")
+  set(ORT_RUNTIME_SUBDIR "runtimes/win-x64/native")
+  set(ORT_IMPLIB_SUBDIR "lib/native/x64")
   set(ORT_LIBNAME "onnxruntime.dll")
 else()
   set(ORT_ARCHIVE "onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz")
@@ -145,30 +145,16 @@ FetchContent_MakeAvailable(onnxruntime)
 # GLOBAL: consumers in other directories name these in the copy step below.
 add_library(onnxruntime SHARED IMPORTED GLOBAL)
 set_target_properties(onnxruntime PROPERTIES
-    IMPORTED_LOCATION "${onnxruntime_SOURCE_DIR}/${ORT_LIB_SUBDIR}/${ORT_LIBNAME}"
+    IMPORTED_LOCATION "${onnxruntime_SOURCE_DIR}/${ORT_RUNTIME_SUBDIR}/${ORT_LIBNAME}"
     INTERFACE_INCLUDE_DIRECTORIES "${onnxruntime_SOURCE_DIR}/${ORT_INCLUDE_SUBDIR}")
 if(WIN32)
   set_target_properties(onnxruntime PROPERTIES
-      IMPORTED_IMPLIB "${onnxruntime_SOURCE_DIR}/${ORT_LIB_SUBDIR}/onnxruntime.lib")
+      IMPORTED_IMPLIB "${onnxruntime_SOURCE_DIR}/${ORT_IMPLIB_SUBDIR}/onnxruntime.lib")
 
-  # --- DirectML runtime ---
-  # ORT's package depends on this but does not carry it, and the System32 copy
-  # is older than the runtime expects, so the redistributable ships with us.
-  set(DIRECTML_VERSION "1.15.4")  # the version onnxruntime's nuspec pins
-  FetchContent_Declare(
-      directml
-      URL "https://api.nuget.org/v3-flatcontainer/microsoft.ai.directml/${DIRECTML_VERSION}/microsoft.ai.directml.${DIRECTML_VERSION}.nupkg"
-      URL_HASH SHA256=4e7cb7ddce8cf837a7a75dc029209b520ca0101470fcdf275c1f49736a3615b9
-      DOWNLOAD_NAME "directml-${DIRECTML_VERSION}.zip"
-      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-  )
-  FetchContent_MakeAvailable(directml)
-
-  # Neither is linked, so TARGET_RUNTIME_DLLS misses both. Cached because
-  # consumers read it from their own directory scope.
+  # Not a target (no import lib, onnxruntime.dll delay-loads it), so TARGET_RUNTIME_DLLS
+  # cannot list it, and the DirectML built into Windows is older than ORT needs.
   set(CARDSCANNER_EXTRA_RUNTIME_DLLS
-      "${directml_SOURCE_DIR}/bin/x64-win/DirectML.dll"
-      "${onnxruntime_SOURCE_DIR}/${ORT_LIB_SUBDIR}/onnxruntime_providers_shared.dll"
+      "${onnxruntime_SOURCE_DIR}/${ORT_RUNTIME_SUBDIR}/DirectML.dll"
       CACHE INTERNAL "DLLs that must sit beside anything linking cardscanner_desktop")
 endif()
 

@@ -112,11 +112,8 @@ public:
     try {
       session_ = Ort::Session(ortEnv(), modelPathNative.c_str(), options);
     } catch (const Ort::Exception &e) {
-      // DirectML registers fine but rejects ColorBarModel's graph at Initialize;
-      // one model the GPU cannot build should run on CPU, not kill the scanner.
+      // The accelerator can reject a graph at Initialize; retry on CPU rather than fail.
       if (provider_ == "cpu") {
-        // ORT's exception does not carry the path, and callers need to know
-        // which model failed.
         throw std::runtime_error("Failed to load model '" + modelPath_ +
                                  "': " + e.what());
       }
