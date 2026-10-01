@@ -1,0 +1,28 @@
+/* The dock renders inside OBS's own panel, so it inherits a dark chrome and
+   must stay legible at narrow widths. */
+.dock { padding: 10px; display: flex; flex-direction: column; gap: 10px;
+        font: 13px/1.4 -apple-system, system-ui, sans-serif; color: #e8e8ea; }
+.row { display: flex; align-items: center; gap: 8px; }
+.grow { flex: 1; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #d4553f; }
+.dot.open { background: #4fb477; }
+button { background: #2c2f36; color: #e8e8ea; border: 1px solid #3c414b;
+         border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+button:hover:not(:disabled) { background: #363a43; }
+button.on { background: #3f6fd4; border-color: #3f6fd4; }
+button:disabled { opacity: 0.4; cursor: default; }
+.panel { display: flex; gap: 10px; align-items: center; min-height: 64px;
+         background: #23262c; border-radius: 8px; padding: 10px; }
+.art { width: 44px; border-radius: 4px; display: block; }
+.name { font-weight: 600; }
+.meta { opacity: 0.65; font-size: 12px; }
+.slider input { flex: 1; }
+.num { font-variant-numeric: tabular-nums; opacity: 0.7; min-width: 34px; }
+.history { display: flex; flex-direction: column; gap: 4px; overflow-y: auto;
+           max-height: 220px; }
+.entry { display: flex; align-items: center; gap: 8px; text-align: left;
+         background: transparent; border: none; padding: 4px; }
+.entry:hover { background: #2c2f36; }
+.entry img, .entry .blank { width: 26px; height: 36px; border-radius: 3px;
+                            background: #33363d; object-fit: cover; }
+.entry-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

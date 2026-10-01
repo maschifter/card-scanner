@@ -5,7 +5,8 @@
   "workspaces": {
     "packages": [
       "packages/*",
-      "apps/*"
+      "apps/*",
+      "apps/*/web"
     ]
   },
   "scripts": {

@@ -1,0 +1,89 @@
+/* The Browser Source composites this over live video, so the page background
+   must stay transparent and nothing may introduce scrollbars. */
+:root { color-scheme: dark; }
+
+html, body, #root {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font: 16px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  color: #fff;
+}
+
+.card {
+  position: absolute;
+  left: 32px;
+  bottom: 32px;
+  /* Slide out rather than vanish: every state change here is visible to
+     viewers, and an abrupt disappearance reads as a bug. */
+  transform: translateY(24px);
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.card.visible { opacity: 1; transform: translateY(0); }
+
+.panel {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(14, 16, 22, 0.82);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+}
+
+.art { width: 132px; border-radius: 8px; display: block; background: #222; }
+.name { font-size: 24px; font-weight: 650; letter-spacing: -0.01em; }
+.meta { opacity: 0.72; font-size: 15px; margin-top: 4px; }
+.score {
+  opacity: 0.5;
+  font-size: 13px;
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.status {
+  position: absolute;
+  right: 16px;
+  top: 12px;
+  font-size: 12px;
+  opacity: 0.45;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A candidate still gathering detections. Dimmed and outlined so it is clearly
+   provisional - a viewer should be able to tell a guess from a confirmed card
+   at a glance, without reading the text. */
+.panel.pending {
+  opacity: 0.62;
+  background: rgba(14, 16, 22, 0.62);
+  outline: 1px solid rgba(255, 255, 255, 0.16);
+  outline-offset: -1px;
+}
+
+/* Setup-time readout. Deliberately legible rather than pretty: it exists to
+   answer "why is nothing showing", and is hidden with ?debug=0 for a real
+   broadcast. */
+.readout {
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: 0.75;
+  text-align: right;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+/* Recognised card, mirrored into the corner beside the status. */
+.corner-card {
+  margin-top: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  opacity: 0.95;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
+}
+.corner-score {
+  opacity: 0.6;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}

@@ -1,84 +1,99 @@
 # CARD-NEXUS
 
-A React Native card scanner package with ML-powered card recognition for trading card games (MTG, Lorcana, FAB, Pokémon, etc.).
+A card scanner with machine-learning card recognition for trading card games,
+including Magic: The Gathering, Lorcana, Flesh and Blood, and Pokémon. It runs
+on phones through React Native and on desktops as an OBS Studio plugin.
 
-## Platform Support
+## What is in the repository
 
-- **iOS**: 15.1+
-- **Android**: API 29+ (Android 10+)
+One recognition pipeline in C++, wrapped for each platform:
+
+| Path | What it is |
+|---|---|
+| `packages/card-scanner-core` | The pipeline: segmentation, dewarping, embedding, and search. Platform-agnostic. |
+| `packages/mobile-card-scanner` | The React Native wrapper. Links ExecuTorch for inference. |
+| `packages/desktop-card-scanner` | The desktop wrapper and the OBS bindings. Links ONNX Runtime. |
+| `apps/mobile-example` | The Expo app that scans through a phone camera. |
+| `apps/desktop-example` | The OBS plugin and the scanner server it talks to. |
+
+Core declares `loadSession` and leaves it undefined. Each platform links
+exactly one definition, which is how one pipeline runs on two inference
+runtimes without either one leaking into the other.
 
 ## Documentation
 
-- [API Reference](docs/API.md) - Complete API documentation
-- [Pipeline Architecture](docs/PIPELINE.md) - Detailed scanner pipeline explanation
-- [Package README](packages/mobile-card-scanner/README.md) - ObjectBox integration & technical details
+- [API reference](docs/API.md) — the React Native surface
+- [Pipeline architecture](docs/PIPELINE.md) — how a frame becomes a card id
+- [Mobile package](packages/mobile-card-scanner/README.md) — ObjectBox
+  integration and native details
+- [Desktop package](packages/desktop-card-scanner/README.md) — the ONNX
+  backend, the OBS bindings, and the process split
+- [OBS plugin](apps/desktop-example/README.md) — install it and use it
 
-## Quick Start - Example App
+## Mobile
+
+Supported platforms are iOS 15.1 and later, and Android 10 (API 29) and later.
 
 ### Prerequisites
 
-- Node.js (v20.19.4+)
-- Yarn (v4.1.1)
+- Node.js 20.19.4 or later
+- Yarn 4.1.1
 - Git LFS
-- CMake (v3.18+) - Required for native code generation
-- Xcode (for iOS development)
-- Android Studio (for Android development)
+- CMake 3.18 or later, which generates the native code
+- Xcode, for iOS
+- Android Studio, for Android
 
-**Installing CMake:**
+Install CMake and Git LFS for your platform:
 
-```bash
+```sh
 # macOS
-brew install cmake
+brew install cmake git-lfs
 
-# Ubuntu/Debian
-sudo apt-get install cmake
-
-# Windows
-# Download from https://cmake.org/download/
+# Debian or Ubuntu
+sudo apt-get install cmake git-lfs
 ```
 
-### Installation
+On Windows, download [CMake](https://cmake.org/download/) and
+[Git LFS](https://git-lfs.github.com/).
 
-```bash
-# Install Git LFS (if not already installed)
-# macOS
-brew install git-lfs
+### Set up
 
-# Ubuntu/Debian
-sudo apt-get install git-lfs
-
-# Windows
-# Download from https://git-lfs.github.com/
-
-# Initialize Git LFS
+```sh
 git lfs install
-
-# Clone the repository (or pull LFS files if already cloned)
 git lfs pull
-
-# Install dependencies
 yarn
 ```
 
-### Running the Example App
+If you cloned before installing Git LFS, `git lfs pull` fetches the files that
+the clone left as pointers.
 
-#### iOS
+### Run the example app
 
-```bash
-cd apps/example
-yarn expo run:ios
+```sh
+cd apps/mobile-example
+yarn expo run:ios       # or: yarn expo run:android
 ```
 
-#### Android
+To start the development server on its own, run `yarn expo start`.
 
-```bash
-cd apps/example
-yarn expo run:android
+## Desktop
+
+The desktop build is an OBS Studio plugin: point a camera at a card and OBS
+names it on your stream.
+
+The models and the databases come from Git LFS, so run `git lfs pull` first if
+you have not already.
+
+```sh
+cd apps/desktop-example/web && yarn install && yarn build && cd ..
+cmake -S . -B build -DBUILD_OBS_MODULE=ON
+cmake --build build --target install-obs-plugin
 ```
 
-#### Development Server
+Restart OBS, add the **Card Scanner** filter to your camera source, and click
+**Add overlay to current scene**. The
+[OBS plugin README](apps/desktop-example/README.md) covers the settings, the
+dock, the control protocol, and troubleshooting.
 
-```bash
-cd apps/example
-yarn expo start
-```
+macOS on Apple silicon is the tested platform. Windows support is written but
+has not been compiled or run on Windows yet.

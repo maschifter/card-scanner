@@ -1,0 +1,93 @@
+{
+  "//": "Desktop scanner config. Relative dirs resolve against this file's location.",
+  "//data": "Models and databases are not in Git. See README.md for the assets/ layout.",
+  "modelsDir": "assets/models",
+  "databasesDir": "assets/databases",
+  "cacheDir": "assets/cache",
+  "segmentationModelPath": "CardSegmentationModel.onnx",
+  "embeddingModelPath": "CardRecognitionModel.onnx",
+  "scanMode": "single",
+  "segmentationThreshold": 0.6,
+  "iouThreshold": 0.7,
+  "confidenceThreshold": 0.35,
+  "minGameConfidence": 1e-05,
+  "maxMatches": 5,
+  "searchCandidates": 100,
+  "blurThreshold": 0,
+  "lowLightThreshold": 65,
+  "lowLightGamma": 2.0,
+  "maxFrameRate": 30,
+  "//gameClassMapping": "Model class id -> database name(s). MUST be contiguous from 0 and MUST match the class order the segmentation model was exported with; the entry count decodes the prediction tensor. Verified against CardSegmentationModel.onnx's `names` metadata. An array means the model merges games it cannot tell apart, and all of them get searched.",
+  "gameClassMapping": {
+    "0": [
+      "fab"
+    ],
+    "1": [
+      "lorcana"
+    ],
+    "2": [
+      "mtg"
+    ],
+    "3": [
+      "onepiece"
+    ],
+    "4": [
+      "pokemon",
+      "pokemon-japan"
+    ],
+    "5": [
+      "riftbound"
+    ],
+    "6": [
+      "rise"
+    ],
+    "7": [
+      "sorcery"
+    ],
+    "8": [
+      "cyberpunk"
+    ],
+    "9": [
+      "dbs-masters",
+      "dbs-fusion"
+    ],
+    "10": [
+      "eoa"
+    ],
+    "11": [
+      "grand-archive"
+    ],
+    "12": [
+      "gundam"
+    ],
+    "13": [
+      "naruto-mythos"
+    ],
+    "14": [
+      "swu"
+    ],
+    "15": [
+      "chrono-core"
+    ],
+    "16": [
+      "palworld"
+    ]
+  },
+  "gameSpecificConfig": {
+    "mtg": {
+      "setSymbolDetection": {
+        "detectionModelPath": "SetSymbolDetectionModel.onnx",
+        "embeddingModelPath": "SetSymbolRecognitionModel.onnx",
+        "detectionThreshold": 0.3,
+        "confidenceThreshold": 0.6
+      }
+    },
+    "fab": {
+      "colorDetection": {
+        "modelPath": "ColorBarModel.onnx"
+      }
+    }
+  },
+  "//confidenceThreshold": "Reporting floor. Acceptance is the session's acceptScore (0.6); this lower value lets near-misses reach the diagnostics instead of vanishing.",
+  "//maxFrameRate": "Core throttles inside processFrame. Measured median scan is ~17ms (~59fps ceiling), so 30 leaves headroom; 5 was leaving ~180ms of pure waiting per scan."
+}

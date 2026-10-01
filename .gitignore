@@ -90,13 +90,32 @@ android/generated
 apps/*/ios/
 apps/*/android/
 
+# Desktop scanner data: the models and databases ship through Git LFS, the same
+# way the mobile app ships its copies. These two are runtime state that LMDB and
+# the scanner recreate, so they stay out.
+apps/desktop-example/assets/**/lock.mdb
+apps/desktop-example/assets/cache/
+
 # custom
 *.tgz
 Makefile
 
 # local tooling for benchmark ground truth; only its output (utils/benchmarkImages.ts) is committed
-apps/example/scripts/
+apps/mobile-example/scripts/
 
 .claude
-apps/example/assets/reference_check/
+
+# scratch dir for scripts/verify-bundle.py
+.verify-bundle-cache/
+
+# vite build output (overlay is rebuilt from source)
+dist/
+
+# OBS module build tree
+build-obs/
+
+# local dev tooling, not part of the product
+scripts/
+
+apps/mobile-example/assets/reference_check/
 scripts/benchmark-ids/

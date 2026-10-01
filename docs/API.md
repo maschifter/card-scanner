@@ -184,7 +184,7 @@ const frameOutput = useFrameOutput({
 - Skips blurry frames based on `blurThreshold`
 - Low-light enhancement applied if `lowLightThreshold` exceeded
 - Multi-game search: no need to specify game name
-- Returned bounding boxes are in raw frame-buffer coordinates - map them to view coordinates with Vision Camera v5's `frame.convertFramePointToCameraPoint` + `cameraRef.convertCameraPointToViewPoint` (see [`apps/example/utils/cameraCoords.ts`](../apps/example/utils/cameraCoords.ts))
+- Returned bounding boxes are in raw frame-buffer coordinates - map them to view coordinates with Vision Camera v5's `frame.convertFramePointToCameraPoint` + `cameraRef.convertCameraPointToViewPoint` (see [`apps/mobile-example/utils/cameraCoords.ts`](../apps/mobile-example/utils/cameraCoords.ts))
 
 **Implementation:** [`packages/mobile-card-scanner/common/rnbridge/HybridCardScannerPlugin.cpp`](../packages/mobile-card-scanner/common/rnbridge/HybridCardScannerPlugin.cpp)
 
@@ -697,7 +697,7 @@ const result = await initializeScanner({
 
 The export pipeline emits a `manifest.json` listing `class_names` in class order —
 copy that list rather than transcribing it. The example app keeps its copy at
-`apps/example/assets/model-manifest.json`.
+`apps/mobile-example/assets/model-manifest.json`.
 
 ### Merged Classes (one class, several games)
 

@@ -1,0 +1,59 @@
+#pragma once
+
+#include <atomic>
+#include <cstdint>
+#include <string>
+#include <thread>
+
+namespace cardscanner {
+namespace obsbridge {
+
+/**
+ * @brief Runs card-scanner-server as a child of OBS and keeps it running.
+ *
+ * Makes the two-process design a one-artifact install: no terminal, no token to
+ * copy, no start ordering. Respawned with backoff if it dies.
+ *
+ * On Windows the child joins a KILL_ON_JOB_CLOSE job object, so the OS reaps it
+ * if this process dies without unwinding.
+ */
+class ServerProcess {
+public:
+  ServerProcess(std::string executable, std::string configPath, std::string logPath,
+                uint64_t token, uint16_t framePort, uint16_t controlPort);
+  ~ServerProcess();
+
+  ServerProcess(const ServerProcess &) = delete;
+  ServerProcess &operator=(const ServerProcess &) = delete;
+
+  /// Spawns the child and starts supervising it.
+  void start();
+  /// Terminates the child and stops supervising. Safe to call twice.
+  void stop();
+
+  bool running() const { return pid_.load() > 0; }
+  const std::string &logPath() const { return logPath_; }
+
+private:
+  void superviseLoop();
+  bool spawnOnce();
+
+  std::string executable_;
+  std::string configPath_;
+  std::string logPath_;
+  uint64_t token_;
+  uint16_t framePort_;
+  uint16_t controlPort_;
+
+  std::atomic<int> pid_{0};
+#ifdef _WIN32
+  /// void* rather than HANDLE so this header stays free of windows.h.
+  void *process_ = nullptr;
+  void *job_ = nullptr;
+#endif
+  std::atomic<bool> running_{false};
+  std::thread supervisor_;
+};
+
+} // namespace obsbridge
+} // namespace cardscanner
