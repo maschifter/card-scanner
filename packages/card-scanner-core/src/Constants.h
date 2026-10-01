@@ -139,14 +139,6 @@ constexpr int JPEG_QUALITY = 90;
 } // namespace card
 
 // ============================================================================
-// Frame Extraction
-// ============================================================================
-namespace frame {
-// RGBA channels count (with alpha)
-constexpr int RGBA_CHANNELS = 4;
-} // namespace frame
-
-// ============================================================================
 // Letterbox Transform
 // ============================================================================
 namespace letterbox {

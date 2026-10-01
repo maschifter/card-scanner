@@ -2,12 +2,12 @@
 
 #include <ipc/Socket.h>
 #include <Log.h>
+#include <utils/PixelConvert.h>
 
+#include <array>
 #include <chrono>
-#include <cstring>
 #include <span>
 #include <string>
-#include <opencv2/imgproc.hpp>
 #include <stdexcept>
 #include <vector>
 
@@ -16,37 +16,26 @@ namespace ipc {
 
 namespace {
 
-/// Bytes per pixel in plane 0.
-uint32_t lumaBytesPerPixel(PixelFormat format) {
+/// The wire format's numbers are its own, so the mapping is explicit. Unknown,
+/// and any number no enumerator has, land on utils::PixelFormat::Unknown.
+utils::PixelFormat toCoreFormat(PixelFormat format) {
   switch (format) {
   case PixelFormat::BGRA:
+    return utils::PixelFormat::BGRA;
   case PixelFormat::RGBA:
-    return 4;
-  case PixelFormat::UYVY:
-  case PixelFormat::YUY2:
-    return 2;
+    return utils::PixelFormat::RGBA;
   case PixelFormat::NV12:
+    return utils::PixelFormat::NV12;
   case PixelFormat::I420:
-    return 1;
-  default:
-    return 0;
-  }
-}
-
-uint32_t planesFor(PixelFormat format) {
-  switch (format) {
-  case PixelFormat::NV12:
-    return 2;
-  case PixelFormat::I420:
-    return 3;
-  case PixelFormat::BGRA:
-  case PixelFormat::RGBA:
+    return utils::PixelFormat::I420;
   case PixelFormat::UYVY:
+    return utils::PixelFormat::UYVY;
   case PixelFormat::YUY2:
-    return 1;
-  default:
-    return 0;
+    return utils::PixelFormat::YUY2;
+  case PixelFormat::Unknown:
+    break;
   }
+  return utils::PixelFormat::Unknown;
 }
 
 } // namespace
@@ -56,9 +45,9 @@ void validateHeader(const FrameHeader &h, size_t payloadSize) {
     throw std::runtime_error("frame: zero-sized");
   }
 
-  const auto format = static_cast<PixelFormat>(h.format);
-  const uint32_t expectedPlanes = planesFor(format);
-  const uint32_t bpp = lumaBytesPerPixel(format);
+  const auto format = toCoreFormat(static_cast<PixelFormat>(h.format));
+  const uint32_t expectedPlanes = utils::planesFor(format);
+  const uint32_t bpp = utils::lumaBytesPerPixel(format);
   if (expectedPlanes == 0 || bpp == 0) {
     throw std::runtime_error("frame: unsupported pixel format " +
                              std::to_string(h.format));
@@ -76,7 +65,7 @@ void validateHeader(const FrameHeader &h, size_t payloadSize) {
     const uint32_t expectedRows = (plane == 0) ? h.height : h.height / 2;
     const uint32_t expectedRowBytes =
         (plane == 0) ? h.width * bpp
-                     : (format == PixelFormat::NV12 ? h.width : h.width / 2);
+                     : (format == utils::PixelFormat::NV12 ? h.width : h.width / 2);
 
     if (h.rows[plane] != expectedRows) {
       throw std::runtime_error("frame: plane " + std::to_string(plane) + " has " +
@@ -100,48 +89,6 @@ void validateHeader(const FrameHeader &h, size_t payloadSize) {
 }
 
 namespace {
-
-/// Copies a plane row by row. linesize is authoritative: camera buffers are
-/// commonly padded, so width * bytesPerPixel is not.
-void packPlane(const uint8_t *src, uint32_t linesize, uint32_t rows,
-               uint32_t rowBytes, uint8_t *dst) {
-  for (uint32_t y = 0; y < rows; y++) {
-    std::memcpy(dst + size_t(y) * rowBytes, src + size_t(y) * linesize, rowBytes);
-  }
-}
-
-/**
- * @brief Packs the ROI of a planar YUV frame contiguously.
- *
- * @param chromaHalfWidth I420 has two half-width chroma planes; NV12 has one
- *        interleaved plane at full width.
- */
-cv::Mat packYuvRoi(const FrameHeader &h, const uint8_t *payload, const cv::Rect &roi,
-                   bool chromaHalfWidth) {
-  const int lumaRows = roi.height;
-  const int chromaRows = roi.height / 2;
-  cv::Mat yuv(lumaRows + chromaRows, roi.width, CV_8UC1);
-
-  const uint8_t *src = payload;
-  uint8_t *dst = yuv.data;
-
-  packPlane(src + size_t(roi.y) * h.linesize[0] + size_t(roi.x), h.linesize[0],
-            uint32_t(lumaRows), uint32_t(roi.width), dst);
-  src += size_t(h.linesize[0]) * h.rows[0];
-  dst += size_t(roi.width) * lumaRows;
-
-  // Chroma is half resolution in both axes; resolveRoi guarantees even origin
-  // and extent so this divides exactly.
-  for (uint32_t plane = 1; plane < h.planeCount; plane++) {
-    const int rowBytes = chromaHalfWidth ? roi.width / 2 : roi.width;
-    const int originX = chromaHalfWidth ? roi.x / 2 : roi.x;
-    packPlane(src + size_t(roi.y / 2) * h.linesize[plane] + size_t(originX),
-              h.linesize[plane], uint32_t(chromaRows), uint32_t(rowBytes), dst);
-    src += size_t(h.linesize[plane]) * h.rows[plane];
-    dst += size_t(rowBytes) * chromaRows;
-  }
-  return yuv;
-}
 
 /// Internal: not declared in the header; the applied region reaches callers
 /// through frameToRgb's out-parameter.
@@ -174,44 +121,18 @@ cv::Mat frameToRgb(const FrameHeader &header, const uint8_t *payload, cv::Rect *
     *appliedRoi = roi;
   }
 
-  cv::Mat rgb;
-  switch (static_cast<PixelFormat>(header.format)) {
-  case PixelFormat::BGRA:
-  case PixelFormat::RGBA: {
-    // Both the wrap and the narrowing are views; neither copies.
-    const cv::Mat view(int(header.height), int(header.width), CV_8UC4,
-                       const_cast<uint8_t *>(payload), header.linesize[0]);
-    cv::cvtColor(view(roi), rgb,
-                 static_cast<PixelFormat>(header.format) == PixelFormat::BGRA
-                     ? cv::COLOR_BGRA2RGB
-                     : cv::COLOR_RGBA2RGB);
-    break;
+  // One contiguous payload, so plane i starts where the ones before it end.
+  std::array<utils::PlaneView, kMaxPlanes> planes{};
+  size_t offset = 0;
+  for (uint32_t plane = 0; plane < header.planeCount; plane++) {
+    const size_t bytes = size_t(header.linesize[plane]) * header.rows[plane];
+    planes[plane] = utils::PlaneView{payload + offset, header.linesize[plane]};
+    offset += bytes;
   }
-  case PixelFormat::UYVY:
-  case PixelFormat::YUY2: {
-    const cv::Mat view(int(header.height), int(header.width), CV_8UC2,
-                       const_cast<uint8_t *>(payload), header.linesize[0]);
-    cv::cvtColor(view(roi), rgb,
-                 static_cast<PixelFormat>(header.format) == PixelFormat::UYVY
-                     ? cv::COLOR_YUV2RGB_UYVY
-                     : cv::COLOR_YUV2RGB_YUY2);
-    break;
-  }
-  case PixelFormat::NV12: {
-    const cv::Mat yuv = packYuvRoi(header, payload, roi, /*chromaHalfWidth=*/false);
-    cv::cvtColor(yuv, rgb, cv::COLOR_YUV2RGB_NV12);
-    break;
-  }
-  case PixelFormat::I420: {
-    const cv::Mat yuv = packYuvRoi(header, payload, roi, /*chromaHalfWidth=*/true);
-    cv::cvtColor(yuv, rgb, cv::COLOR_YUV2RGB_I420);
-    break;
-  }
-  default:
-    throw std::runtime_error("frame: unsupported pixel format " +
-                             std::to_string(header.format));
-  }
-  return rgb;
+
+  return utils::toRgb(toCoreFormat(static_cast<PixelFormat>(header.format)),
+                      {planes.data(), header.planeCount}, int(header.width),
+                      int(header.height), roi);
 }
 
 FrameServer::FrameServer(uint16_t port, uint64_t token, FrameCallback callback)

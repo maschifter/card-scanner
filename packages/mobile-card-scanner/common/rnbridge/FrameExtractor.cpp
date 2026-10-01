@@ -1,8 +1,7 @@
 #include "FrameExtractor.h"
-#include <Constants.h>
 #include <opencv2/core.hpp>
-#include <opencv2/imgproc.hpp>
 #include <stdexcept>
+#include <utils/PixelConvert.h>
 
 using namespace cardscanner;
 
@@ -13,9 +12,11 @@ namespace {
 /** @brief Non-owning view over the Frame's pixel buffer + conversion metadata.
  *  Valid only while the Frame (and its shared ArrayBuffer) is alive. */
 struct BorrowedFrame {
-  cv::Mat view; // Wraps the buffer without copying.
-  std::shared_ptr<margelo::nitro::ArrayBuffer> buffer; // Keeps view alive.
-  cv::ColorConversionCodes conversion;
+  utils::PlaneView plane; // Points into the buffer without copying.
+  std::shared_ptr<margelo::nitro::ArrayBuffer> buffer; // Keeps plane alive.
+  utils::PixelFormat format;
+  int width;
+  int height;
   utils::FrameOrientation orientation;
 };
 
@@ -38,13 +39,13 @@ borrowFrame(const std::shared_ptr<nitrocamera::HybridFrameSpec> &frame) {
   // The camera output requests pixelFormat 'rgb'; unlike v4, the channel order
   // is stated by the resolved format rather than guessed from the platform.
   const nitrocamera::PixelFormat pixelFormat = frame->getPixelFormat();
-  cv::ColorConversionCodes conversion;
+  utils::PixelFormat format;
   switch (pixelFormat) {
   case nitrocamera::PixelFormat::RGB_BGRA_8_BIT:
-    conversion = cv::COLOR_BGRA2RGB;
+    format = utils::PixelFormat::BGRA;
     break;
   case nitrocamera::PixelFormat::RGB_RGBA_8_BIT:
-    conversion = cv::COLOR_RGBA2RGB;
+    format = utils::PixelFormat::RGBA;
     break;
   default:
     throw std::runtime_error(
@@ -65,17 +66,17 @@ borrowFrame(const std::shared_ptr<nitrocamera::HybridFrameSpec> &frame) {
   // Camera buffers are commonly row-padded, so the stride is authoritative -
   // deriving it from the width would misread every row after the first.
   const size_t bytesPerRow = static_cast<size_t>(frame->getBytesPerRow());
-  if (bytesPerRow <
-      static_cast<size_t>(width) * constants::frame::RGBA_CHANNELS) {
+  if (bytesPerRow < static_cast<size_t>(width) * utils::lumaBytesPerPixel(format)) {
     throw std::runtime_error("Frame bytesPerRow is smaller than one row");
   }
   if (pixelBuffer->size() < bytesPerRow * static_cast<size_t>(height)) {
     throw std::runtime_error("Frame pixel buffer is smaller than expected");
   }
 
-  const cv::Mat view(height, width, CV_8UC4, pixelBuffer->data(), bytesPerRow);
+  const uint8_t *const pixels = pixelBuffer->data();
 
-  return {view, std::move(pixelBuffer), conversion,
+  return {utils::PlaneView{pixels, bytesPerRow},
+          std::move(pixelBuffer), format, width, height,
           utils::toFrameOrientation(frame->getOrientation())};
 }
 
@@ -87,8 +88,9 @@ ExtractedFrame FrameExtractor::extractFrame(
 
   // The Frame can be disposed any time after this returns, so every path added
   // here (e.g. future YUV ones) must copy out - never return an aliasing Mat.
-  cv::Mat frameImage;
-  cv::cvtColor(borrowed.view, frameImage, borrowed.conversion);
+  const cv::Mat frameImage =
+      utils::toRgb(borrowed.format, {&borrowed.plane, 1}, borrowed.width,
+                   borrowed.height, cv::Rect(0, 0, borrowed.width, borrowed.height));
 
   if (frameImage.empty()) {
     throw std::runtime_error("OpenCV Mat conversion resulted in an empty "

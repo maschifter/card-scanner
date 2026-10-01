@@ -15,6 +15,7 @@
 #include <http/HttpClient.h>
 #include <service/ScannerServer.h>
 #include <util/ParentWatchdog.h>
+#include <utils/ImageUtils.h>
 
 #include <opencv2/opencv.hpp>
 
@@ -54,12 +55,14 @@ void replayDirectory(const std::filesystem::path &dir, desktop::ScannerServer &s
       if (!g_running) {
         return;
       }
-      cv::Mat bgr = cv::imread(path.string());
-      if (bgr.empty()) {
+      cv::Mat rgb;
+      try {
+        rgb = cardscanner::utils::ImageUtils::loadImageRGB(path.string());
+      } catch (const std::exception &e) {
+        cardscanner::log(cardscanner::LOG_LEVEL::Error, "[Server]",
+                         "skipping unreadable image:", e.what());
         continue;
       }
-      cv::Mat rgb;
-      cv::cvtColor(bgr, rgb, cv::COLOR_BGR2RGB);
       // Held long enough to clear the stability window.
       for (int i = 0; i < 6 && g_running; i++) {
         server.submitFrame({rgb});
