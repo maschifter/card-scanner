@@ -8,18 +8,17 @@ import {
   ScrollView,
 } from 'react-native';
 import {
-  autoLoadDatabase,
   checkDatabaseStatus,
   DatabaseStats,
   useDatabaseManager,
   loadDatabaseFromAsset,
   GAME_DATABASES,
 } from '../utils/database';
-import { DatabaseInfo, deleteDatabase } from '@cardnexus/card-scanner';
+import { deleteDatabase } from '@cardnexus/card-scanner';
 
 const DEFAULT_GAME_NAME = 'lorcana';
 
-export default function HomeScreen() {
+const HomeScreen = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState<DatabaseStats | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +35,8 @@ export default function HomeScreen() {
         setError(err instanceof Error ? err.message : String(err));
         setIsLoading(false);
       });
+    // Runs once on mount; refreshDatabases changes identity every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -50,12 +51,16 @@ export default function HomeScreen() {
     } else if (databases.length > 0 && selectedGame === null) {
       setSelectedGame(databases[0].gameName);
     }
+    // Reacts to the database list only; selectedGame is read, not tracked.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [databases]);
 
   useEffect(() => {
     if (selectedGame) {
       refreshStats(selectedGame);
     }
+    // refreshStats is recreated every render; tracking it would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedGame]);
 
   const refreshStats = async (gameName: string) => {
@@ -75,39 +80,9 @@ export default function HomeScreen() {
         setAutoLoadMessage(null);
       }
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      console.error(`[HomeScreen] Failed to check database status:`, err);
+      console.error('[HomeScreen] Failed to check database status:', err);
       // Don't set error for unloaded databases - just set stats to null
       setStats(null);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const initializeDatabase = async () => {
-    setIsLoading(true);
-    setError(null);
-    setAutoLoadMessage(null);
-
-    try {
-      const result = await autoLoadDatabase();
-
-      if (result.error) {
-        setError(result.error);
-      } else if (result.loaded) {
-        setAutoLoadMessage(
-          `Database initialized with ${result.stats.cardCount} cards`,
-        );
-      } else {
-        setAutoLoadMessage(
-          `Database already loaded with ${result.stats.cardCount} cards`,
-        );
-      }
-
-      setStats(result.stats);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      setError(errorMsg);
     } finally {
       setIsLoading(false);
     }
@@ -158,7 +133,7 @@ export default function HomeScreen() {
       setAutoLoadMessage(`Database "${selectedGame}" loaded successfully`);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      console.error(`[HomeScreen] Load failed:`, err);
+      console.error('[HomeScreen] Load failed:', err);
       setError(`Load failed: ${errorMsg}`);
     } finally {
       setIsLoading(false);
@@ -320,7 +295,9 @@ export default function HomeScreen() {
       </View>
     </ScrollView>
   );
-}
+};
+
+export default HomeScreen;
 
 const styles = StyleSheet.create({
   container: {

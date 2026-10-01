@@ -18,7 +18,7 @@ interface CardIdLookupProps {
   disabled: boolean;
 }
 
-export default function CardIdLookup({ disabled }: CardIdLookupProps) {
+const CardIdLookup = ({ disabled }: CardIdLookupProps) => {
   const [game, setGame] = useState<string>(
     GAME_DATABASES.find((db) => db.name === 'lorcana')?.name ??
       GAME_DATABASES[0]?.name ??
@@ -157,7 +157,9 @@ export default function CardIdLookup({ disabled }: CardIdLookupProps) {
       )}
     </View>
   );
-}
+};
+
+export default CardIdLookup;
 
 const styles = StyleSheet.create({
   hint: {

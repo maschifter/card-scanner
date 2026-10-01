@@ -1,0 +1,8 @@
+# Model weights and card databases are committed, the same way the mobile and
+# desktop examples ship theirs. Regenerate them with the scripts in tools/.
+
+# Local test images, for example a copy from apps/mobile-example/assets/games_images
+public/test/
+
+# `yarn workspace web-example build` output
+dist/

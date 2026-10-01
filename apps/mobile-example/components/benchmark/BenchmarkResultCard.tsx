@@ -82,7 +82,7 @@ interface BenchmarkResultCardProps {
   onReset: () => void;
 }
 
-export default function BenchmarkResultCard({
+const BenchmarkResultCard = ({
   summary,
   recordCount,
   iterations,
@@ -91,7 +91,7 @@ export default function BenchmarkResultCard({
   saveError,
   onSave,
   onReset,
-}: BenchmarkResultCardProps) {
+}: BenchmarkResultCardProps) => {
   return (
     <View style={shared.card}>
       <Text style={shared.cardTitle}>Done</Text>
@@ -188,7 +188,9 @@ export default function BenchmarkResultCard({
       )}
     </View>
   );
-}
+};
+
+export default BenchmarkResultCard;
 
 const styles = StyleSheet.create({
   statRow: {

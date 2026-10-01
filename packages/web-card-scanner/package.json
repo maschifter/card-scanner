@@ -1,0 +1,28 @@
+{
+  "name": "@cardnexus/web-card-scanner",
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tie/core": "0.0.1",
+    "@tie/zoo": "0.0.1",
+    "typegpu": "^0.11.9"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "@webgpu/types": "^0.1.60",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.3.3",
+    "typescript": "npm:tsover@^5.9.8",
+    "vitest": "^3.2.4"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts && prettier --check src",
+    "test": "vitest run"
+  }
+}

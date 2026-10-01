@@ -14,6 +14,10 @@
     "typecheck": "yarn workspaces foreach --all --parallel run typecheck"
   },
   "private": true,
+  "resolutions": {
+    "@tie/core": "file:./vendor/tie-core-0.0.1-a073696.tgz",
+    "@tie/zoo": "file:./vendor/tie-zoo-0.0.1-a073696.tgz"
+  },
   "devDependencies": {
     "@react-native/eslint-config": "^0.79.0",
     "eslint": "^8.57.0",

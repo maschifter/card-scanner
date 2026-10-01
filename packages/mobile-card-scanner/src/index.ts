@@ -283,7 +283,7 @@ declare global {
 if (global.initializeScanner == null) {
   if (!CardScannerInstallerNativeModule) {
     throw new Error(
-      `Failed to install @cardnexus/card-scanner: The native module could not be found.`,
+      'Failed to install @cardnexus/card-scanner: The native module could not be found.',
     );
   }
   CardScannerInstallerNativeModule.install();

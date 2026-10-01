@@ -36,7 +36,7 @@ import { fileUri } from '../utils/format';
 
 const isScanningSync = createSynchronizable(false);
 
-export default function VisionCameraDebug() {
+const VisionCameraDebug = () => {
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
   const { hasPermission, requestPermission } = useCameraPermission();
@@ -348,7 +348,9 @@ export default function VisionCameraDebug() {
       </View>
     </View>
   );
-}
+};
+
+export default VisionCameraDebug;
 
 const styles = StyleSheet.create({
   container: {

@@ -68,7 +68,7 @@ const AUTO_RESUME_MS = 0;
 const SCAN_MODES: ScanMode[] = ['single', 'auto'];
 const NOTICE_MS = 1500;
 
-export default function VisionCameraScanner() {
+const VisionCameraScanner = () => {
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
   const { hasPermission, requestPermission } = useCameraPermission();
@@ -473,7 +473,9 @@ export default function VisionCameraScanner() {
       </View>
     </View>
   );
-}
+};
+
+export default VisionCameraScanner;
 
 const styles = StyleSheet.create({
   container: {

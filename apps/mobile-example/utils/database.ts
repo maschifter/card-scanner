@@ -314,7 +314,7 @@ export function useDatabaseManager() {
 
   const refreshDatabases = useCallback(async () => {
     console.log(
-      `[useDatabaseManager] Refreshing databases using native core...`,
+      '[useDatabaseManager] Refreshing databases using native core...',
     );
     const dbList = await listDatabases();
     setDatabases(dbList);

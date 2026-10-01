@@ -17,11 +17,7 @@ interface StatTableProps {
  * Right-aligned numeric table with a leading label column, used for every
  * breakdown on the result card.
  */
-export default function StatTable({
-  columns,
-  rows,
-  wideLabels,
-}: StatTableProps) {
+const StatTable = ({ columns, rows, wideLabels }: StatTableProps) => {
   const labelStyle = [
     styles.cell,
     wideLabels ? styles.cellWide : styles.cellLeft,
@@ -52,7 +48,9 @@ export default function StatTable({
       ))}
     </View>
   );
-}
+};
+
+export default StatTable;
 
 const styles = StyleSheet.create({
   headerRow: {

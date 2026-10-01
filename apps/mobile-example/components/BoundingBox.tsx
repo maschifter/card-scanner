@@ -19,7 +19,7 @@ const FADE_DURATION = 120;
  * The scanner's tracked bounding box.
  * Uses SharedValue on the UI thread.
  */
-export function BoundingBox({ box }: { box: SharedValue<ViewBox | null> }) {
+export const BoundingBox = ({ box }: { box: SharedValue<ViewBox | null> }) => {
   const animatedStyle = useAnimatedStyle(() => {
     const rect = box.value;
     if (rect == null) {
@@ -38,7 +38,7 @@ export function BoundingBox({ box }: { box: SharedValue<ViewBox | null> }) {
   });
 
   return <Animated.View style={[styles.boundingBox, animatedStyle]} />;
-}
+};
 
 const styles = StyleSheet.create({
   boundingBox: {

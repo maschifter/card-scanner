@@ -46,7 +46,7 @@ const logRecords = (records: BenchmarkRecord[]) => {
   console.log(JSON.stringify(records, null, 2));
 };
 
-export default function BenchmarkScreen() {
+const BenchmarkScreen = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [progressText, setProgressText] = useState('');
   const [result, setResult] = useState<BenchmarkResult | null>(null);
@@ -217,7 +217,9 @@ export default function BenchmarkScreen() {
       )}
     </ScrollView>
   );
-}
+};
+
+export default BenchmarkScreen;
 
 const styles = StyleSheet.create({
   container: {

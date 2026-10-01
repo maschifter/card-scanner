@@ -1,7 +1,7 @@
 module.exports = {
   root: true,
 
-  extends: ['@react-native-community', 'prettier'],
+  extends: ['@react-native', 'prettier'],
 
   env: {
     'jest/globals': true,

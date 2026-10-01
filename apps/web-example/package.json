@@ -1,0 +1,39 @@
+{
+  "name": "web-example",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "server": "node server/index.mjs",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src server --ext .ts,.tsx,.mjs && prettier --check src server",
+    "test": "node --test \"server/**/*.test.mjs\""
+  },
+  "dependencies": {
+    "@cardnexus/web-card-scanner": "workspace:*",
+    "@tie/core": "0.0.1",
+    "@tie/zoo": "0.0.1",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "typegpu": "^0.11.9"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "@webgpu/types": "^0.1.60",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "prettier": "^3.3.3",
+    "typescript": "npm:tsover@^5.9.8",
+    "unplugin-typegpu": "^0.11.6",
+    "vite": "^6.0.0"
+  }
+}

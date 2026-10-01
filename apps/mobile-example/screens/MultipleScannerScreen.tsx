@@ -34,7 +34,7 @@ async function ensureJPEG(uri: string): Promise<string> {
   return uri;
 }
 
-export default function MultipleScannerScreen() {
+const MultipleScannerScreen = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [detection, setDetection] = useState<Detection | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -215,7 +215,9 @@ export default function MultipleScannerScreen() {
       )}
     </ScrollView>
   );
-}
+};
+
+export default MultipleScannerScreen;
 
 const styles = StyleSheet.create({
   container: {

@@ -1,0 +1,123 @@
+[
+  {
+    "labelIndex": 0,
+    "label": "fab",
+    "gameSlugs": [
+      "fab"
+    ]
+  },
+  {
+    "labelIndex": 1,
+    "label": "lorcana",
+    "gameSlugs": [
+      "lorcana"
+    ]
+  },
+  {
+    "labelIndex": 2,
+    "label": "mtg",
+    "gameSlugs": [
+      "mtg"
+    ]
+  },
+  {
+    "labelIndex": 3,
+    "label": "onepiece",
+    "gameSlugs": [
+      "onepiece"
+    ]
+  },
+  {
+    "labelIndex": 4,
+    "label": "pokemon",
+    "gameSlugs": [
+      "pokemon",
+      "pokemon-japan"
+    ]
+  },
+  {
+    "labelIndex": 5,
+    "label": "riftbound",
+    "gameSlugs": [
+      "riftbound"
+    ]
+  },
+  {
+    "labelIndex": 6,
+    "label": "rise",
+    "gameSlugs": [
+      "rise"
+    ]
+  },
+  {
+    "labelIndex": 7,
+    "label": "sorcery",
+    "gameSlugs": [
+      "sorcery"
+    ]
+  },
+  {
+    "labelIndex": 8,
+    "label": "chrono-core",
+    "gameSlugs": [
+      "chrono-core"
+    ]
+  },
+  {
+    "labelIndex": 9,
+    "label": "cyberpunk",
+    "gameSlugs": [
+      "cyberpunk"
+    ]
+  },
+  {
+    "labelIndex": 10,
+    "label": "dbs",
+    "gameSlugs": [
+      "dbs-fusion",
+      "dbs-masters"
+    ]
+  },
+  {
+    "labelIndex": 11,
+    "label": "eoa",
+    "gameSlugs": [
+      "eoa"
+    ]
+  },
+  {
+    "labelIndex": 12,
+    "label": "grand-archive",
+    "gameSlugs": [
+      "grand-archive"
+    ]
+  },
+  {
+    "labelIndex": 13,
+    "label": "gundam",
+    "gameSlugs": [
+      "gundam"
+    ]
+  },
+  {
+    "labelIndex": 14,
+    "label": "naruto-mythos",
+    "gameSlugs": [
+      "naruto-mythos"
+    ]
+  },
+  {
+    "labelIndex": 15,
+    "label": "palworld",
+    "gameSlugs": [
+      "palworld"
+    ]
+  },
+  {
+    "labelIndex": 16,
+    "label": "swu",
+    "gameSlugs": [
+      "swu"
+    ]
+  }
+]

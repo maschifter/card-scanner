@@ -12,7 +12,7 @@ import BenchmarkScreen from './screens/BenchmarkScreen';
 
 const Tab = createBottomTabNavigator();
 
-export default function App() {
+const App = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -133,7 +133,9 @@ export default function App() {
       </Tab.Navigator>
     </NavigationContainer>
   );
-}
+};
+
+export default App;
 
 const styles = StyleSheet.create({
   loadingContainer: {
