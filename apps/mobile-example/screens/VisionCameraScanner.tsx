@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   Image,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
@@ -313,7 +314,7 @@ const VisionCameraScanner = () => {
 
       {/* Camera View - fills remaining space with flexbox */}
       <View style={styles.cameraContainer}>
-        {isFocused && (
+        {(isFocused || Platform.OS === 'ios') && (
           <Camera
             ref={cameraRef}
             style={styles.camera}
@@ -321,9 +322,7 @@ const VisionCameraScanner = () => {
             // Frames oriented to the portrait UI, not the phone: a frozen
             // still then matches the preview however the phone is held.
             orientationSource="interface"
-            // Off behind a still: nothing live under it, and no frames
-            // streaming into a paused pipeline.
-            isActive={!multi.frozen}
+            isActive={isFocused}
             outputs={[frameOutput]}
             constraints={[{ fps: 30 }, { videoStabilizationMode: 'off' }]}
             torchMode={

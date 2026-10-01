@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Image,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
@@ -201,14 +202,14 @@ const VisionCameraDebug = () => {
 
   return (
     <View style={styles.container}>
-      {isFocused && (
+      {(isFocused || Platform.OS === 'ios') && (
         <Camera
           ref={cameraRef}
           style={StyleSheet.absoluteFill}
           device={device}
           // Frames oriented to the portrait UI, not the phone.
           orientationSource="interface"
-          isActive={true}
+          isActive={isFocused}
           outputs={[frameOutput]}
           constraints={[{ fps: 30 }, { videoStabilizationMode: 'off' }]}
         />
