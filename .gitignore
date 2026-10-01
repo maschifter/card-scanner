@@ -100,22 +100,19 @@ apps/desktop-example/assets/cache/
 *.tgz
 Makefile
 
-# local tooling for benchmark ground truth; only its output (utils/benchmarkImages.ts) is committed
-apps/mobile-example/scripts/
-
 .claude
 
-# scratch dir for scripts/verify-bundle.py
-.verify-bundle-cache/
-
 # vite build output (overlay is rebuilt from source)
-dist/
+apps/desktop-example/web/dist/
 
 # OBS module build tree
 build-obs/
 
-# local dev tooling, not part of the product
+# local dev tooling, not part of the product. The mobile benchmark ground truth
+# is generated here too; only its output (utils/benchmarkImages.ts) is committed.
 scripts/
 
+# CMake user-local presets
+CMakeUserPresets.json
+
 apps/mobile-example/assets/reference_check/
-scripts/benchmark-ids/

@@ -4,11 +4,12 @@
 #include <string>
 
 namespace cardscanner {
-namespace net {
+namespace http {
 
 struct HttpResponse {
-  long status = 0;
+  long status = 0; // stays 0 when the transfer itself failed; see error
   std::string body;
+  std::string error;
 };
 
 /// Blocking JSON POST. libcurl rather than IXWebSocket's HTTP client, which
@@ -21,5 +22,5 @@ HttpResponse postJson(const std::string &url, const std::string &body,
 void globalInit();
 void globalCleanup();
 
-} // namespace net
+} // namespace http
 } // namespace cardscanner

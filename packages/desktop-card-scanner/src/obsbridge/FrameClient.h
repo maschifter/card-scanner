@@ -1,12 +1,15 @@
 #pragma once
 
-#include "../ipc/FrameProtocol.h"
+#include <ipc/FrameProtocol.h>
+#include <ipc/Socket.h>
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
-#include <chrono>
+#include <memory>
 #include <mutex>
+#include <span>
 #include <string>
 #include <thread>
 #include <vector>
@@ -21,8 +24,8 @@ namespace obsbridge {
  * writer thread owns the socket. Reconnects with backoff, so the server can be
  * killed and restarted underneath a running OBS.
  *
- * Depends only on the protocol header and the standard library - nothing heavy
- * enters OBS's address space.
+ * Depends only on the protocol and socket headers and the standard library -
+ * nothing heavy enters OBS's address space.
  */
 class FrameClient {
 public:
@@ -47,25 +50,35 @@ public:
   /// Returns false when there is nothing fresh to draw.
   bool latestDetection(float &x, float &y, float &w, float &h, bool &accepted) const;
 
-  bool connected() const { return connected_.load(); }
   uint64_t sent() const { return sent_.load(); }
   uint64_t dropped() const { return dropped_.load(); }
 
 private:
+  struct Connection {
+    explicit Connection(ipc::net::Handle fd) : fd(fd) {}
+    ~Connection() { ipc::net::closeHandle(fd); }
+    Connection(const Connection &) = delete;
+    Connection &operator=(const Connection &) = delete;
+
+    const ipc::net::Handle fd;
+    std::atomic<bool> alive{true};
+  };
+
   void writerLoop();
   void readerLoop();
-  bool connectOnce();
-  bool sendAll(const uint8_t *data, size_t bytes);
+  /// Null when the server is not answering.
+  std::shared_ptr<Connection> connectOnce();
+  std::shared_ptr<Connection> connection() const;
 
   std::string host_;
   uint16_t port_;
   uint64_t token_;
 
-  /// Atomic because the writer owns reconnection, the reader polls it, and
-  /// stop() closes it - three threads on one descriptor. A torn read here means
-  /// recv() on a number the OS has already handed to someone else.
-  std::atomic<int> socket_{-1};
+  /// Replaced by the writer alone; everyone else takes a copy under the lock.
+  std::shared_ptr<Connection> connection_;
+  mutable std::mutex connectionMutex_;
   std::atomic<bool> running_{false};
+  /// The writer's view, so submit() can drop without taking a lock.
   std::atomic<bool> connected_{false};
   std::atomic<uint64_t> sent_{0};
   std::atomic<uint64_t> dropped_{0};

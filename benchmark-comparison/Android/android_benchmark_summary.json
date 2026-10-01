@@ -1,47 +1,46 @@
 {
-  "note": "New benchmark has and searches through more games, so DbSearchMs is expected to be higher.",
-  "source": [
-    "benchmark_old.json",
-    "benchmark_new.json"
-  ],
-  "sample_size": {
-    "old_records_excl_warmup": 400,
-    "new_records_excl_warmup": 920
+  "summary": {
+    "basis": "mean ms per scan over all measured scans, warmup iterations excluded (the iOS summary averages over full-pipeline scans only, so the two platforms are not directly comparable)",
+    "yolo_ms": 22.239,
+    "preproc_ms": 0.193,
+    "save_ms": 5.475,
+    "embedder_ms": 3.585,
+    "db_search_ms": 0.893,
+    "total_ms": 27.079,
+    "accuracy_pct": 88.04
   },
-  "TotalMs": {
-    "old": 56.389,
-    "new": 51.035,
-    "diff": -5.354,
-    "diff_pct": -9.5
+  "run": {
+    "date": "2026-09-07",
+    "device": "Samsung Galaxy S24 (SM-S921B)",
+    "backend": "XNNPACK-delegated .pte",
+    "precision": "CardSegmentationModel.xnnpack.pte is fp16 (73 Half tensors, 19 XNNPACK partitions, fp32 input/outputs).",
+    "models": "mobile .pte models (apps/mobile-example)",
+    "images": "mobile-example games_images, 19 games / 92 cards, warmup 2, iterations 10",
+    "note": "total_ms EXCLUDES save_ms: totalMs is processFrame's processingTimeMs and saveCardImages runs after it. Use stage_sum_ms for the whole pipeline.",
+    "source": "Records recovered from logcat: the release build is not debuggable, so the app's JSON in the private cache directory could not be pulled. 1104 records parsed, matching the run-complete line (810 / 920 correct)."
   },
-  "YoloMs": {
-    "old": 45.82,
-    "new": 39.363,
-    "diff": -6.457,
-    "diff_pct": -14.1
+  "scans": {
+    "measured": 920,
+    "full_pipeline": 870,
+    "correct": 810,
+    "no_detection": 50,
+    "game_mismatch": 10,
+    "below_threshold": 30,
+    "wrong_match": 20
   },
-  "PreprocMs": {
-    "old": 0.196,
-    "new": 0.202,
-    "diff": 0.007,
-    "diff_pct": 3.5
+  "yolo_ms_distribution": {
+    "mean": 22.239,
+    "p50": 22.5,
+    "min": 15.8,
+    "max": 28.4,
+    "stdev": 1.942
   },
-  "SaveMs": {
-    "old": 5.395,
-    "new": 5.902,
-    "diff": 0.507,
-    "diff_pct": 9.4
-  },
-  "EmbedMs": {
-    "old": 3.909,
-    "new": 3.408,
-    "diff": -0.501,
-    "diff_pct": -12.8
-  },
-  "DbSearchMs": {
-    "old": 0.663,
-    "new": 1.908,
-    "diff": 1.245,
-    "diff_pct": 187.8
-  }
+  "extra_models": [
+    {
+      "label": "FAB color",
+      "ran": 20,
+      "out_of": 870,
+      "ms": 1.535
+    }
+  ]
 }

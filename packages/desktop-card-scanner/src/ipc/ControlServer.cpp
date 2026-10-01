@@ -1,14 +1,33 @@
 #include "ControlServer.h"
 
+#include <util/Log.h>
+
 #include <ixwebsocket/IXWebSocketServer.h>
 
-#include <iostream>
 #include <mutex>
 #include <set>
 #include <stdexcept>
 
 namespace cardscanner {
 namespace ipc {
+
+namespace {
+
+/// Only loopback pages (overlay, dock, dev server) may drive the scanner. No
+/// Origin means no browser: a local process is let through.
+bool loopbackOrigin(const std::string &origin) {
+  const auto scheme = origin.find("://");
+  if (scheme == std::string::npos) {
+    return false; // "null", or not an origin at all
+  }
+  const size_t hostStart = scheme + 3;
+  const size_t hostEnd = origin.find(':', hostStart);
+  const std::string host = origin.substr(
+      hostStart, hostEnd == std::string::npos ? std::string::npos : hostEnd - hostStart);
+  return host == "127.0.0.1" || host == "localhost";
+}
+
+} // namespace
 
 struct ControlServer::Impl {
   explicit Impl(uint16_t port)
@@ -35,6 +54,14 @@ void ControlServer::start() {
       [this](std::shared_ptr<ix::ConnectionState>, ix::WebSocket &socket,
              const ix::WebSocketMessagePtr &msg) {
         if (msg->type == ix::WebSocketMessageType::Open) {
+          const auto origin = msg->openInfo.headers.find("Origin");
+          if (origin != msg->openInfo.headers.end() && !loopbackOrigin(origin->second)) {
+            util::logLine("control", "closed a client from " + origin->second);
+            // 1008, policy violation. The handshake is done by now, so this
+            // is the earliest a client can be turned away.
+            socket.close(1008, "origin not allowed");
+            return;
+          }
           std::string snapshot;
           {
             std::lock_guard<std::mutex> lock(impl_->mutex);
@@ -49,6 +76,10 @@ void ControlServer::start() {
         }
 
         if (msg->type == ix::WebSocketMessageType::Message) {
+          // A turned-away client's close is still in flight.
+          if (socket.getReadyState() != ix::ReadyState::Open) {
+            return;
+          }
           CommandHandler handler;
           {
             std::lock_guard<std::mutex> lock(impl_->mutex);
@@ -58,7 +89,7 @@ void ControlServer::start() {
             try {
               handler(msg->str);
             } catch (const std::exception &e) {
-              std::cerr << "command failed: " << e.what() << "\n";
+              util::logLine("control", std::string("command failed: ") + e.what());
             }
           }
         }
@@ -87,8 +118,6 @@ void ControlServer::broadcast(const std::string &message) {
     client->send(message);
   }
 }
-
-size_t ControlServer::clientCount() const { return impl_->server.getClients().size(); }
 
 } // namespace ipc
 } // namespace cardscanner

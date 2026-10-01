@@ -127,8 +127,8 @@ ScanResult ScannerPipeline::processFrame(
                                        segResult.detections[0].box.conf);
   }
 
-  log(LOG_LEVEL::Debug, "[CardScanner] Detected %zu cards in frame",
-      segResult.detections.size());
+  log(LOG_LEVEL::Debug, "[CardScanner] Detected", segResult.detections.size(),
+      "cards in frame");
   // Stage 2-5: Process each detection through the pipeline
   for (size_t i = 0; i < segResult.detections.size(); i++) {
     try {

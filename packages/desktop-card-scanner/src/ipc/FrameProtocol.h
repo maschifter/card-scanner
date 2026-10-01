@@ -12,9 +12,10 @@ namespace cardscanner {
 namespace ipc {
 
 constexpr uint32_t kFrameMagic = 0x43534631; // "CSF1"
-constexpr uint16_t kFrameVersion = 1;
+constexpr uint16_t kFrameVersion = 2;
 constexpr uint16_t kDefaultFramePort = 27846;
 constexpr uint16_t kDefaultControlPort = 27845;
+constexpr uint16_t kDefaultOverlayPort = 27847;
 constexpr int kMaxPlanes = 3;
 
 /// Our own values, not OBS's, so this header stays free of libobs.
@@ -31,7 +32,7 @@ enum class PixelFormat : uint32_t {
 /// Both ends are little-endian; the magic catches it if that stops being true.
 #pragma pack(push, 1)
 struct FrameHeader {
-  uint32_t magic;
+  uint32_t magic; ///< kFrameMagic; a mismatch means drop the client.
   uint16_t version;
   uint16_t format;
   uint32_t width;
@@ -48,11 +49,19 @@ struct FrameHeader {
 
   /// Loopback alone does not stop another local process injecting frames.
   uint64_t token;
+
+  /// Filter switches the scanner has to know about, per frame like the ROI.
+  uint32_t flags;
 };
 #pragma pack(pop)
 
-static_assert(sizeof(FrameHeader) == 4 + 2 + 2 + 4 + 4 + 8 + 16 + 4 + 12 + 12 + 4 + 8,
+static_assert(sizeof(FrameHeader) ==
+                  4 + 2 + 2 + 4 + 4 + 8 + 16 + 4 + 12 + 12 + 4 + 8 + 4,
               "FrameHeader must stay packed; both sides memcpy it verbatim");
+
+/// Measure the pipeline and report stage timings - the filter's "show
+/// timings" box. Off, no clock is read at all.
+constexpr uint32_t kFrameReportTimings = 1 << 0;
 
 constexpr uint32_t kResultMagic = 0x43535231; // "CSR1"
 
@@ -60,7 +69,7 @@ constexpr uint32_t kResultMagic = 0x43535231; // "CSR1"
 /// found, not just the region it asked to be scanned.
 #pragma pack(push, 1)
 struct ResultHeader {
-  uint32_t magic;
+  uint32_t magic; ///< kResultMagic; a mismatch means drop the socket.
   uint16_t version;
   uint16_t flags; ///< bit 0: a card was detected. bit 1: the match was accepted.
   uint64_t sequence;
@@ -70,6 +79,10 @@ struct ResultHeader {
   float topScore;
 };
 #pragma pack(pop)
+
+static_assert(sizeof(ResultHeader) == 4 + 2 + 2 + 8 + 16 + 4 + 4,
+              "wire layout is a contract between two separately built "
+              "binaries; the pack pragma must hold");
 
 constexpr uint16_t kResultDetected = 1 << 0;
 constexpr uint16_t kResultAccepted = 1 << 1;

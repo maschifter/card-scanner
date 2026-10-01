@@ -155,7 +155,21 @@ cv::Mat YoloSegmentationModel::processMask(std::span<const float> protos,
   int by2 =
       std::min(imgSize.height, static_cast<int>(bbox.y2) + yolo::BBOX_PADDING);
 
-  cv::Size roiSize(bx2 - bx1, by2 - by1);
+  // The mask is only ever read at MASK_DOWNSAMPLE_SCALE (quadFromMask), so
+  // it is built at that scale rather than at frame resolution and shrunk
+  // afterwards. At 12 Mpx the full-size route was ~55 MB of transient
+  // buffers per detection and dominated the YOLO stage.
+  constexpr float scale = yolo::MASK_DOWNSAMPLE_SCALE;
+  const cv::Size maskSize(std::max(1, static_cast<int>(std::lround(imgSize.width * scale))),
+                          std::max(1, static_cast<int>(std::lround(imgSize.height * scale))));
+  const int mx1 = std::min(maskSize.width - 1, static_cast<int>(std::lround(bx1 * scale)));
+  const int my1 = std::min(maskSize.height - 1, static_cast<int>(std::lround(by1 * scale)));
+  const int mx2 = std::min(maskSize.width, static_cast<int>(std::lround(bx2 * scale)));
+  const int my2 = std::min(maskSize.height, static_cast<int>(std::lround(by2 * scale)));
+  if (mx2 <= mx1 || my2 <= my1) {
+    return cv::Mat();
+  }
+  cv::Size roiSize(mx2 - mx1, my2 - my1);
 
   // Calculate letterbox transform
   float gain = std::min(static_cast<float>(protoH) / imgSize.height,
@@ -188,7 +202,7 @@ cv::Mat YoloSegmentationModel::processMask(std::span<const float> protos,
   cv::Mat croppedMask;
   cv::resize(protoRegion, croppedMask, roiSize, 0, 0, cv::INTER_LINEAR);
 
-  cv::Rect roi(bx1, by1, bx2 - bx1, by2 - by1);
+  cv::Rect roi(mx1, my1, roiSize.width, roiSize.height);
 
   // Threshold the cropped region
   cv::Mat binaryMask;
@@ -202,7 +216,7 @@ cv::Mat YoloSegmentationModel::processMask(std::span<const float> protos,
   cv::findContours(binaryMask, contours, cv::RETR_EXTERNAL,
                    cv::CHAIN_APPROX_SIMPLE);
 
-  cv::Mat fullMask = cv::Mat::zeros(imgSize, CV_8U);
+  cv::Mat fullMask = cv::Mat::zeros(maskSize, CV_8U);
 
   if (contours.size() == 1) {
     // Fast path: only one contour, just copy the entire binary mask
@@ -247,17 +261,8 @@ std::vector<Detection> YoloSegmentationModel::postprocess(
   const int numMaskCoeffs = yolo::MASK_COEFFS;
   const int boxCoords = yolo::BOX_FEATURES;
   const int numFeatures = boxCoords + numClasses + numMaskCoeffs;
+  // segment() already matched numFeatures against the tensor's channel dim
   int numPredictions = preds.size() / numFeatures;
-
-  if (preds.size() % numFeatures != 0) {
-    throw std::runtime_error(
-        "Segmentation output size " + std::to_string(preds.size()) +
-        " is not divisible by " + std::to_string(numFeatures) + " (4 box + " +
-        std::to_string(numClasses) + " classes + " +
-        std::to_string(numMaskCoeffs) +
-        " mask coeffs). The gameClassMapping entry count almost certainly "
-        "disagrees with the model's class count.");
-  }
 
   // Data is stored as [feature][prediction] not [prediction][feature]
   // So we need to access it transposed
@@ -347,15 +352,11 @@ std::vector<Detection> YoloSegmentationModel::postprocess(
     det.maskBinary = processMask(protos, protoH, protoW, maskCoeffs[idx],
                                  boxes[idx], originalImg.size());
 
-    // Extract quad from mask and dewarp
+    // Extract quad from mask and dewarp. The mask already is at
+    // MASK_DOWNSAMPLE_SCALE (see processMask); the quad scales back up.
     if (!det.maskBinary.empty()) {
-      // Downsample mask for faster quad extraction, then scale quad back up
       constexpr float scale = yolo::MASK_DOWNSAMPLE_SCALE;
-      cv::Mat smallMask;
-      cv::resize(det.maskBinary, smallMask, cv::Size(), scale, scale,
-                 cv::INTER_NEAREST);
-
-      auto quadSmall = quadFromMask(smallMask, &det.quadWasSideways);
+      auto quadSmall = quadFromMask(det.maskBinary, &det.quadWasSideways);
 
       // Scale quad coordinates back to full resolution
       if (quadSmall.size() == 4) {
@@ -614,6 +615,27 @@ SegmentationResult YoloSegmentationModel::segment(const cv::Mat &image) {
     throw std::runtime_error("Segmentation model returned " +
                              std::to_string(outputs.size()) +
                              " outputs, expected at least 2");
+  }
+  // The mapping's entry count is the decode stride, so it has to equal the
+  // model's class count exactly. Same count in a different order still passes.
+  const auto &predsShape = outputs.front().shape;
+  if (predsShape.size() < 2) {
+    throw std::runtime_error(
+        "Prediction tensor has " + std::to_string(predsShape.size()) +
+        " dimensions, expected at least 2 ([.., 4 + classes + 32, anchors])");
+  }
+  const int64_t channels = predsShape[predsShape.size() - 2];
+  const int64_t expectedChannels = yolo::BOX_FEATURES +
+                                   static_cast<int64_t>(classNames_.size()) +
+                                   yolo::MASK_COEFFS;
+  if (channels != expectedChannels) {
+    throw std::runtime_error(
+        "Segmentation model emits " + std::to_string(channels) +
+        " channels per anchor, gameClassMapping expects " +
+        std::to_string(expectedChannels) + " (4 box + " +
+        std::to_string(classNames_.size()) +
+        " classes + 32 mask coeffs). The mapping's entry count disagrees "
+        "with the model's class count.");
   }
   const std::span<const float> preds = outputs.front().data;
   const auto &protosOutput = outputs.back();

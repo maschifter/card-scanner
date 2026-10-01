@@ -1,0 +1,42 @@
+{
+  "summary": {
+    "basis": "mean ms per scan over the scans that ran the full pipeline, warmup iterations excluded",
+    "yoloMs": 11.38,
+    "preprocMs": 0.129,
+    "embedderMs": 3.591,
+    "dbSearchMs": 1.407,
+    "totalMs": 16.827,
+    "accuracyPercent": 85.87
+  },
+  "run": {
+    "date": "2026-09-04T14:12",
+    "platform": "macOS 26.5.2, Apple M2 Pro 16 GB",
+    "backend": "CoreML restricted to GPU and CPU (MLComputeUnits=CPUAndGPU, Neural Engine unused), ONNX Runtime 1.29.0",
+    "models": "fp16 (apps/desktop-example/assets/models)",
+    "images": "mobile-example games_images, 19 games / 92 images, warmup 2, iterations 10",
+    "conditions": "OBS closed, Chrome and Slack open"
+  },
+  "scans": {
+    "measured": 920,
+    "fullPipeline": 900,
+    "correct": 790,
+    "noDetection": 20,
+    "gameMismatch": 40,
+    "belowThreshold": 0,
+    "wrongMatch": 70
+  },
+  "extraModels": [
+    {
+      "label": "MTG set symbol",
+      "ran": 10,
+      "outOf": 900,
+      "msPerScan": 19.196
+    },
+    {
+      "label": "FAB color",
+      "ran": 20,
+      "outOf": 900,
+      "msPerScan": 0.831
+    }
+  ]
+}

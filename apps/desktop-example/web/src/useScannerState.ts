@@ -1,5 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
-import { initialState, type ScannerState, type StateMessage } from './types';
+import {
+  initialState,
+  type ScanDiagnostics,
+  type ScannerState,
+  type StateMessage,
+} from './types';
+
+/**
+ * The timings of the last measured frame, or null when the OBS filter's box
+ * is off.
+ */
+export function useLastMeasured(scan: ScanDiagnostics): ScanDiagnostics | null {
+  const [measured, setMeasured] = useState<ScanDiagnostics | null>(null);
+  useEffect(() => {
+    if (scan.measured) {
+      setMeasured(scan);
+    }
+  }, [scan]);
+  return scan.timings ? measured : null;
+}
 
 export type Connection = 'connecting' | 'open' | 'closed';
 

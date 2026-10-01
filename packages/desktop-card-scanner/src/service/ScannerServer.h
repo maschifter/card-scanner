@@ -5,24 +5,25 @@
 #include "ScannerService.h"
 
 #include <ipc/ControlServer.h>
+#include <ipc/FrameProtocol.h>
 #include <ipc/FrameServer.h>
 #include <ipc/OverlayServer.h>
 #include <types/ScannerConfig.h>
 
 #include <cstdint>
 #include <filesystem>
-#include <memory>
+#include <string>
 
 namespace cardscanner {
 namespace desktop {
 
 struct ServerOptions {
   uint64_t token = 0;
-  uint16_t framePort = 27846;
-  uint16_t controlPort = 27845;
-  uint16_t overlayPort = 27847;
+  uint16_t framePort = ipc::kDefaultFramePort;
+  uint16_t controlPort = ipc::kDefaultControlPort;
+  uint16_t overlayPort = ipc::kDefaultOverlayPort;
   std::filesystem::path overlayFile;
-  std::string productEndpoint = "https://api.cardnexus.com/orpc/product/getProduct";
+  ProductSource products;
 };
 
 /**
@@ -45,24 +46,29 @@ public:
   void start();
   void stop();
 
-  /// Frames from somewhere other than the socket; used by the replay harness.
-  void submitFrame(cv::Mat frame);
+  /// Feeds one frame to the scanner. The frame socket and the replay
+  /// harness both land here.
+  void submitFrame(Frame frame);
 
   ScannerService &service() { return service_; }
-  uint64_t framesReceived() const;
+  uint64_t framesScanned() const;
+  uint64_t framesRejected() const;
 
 private:
   void broadcastState();
+  /// Fires on the worker thread after every frame or tick that changed state.
+  void onScanUpdate();
   void handleCommand(const std::string &raw);
 
   ServerOptions options_;
 
   // Declaration order reversed is destruction order: service_ last means it is
-  // destroyed first, so the worker is joined before anything it calls into.
-  std::unique_ptr<ipc::OverlayServer> overlay_;
+  // destroyed first, so the worker is joined before anything its listener -
+  // fixed at construction - calls into.
+  ipc::OverlayServer overlay_;
   ipc::ControlServer control_;
   ProductClient products_;
-  std::unique_ptr<ipc::FrameServer> frames_;
+  ipc::FrameServer frames_;
   ScannerService service_;
 };
 

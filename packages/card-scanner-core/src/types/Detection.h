@@ -28,7 +28,7 @@ struct BBox {
  */
 struct Detection {
   BBox box;           ///< Bounding box with classification
-  cv::Mat maskBinary; ///< Binary segmentation mask (CV_8U, full resolution)
+  cv::Mat maskBinary; ///< Binary segmentation mask (CV_8U, frame size x MASK_DOWNSAMPLE_SCALE)
   std::vector<cv::Point2f> quad; ///< 4-point quad: [TL, TR, BR, BL]
   cv::Mat dewarpedCard;          ///< Perspective-corrected card image
   bool quadWasSideways = false;  ///< Dewarp direction ambiguous by 180 deg

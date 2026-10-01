@@ -17,5 +17,5 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 const isDock = params.get('view') === 'dock';
 
 createRoot(container).render(
-  <StrictMode>{isDock ? <Dock port={port} /> : <App />}</StrictMode>,
+  <StrictMode>{isDock ? <Dock port={port} /> : <App port={port} />}</StrictMode>,
 );

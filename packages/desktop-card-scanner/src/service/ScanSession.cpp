@@ -1,5 +1,7 @@
 #include "ScanSession.h"
 
+#include <algorithm>
+
 namespace cardscanner {
 namespace desktop {
 
@@ -31,11 +33,41 @@ bool parseMode(const std::string &text, Mode &out) {
   return false;
 }
 
+const ProcessedCard *bestMatchedCard(const ScanResult &result) {
+  const ProcessedCard *best = nullptr;
+  for (const auto &card : result.cards) {
+    if (card.hasMatches() &&
+        (!best || card.matches[0].score > best->matches[0].score)) {
+      best = &card;
+    }
+  }
+  return best;
+}
+
+const ProcessedCard *bestVisibleCard(const ScanResult &result) {
+  if (const ProcessedCard *matched = bestMatchedCard(result)) {
+    return matched;
+  }
+  const ProcessedCard *best = nullptr;
+  for (const auto &card : result.cards) {
+    if (!best || card.detectionConfidence > best->detectionConfidence) {
+      best = &card;
+    }
+  }
+  return best;
+}
+
 ScanSession::ScanSession(SessionConfig config) : config_(config) {}
 
-Mode ScanSession::mode() const {
+ScanSession::Snapshot ScanSession::snapshot() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  return mode_;
+  // Designated so candidate/emitted - same type - cannot be swapped silently.
+  return Snapshot{.status = status_,
+                  .mode = mode_,
+                  .candidate = candidate_,
+                  .emitted = emitted_,
+                  .history = history_,
+                  .config = config_};
 }
 
 SessionConfig ScanSession::config() const {
@@ -43,52 +75,58 @@ SessionConfig ScanSession::config() const {
   return config_;
 }
 
-std::vector<CardInfo> ScanSession::history() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return history_;
-}
-
-bool ScanSession::setMode(Mode mode) {
+void ScanSession::setMode(Mode mode) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (mode_ == mode) {
-    return false;
+    return;
   }
   mode_ = mode;
   if (mode_ == Mode::Auto && status_ == Status::CandidateReady && candidate_) {
-    return commitLocked();
+    commitLocked();
   }
-  return true;
 }
 
-bool ScanSession::emitCurrent() {
+void ScanSession::emitCurrent() {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!candidate_) {
-    return false;
+  if (candidate_) {
+    commitLocked();
   }
-  return commitLocked();
 }
 
-bool ScanSession::clearEmitted() {
+void ScanSession::clearEmitted() {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!emitted_) {
-    return false;
+    return;
   }
   emitted_.reset();
-  status_ = candidate_ ? Status::Detecting : Status::Idle;
-  return true;
+  if (!candidate_) {
+    status_ = Status::Idle;
+  } else if (mode_ == Mode::Manual &&
+             candidate_->detections >= requiredDetectionsLocked()) {
+    // Past the bar already, so ready again now rather than one frame later.
+    status_ = Status::CandidateReady;
+  } else {
+    status_ = Status::Detecting;
+  }
 }
 
-bool ScanSession::emitFromHistory(const std::string &cardId) {
+void ScanSession::emitFromHistory(const std::string &cardId) {
   std::lock_guard<std::mutex> lock(mutex_);
-  for (const auto &entry : history_) {
-    if (entry.cardId == cardId) {
-      emitted_ = entry;
-      emittedAt_ = Clock::now();
-      status_ = Status::Emitted;
-      return true;
-    }
+  const auto found =
+      std::find_if(history_.begin(), history_.end(),
+                   [&](const CardInfo &entry) { return entry.cardId == cardId; });
+  if (found == history_.end()) {
+    return;
   }
-  return false;
+
+  // Copied out first: recordHistoryLocked reorders history_, which would
+  // leave a reference into it dangling.
+  const CardInfo card = *found;
+  emitted_ = card;
+  emittedAt_ = Clock::now();
+  status_ = Status::Emitted;
+  // Re-showing moves the card to the front, same as a fresh commit.
+  recordHistoryLocked(card);
 }
 
 void ScanSession::recordHistoryLocked(const CardInfo &card) {
@@ -109,42 +147,27 @@ void ScanSession::setConfig(SessionConfig config) {
   config_ = config;
 }
 
-Status ScanSession::status() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return status_;
+int ScanSession::requiredDetectionsLocked() const {
+  // max(): set_settings can raise stableDetections above the fixed ambiguous
+  // bar, and an ambiguous match must never clear a lower one than a clear match.
+  return ambiguous_ ? std::max(config_.ambiguousDetections, config_.stableDetections)
+                    : config_.stableDetections;
 }
 
-std::optional<CardInfo> ScanSession::candidate() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return candidate_;
-}
-
-std::optional<CardInfo> ScanSession::emitted() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return emitted_;
-}
-
-bool ScanSession::commitLocked() {
+void ScanSession::commitLocked() {
   emitted_ = candidate_;
   emittedAt_ = Clock::now();
   status_ = Status::Emitted;
   if (emitted_) {
     recordHistoryLocked(*emitted_);
   }
-  return true;
 }
 
 bool ScanSession::onScanResult(const ScanResult &result) {
   std::lock_guard<std::mutex> lock(mutex_);
 
   // A detection with no match neither extends nor resets a streak.
-  const ProcessedCard *best = nullptr;
-  for (const auto &card : result.cards) {
-    if (!card.matches.empty() && (!best || card.matches[0].score > best->matches[0].score)) {
-      best = &card;
-    }
-  }
-
+  const ProcessedCard *best = bestMatchedCard(result);
   if (best == nullptr) {
     // The grace period is applied in tick(): one empty frame should not drop
     // a candidate that is close to committing.
@@ -154,8 +177,9 @@ bool ScanSession::onScanResult(const ScanResult &result) {
   const auto &top = best->matches[0];
   if (top.score < config_.acceptScore) {
     // Deliberately does not refresh lastSeen_, so weak matches cannot hold a
-    // candidate alive.
-    return false;
+    // candidate alive. A weak re-sighting of the on-stream card still
+    // reports it as accepted.
+    return emitted_ && emitted_->cardId == top.cardId;
   }
   lastSeen_ = Clock::now();
 
@@ -173,25 +197,27 @@ bool ScanSession::onScanResult(const ScanResult &result) {
     status_ = Status::Detecting;
   }
 
-  const int required =
-      ambiguous_ ? config_.ambiguousDetections : config_.stableDetections;
-  if (candidate_->detections < required) {
+  if (candidate_->detections < requiredDetectionsLocked()) {
     status_ = Status::Detecting;
-    return true;
+    return emitted_ && emitted_->cardId == top.cardId;
   }
 
   // Already showing this card; refresh liveness rather than re-emitting.
+  // A re-sighting past the grace period rebuilds the candidate from zero,
+  // which drops the status to Detecting above. The card never left the
+  // overlay, so the status has to come back with it.
   if (emitted_ && emitted_->cardId == candidate_->cardId) {
     emittedAt_ = Clock::now();
-    return false;
+    status_ = Status::Emitted;
+    return true;
   }
 
   if (mode_ == Mode::Manual) {
-    const bool changed = status_ != Status::CandidateReady;
     status_ = Status::CandidateReady;
-    return changed;
+    return false;
   }
-  return commitLocked();
+  commitLocked();
+  return true;
 }
 
 bool ScanSession::tick() {
@@ -199,10 +225,10 @@ bool ScanSession::tick() {
   const auto now = Clock::now();
   bool changed = false;
 
-  const auto sinceSeen =
-      std::chrono::duration_cast<std::chrono::milliseconds>(now - lastSeen_).count();
+  const bool seenRecently =
+      now - lastSeen_ <= std::chrono::milliseconds(config_.gracePeriodMs);
 
-  if (candidate_ && sinceSeen > config_.gracePeriodMs) {
+  if (candidate_ && !seenRecently) {
     candidate_.reset();
     ambiguous_ = false;
     if (status_ == Status::Detecting || status_ == Status::CandidateReady) {
@@ -211,14 +237,12 @@ bool ScanSession::tick() {
     changed = true;
   }
 
-  if (emitted_) {
-    const auto sinceEmit =
-        std::chrono::duration_cast<std::chrono::milliseconds>(now - emittedAt_).count();
-    if (sinceEmit > config_.emittedTimeoutMs && sinceSeen > config_.gracePeriodMs) {
-      emitted_.reset();
-      status_ = candidate_ ? Status::Detecting : Status::Idle;
-      changed = true;
-    }
+  if (emitted_ &&
+      now - emittedAt_ > std::chrono::milliseconds(config_.emittedTimeoutMs) &&
+      !seenRecently) {
+    emitted_.reset();
+    status_ = candidate_ ? Status::Detecting : Status::Idle;
+    changed = true;
   }
 
   return changed;

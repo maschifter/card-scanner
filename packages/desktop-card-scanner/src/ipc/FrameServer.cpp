@@ -1,9 +1,12 @@
 #include "FrameServer.h"
 
-#include "Socket.h"
+#include <ipc/Socket.h>
+#include <util/Log.h>
 
+#include <chrono>
 #include <cstring>
-#include <iostream>
+#include <span>
+#include <string>
 #include <opencv2/imgproc.hpp>
 #include <stdexcept>
 #include <vector>
@@ -64,18 +67,6 @@ void validateHeader(const FrameHeader &h, size_t payloadSize) {
     throw std::runtime_error("frame: format expects " +
                              std::to_string(expectedPlanes) + " planes, header says " +
                              std::to_string(h.planeCount));
-  }
-
-  // OpenCV's YUV converters require exactly height*3/2 rows, which an odd
-  // height cannot produce.
-  if ((format == PixelFormat::NV12 || format == PixelFormat::I420) &&
-      (h.width % 2 != 0 || h.height % 2 != 0)) {
-    throw std::runtime_error("frame: " + std::to_string(h.width) + "x" +
-                             std::to_string(h.height) +
-                             " has odd dimensions, which subsampled formats cannot use");
-  }
-  if ((format == PixelFormat::UYVY || format == PixelFormat::YUY2) && h.width % 2 != 0) {
-    throw std::runtime_error("frame: odd width for a packed YUV format");
   }
 
   // Writes are bounded by rows[i] and reads by linesize[i], while the
@@ -152,8 +143,8 @@ cv::Mat packYuvRoi(const FrameHeader &h, const uint8_t *payload, const cv::Rect 
   return yuv;
 }
 
-} // namespace
-
+/// Internal: not declared in the header; the applied region reaches callers
+/// through frameToRgb's out-parameter.
 cv::Rect resolveRoi(const FrameHeader &header) {
   cv::Rect roi(int(header.roiX * float(header.width)),
                int(header.roiY * float(header.height)),
@@ -162,7 +153,7 @@ cv::Rect resolveRoi(const FrameHeader &header) {
   roi &= cv::Rect(0, 0, int(header.width), int(header.height));
 
   if (roi.width < 16 || roi.height < 16) {
-    return cv::Rect(0, 0, int(header.width), int(header.height));
+    roi = cv::Rect(0, 0, int(header.width), int(header.height));
   }
   // An odd origin or extent has no subsampled representation. Snap outward.
   roi.x &= ~1;
@@ -172,6 +163,8 @@ cv::Rect resolveRoi(const FrameHeader &header) {
   roi &= cv::Rect(0, 0, int(header.width) & ~1, int(header.height) & ~1);
   return roi;
 }
+
+} // namespace
 
 cv::Mat frameToRgb(const FrameHeader &header, const uint8_t *payload, cv::Rect *appliedRoi) {
   // Cropping in the source colour space keeps the conversion proportional to
@@ -228,14 +221,19 @@ FrameServer::~FrameServer() { stop(); }
 
 void FrameServer::start() {
   net::startup();
-  listenFd_ = int(::socket(AF_INET, SOCK_STREAM, 0));
-  if (listenFd_ < 0) {
+  listenFd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+  if (listenFd_ == net::kInvalidHandle) {
     throw std::runtime_error("frame server: socket() failed");
   }
 
   int yes = 1;
+#ifdef _WIN32
+  ::setsockopt(listenFd_, SOL_SOCKET, SO_EXCLUSIVEADDRUSE,
+               reinterpret_cast<const char *>(&yes), sizeof(yes));
+#else
   ::setsockopt(listenFd_, SOL_SOCKET, SO_REUSEADDR,
                reinterpret_cast<const char *>(&yes), sizeof(yes));
+#endif
 
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
@@ -245,49 +243,49 @@ void FrameServer::start() {
 
   if (::bind(listenFd_, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) < 0) {
     net::closeHandle(listenFd_);
-    listenFd_ = -1;
+    listenFd_ = net::kInvalidHandle;
     throw std::runtime_error("frame server: cannot bind port " + std::to_string(port_) +
                              " (already running?)");
   }
   if (::listen(listenFd_, 1) < 0) {
     net::closeHandle(listenFd_);
-    listenFd_ = -1;
+    listenFd_ = net::kInvalidHandle;
     throw std::runtime_error("frame server: listen() failed");
   }
 
   running_ = true;
-  thread_ = std::thread([this] { acceptLoop(); });
+  // The descriptor goes by value: stop() writes listenFd_ from another
+  // thread, and the loop must not read the member concurrently.
+  thread_ = std::thread([this, listenFd = listenFd_] { acceptLoop(listenFd); });
 }
 
 void FrameServer::stop() {
   if (!running_.exchange(false)) {
     return;
   }
-  if (listenFd_ >= 0) {
+  if (listenFd_ != net::kInvalidHandle) {
     // Shutting the listener down unblocks accept().
     net::shutdownBoth(listenFd_);
     net::closeHandle(listenFd_);
-    listenFd_ = -1;
+    listenFd_ = net::kInvalidHandle;
   }
-  // The client too: running_ is only re-read between frames, so a connected
-  // but silent peer would leave the accept thread parked in recv() forever.
-  const int client = clientFd_.load();
-  if (client >= 0) {
-    net::shutdownBoth(client);
+  // Wakes the accept thread out of recv(); under sendMutex_ so the number
+  // cannot be closed and recycled between the load and the shutdown.
+  {
+    std::lock_guard<std::mutex> lock(sendMutex_);
+    const net::Handle client = clientFd_;
+    if (client != net::kInvalidHandle) {
+      net::shutdownBoth(client);
+    }
   }
   if (thread_.joinable()) {
     thread_.join();
   }
 }
 
-void FrameServer::sendResult(uint64_t sequence, bool detected, bool accepted,
-                             float boxX, float boxY, float boxW, float boxH,
-                             float confidence, float topScore) {
-  const int fd = clientFd_.load();
-  if (fd < 0) {
-    return;
-  }
-
+void FrameServer::sendResult(uint64_t sequence, const cv::Rect2f &roi, bool detected,
+                             bool accepted, float boxX, float boxY, float boxW,
+                             float boxH, float confidence, float topScore) {
   ResultHeader header{};
   header.magic = kResultMagic;
   header.version = kFrameVersion;
@@ -296,97 +294,97 @@ void FrameServer::sendResult(uint64_t sequence, bool detected, bool accepted,
   header.sequence = sequence;
 
   // Crop-relative box mapped onto the full frame.
-  const float rx = roi_[0].load(), ry = roi_[1].load();
-  const float rw = roi_[2].load(), rh = roi_[3].load();
-  header.boxX = rx + boxX * rw;
-  header.boxY = ry + boxY * rh;
-  header.boxWidth = boxW * rw;
-  header.boxHeight = boxH * rh;
+  header.boxX = roi.x + boxX * roi.width;
+  header.boxY = roi.y + boxY * roi.height;
+  header.boxWidth = boxW * roi.width;
+  header.boxHeight = boxH * roi.height;
   header.detectionConfidence = confidence;
   header.topScore = topScore;
 
+  // Paired with acceptLoop's locked clear+close, so the send cannot hit a
+  // descriptor the OS has already recycled.
   std::lock_guard<std::mutex> lock(sendMutex_);
-  // Best effort; a departed module just means no outline this frame.
-  // MSG_NOSIGNAL is the Linux half of the SO_NOSIGPIPE set at accept.
-  net::sendAll(fd, &header, sizeof(header));
+  const net::Handle socketFd = clientFd_;
+  if (socketFd == net::kInvalidHandle) {
+    return;
+  }
+  // A failed send leaves a partial record on the wire; drop the client so
+  // both sides resync over a fresh connection.
+  if (!net::sendFully(socketFd, std::as_bytes(std::span{&header, 1}))) {
+    net::shutdownBoth(socketFd);
+  }
 }
 
-uint64_t FrameServer::lastSequence() const { return sequence_.load(); }
-
-void FrameServer::acceptLoop() {
+void FrameServer::acceptLoop(net::Handle listenFd) {
   while (running_) {
-    const int client = int(::accept(listenFd_, nullptr, nullptr));
-    if (client < 0) {
-      if (running_) {
-        continue;
+    const net::Handle client = ::accept(listenFd, nullptr, nullptr);
+    if (client == net::kInvalidHandle) {
+      if (!running_) {
+        return;
       }
-      return;
+      // A failure that persists, such as running out of descriptors, must
+      // not spin this thread.
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      continue;
     }
     // No Nagle delay, and no SIGPIPE on a write to a closed peer.
     net::configureConnected(client);
-
-    std::cerr << "frame client connected\n";
-    clientFd_ = client;
-    serveClient(client);
-    clientFd_ = -1;
-    net::closeHandle(client);
-    std::cerr << "frame client disconnected\n";
-  }
-}
-
-namespace {
-
-/// TCP is a stream: a single recv() can return a partial header or payload.
-bool readExactly(int fd, void *dst, size_t bytes) {
-  auto *out = static_cast<uint8_t *>(dst);
-  size_t got = 0;
-  while (got < bytes) {
-    const long n = net::receive(fd, out + got, bytes - got);
-    if (n <= 0) {
-      return false;
+    // Bounds how long sendResult can hold sendMutex_, which stop() needs to
+    // wake this thread out of recv(). Frame sends must stay unbounded.
+    net::setSendTimeout(client, 200);
+    // Published before the first read, under the lock stop() takes, so stop()
+    // can always wake this thread out of recv() with a shutdown.
+    {
+      std::lock_guard<std::mutex> lock(sendMutex_);
+      clientFd_ = client;
     }
-    got += size_t(n);
+
+    util::logLine("frame", "client connected");
+    serveClient(client);
+    {
+      std::lock_guard<std::mutex> lock(sendMutex_);
+      clientFd_ = net::kInvalidHandle;
+    }
+    net::closeHandle(client);
+    util::logLine("frame", "client disconnected");
   }
-  return true;
 }
 
-} // namespace
-
-void FrameServer::serveClient(int clientFd) {
+void FrameServer::serveClient(net::Handle clientFd) {
   std::vector<uint8_t> payload;
 
   while (running_) {
     FrameHeader header{};
-    if (!readExactly(clientFd, &header, sizeof(header))) {
+    if (!net::receiveExactly(clientFd,
+                             std::as_writable_bytes(std::span{&header, 1}))) {
       return;
     }
 
     if (header.magic != kFrameMagic || header.version != kFrameVersion) {
-      std::cerr << "frame: bad magic/version, dropping client\n";
+      util::logLine("frame", "bad magic/version, dropping client");
       return;
     }
     if (header.token != token_) {
       // Loopback is not an authorisation boundary; any local process can
       // connect. Without this, one could inject frames or read nothing useful
       // but still disrupt the scanner.
-      std::cerr << "frame: bad token, dropping client\n";
-      rejected_++;
+      util::logLine("frame", "bad token, dropping client");
       return;
     }
     if (header.planeCount == 0 || header.planeCount > kMaxPlanes) {
-      std::cerr << "frame: bad plane count\n";
+      util::logLine("frame", "bad plane count");
       return;
     }
     // Bound the allocation: a corrupt length must not be a memory bomb.
     if (header.payloadBytes == 0 || header.payloadBytes > 64u * 1024 * 1024) {
-      std::cerr << "frame: implausible payload size " << header.payloadBytes << "\n";
+      util::logLine("frame", "implausible payload size " +
+                                 std::to_string(header.payloadBytes));
       return;
     }
 
-    sequence_ = header.sequence;
-
     payload.resize(header.payloadBytes);
-    if (!readExactly(clientFd, payload.data(), payload.size())) {
+    if (!net::receiveExactly(clientFd,
+                             std::as_writable_bytes(std::span{payload}))) {
       return;
     }
 
@@ -395,27 +393,27 @@ void FrameServer::serveClient(int clientFd) {
     try {
       validateHeader(header, payload.size());
     } catch (const std::exception &e) {
-      std::cerr << "frame: rejecting client: " << e.what() << "\n";
-      rejected_++;
+      util::logLine("frame", std::string("rejecting client: ") + e.what());
       return;
     }
 
     try {
       cv::Rect applied;
       cv::Mat rgb = frameToRgb(header, payload.data(), &applied);
-      // The region actually scanned, which sendResult maps boxes through.
-      // It differs from the request when degenerate or snapped to even bounds.
-      roi_[0] = float(applied.x) / float(header.width);
-      roi_[1] = float(applied.y) / float(header.height);
-      roi_[2] = float(applied.width) / float(header.width);
-      roi_[3] = float(applied.height) / float(header.height);
-      received_++;
+      scanned_++;
       if (callback_) {
-        callback_(std::move(rgb));
+        // The region actually scanned travels with the frame, so its result
+        // maps the box through that region and not a later frame's.
+        const cv::Rect2f roi(float(applied.x) / float(header.width),
+                             float(applied.y) / float(header.height),
+                             float(applied.width) / float(header.width),
+                             float(applied.height) / float(header.height));
+        callback_(std::move(rgb), header.sequence, roi,
+                  (header.flags & kFrameReportTimings) != 0);
       }
     } catch (const std::exception &e) {
       // A bad frame behind a valid header; keep the connection.
-      std::cerr << "frame: " << e.what() << "\n";
+      util::logLine("frame", e.what());
       rejected_++;
     }
   }

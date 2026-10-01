@@ -23,6 +23,17 @@ export interface ScanDiagnostics {
   topScore: number;
   topCardId: string;
   ms: number;
+  /** The OBS filter's "show timings" box: false means show no timings. */
+  timings: boolean;
+  /**
+   * Stage timings are valid only when true: frames the throttle or blur gate
+   * rejected never reach the timers. Hold the last measured values instead.
+   */
+  measured: boolean;
+  yoloMs: number;
+  preprocMs: number;
+  embedMs: number;
+  dbSearchMs: number;
 }
 
 export interface Settings {
@@ -56,6 +67,12 @@ export const emptyScan: ScanDiagnostics = {
   topScore: 0,
   topCardId: '',
   ms: 0,
+  timings: false,
+  measured: false,
+  yoloMs: 0,
+  preprocMs: 0,
+  embedMs: 0,
+  dbSearchMs: 0,
 };
 
 export const initialState: ScannerState = {

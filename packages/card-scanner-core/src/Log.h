@@ -457,6 +457,11 @@ inline std::ostringstream createConfiguredOutputStream() {
  */
 template <std::size_t MaxLogSize = 1024, typename... Args>
 void log(LOG_LEVEL logLevel, Args &&...args) {
+#if !defined(__ANDROID__) && !defined(__APPLE__) && defined(NDEBUG)
+  if (logLevel == LOG_LEVEL::Debug) {
+    return;
+  }
+#endif
   auto oss = high_level_log_implementation::createConfiguredOutputStream();
   auto space = [&oss](auto &&arg) {
     low_level_log_implementation::printElement(

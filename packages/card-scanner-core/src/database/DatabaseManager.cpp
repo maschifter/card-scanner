@@ -21,7 +21,9 @@ std::string DatabaseManager::resolvePathFor(const std::string &gameName) const {
   fs::path fullPath = baseDbPath_;
   // This operations should be fail proofed in case gameName path doesnt exist
   fullPath /= gameName;
-  return fullPath;
+  // .string() is explicit because fs::path's value_type is wchar_t on Windows,
+  // and without that it would crash when trying to convert.
+  return fullPath.string();
 }
 
 // Publics:
@@ -90,7 +92,7 @@ void DatabaseManager::scanForExistingStores() {
 std::string DatabaseManager::getStorePath(const std::string &gameName) const {
   fs::path path(resolvePathFor(gameName));
   path /= database::DB_FILENAME;
-  return path;
+  return path.string();
 }
 
 GameStorePtr DatabaseManager::getSetSymbolStore() {

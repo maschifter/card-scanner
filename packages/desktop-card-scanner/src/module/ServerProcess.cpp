@@ -64,8 +64,11 @@ bool ServerProcess::spawnOnce() {
              " --control-port " + std::to_string(controlPort_));
 
   SECURITY_ATTRIBUTES inherit = {sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
-  HANDLE log = ::CreateFileW(toWide(logPath_).c_str(), GENERIC_WRITE, FILE_SHARE_READ,
-                             &inherit, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  // Wide: a log path through a profile with non-ASCII characters is common.
+  // Truncated on the first spawn only, so a respawn's output appends.
+  HANDLE log = ::CreateFileW(toWide(logPath_).c_str(), FILE_APPEND_DATA, FILE_SHARE_READ,
+                             &inherit, firstSpawn_ ? CREATE_ALWAYS : OPEN_ALWAYS,
+                             FILE_ATTRIBUTE_NORMAL, nullptr);
 
   SIZE_T attrSize = 0;
   ::InitializeProcThreadAttributeList(nullptr, 1, 0, &attrSize);
@@ -103,6 +106,7 @@ bool ServerProcess::spawnOnce() {
   if (!ok) {
     return false;
   }
+  firstSpawn_ = false;
 
   if (job_ == nullptr) {
     job_ = createKillOnCloseJob();
@@ -139,8 +143,9 @@ bool ServerProcess::spawnOnce() {
   posix_spawn_file_actions_t actions;
   posix_spawn_file_actions_init(&actions);
   posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
-  posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, logPath_.c_str(),
-                                   O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  posix_spawn_file_actions_addopen(
+      &actions, STDOUT_FILENO, logPath_.c_str(),
+      O_WRONLY | O_CREAT | O_APPEND | (firstSpawn_ ? O_TRUNC : 0), 0644);
   posix_spawn_file_actions_adddup2(&actions, STDOUT_FILENO, STDERR_FILENO);
 
   posix_spawnattr_t attr;
@@ -158,6 +163,7 @@ bool ServerProcess::spawnOnce() {
   if (rc != 0) {
     return false;
   }
+  firstSpawn_ = false;
   pid_ = pid;
   return true;
 }
@@ -202,6 +208,7 @@ void ServerProcess::stop() {
     // the database closes cleanly.
     bool reaped = false;
     for (int waited = 0; waited < 2000; waited += 50) {
+      // -1: no longer our child, and the pid may be reused.
       if (::waitpid(pid, nullptr, WNOHANG) != 0) {
         reaped = true;
         break;
@@ -229,6 +236,7 @@ void ServerProcess::superviseLoop() {
       continue;
     }
 
+    const auto spawnedAt = std::chrono::steady_clock::now();
     // Polled so shutdown need not interrupt a blocking wait.
     while (running_) {
       const int pid = pid_.load();
@@ -255,6 +263,12 @@ void ServerProcess::superviseLoop() {
 
     if (!running_) {
       return;
+    }
+
+    // A child that ran for a while was healthy, so its crash is a fresh
+    // incident rather than the next round of a startup loop.
+    if (std::chrono::steady_clock::now() - spawnedAt > std::chrono::seconds(30)) {
+      backoffMs = 500;
     }
 
     // Back off, so a server failing instantly at startup does not spin.

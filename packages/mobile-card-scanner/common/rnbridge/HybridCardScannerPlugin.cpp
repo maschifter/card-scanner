@@ -18,7 +18,7 @@ namespace {
 // Frames due this close to the throttle window are kept and the scan sleeps
 // the gap - the next camera frame would arrive later than the window opens.
 // Margin is adjusted for assumed 30 fps camera.
-constexpr int kScanWaitMarginMs = 35;
+constexpr int kScanWaitMarginMs = 20;
 
 // Pre-rotation buffer dims, captured while the frame is alive.
 struct FrameSize {

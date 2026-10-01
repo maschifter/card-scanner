@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FrameProtocol.h"
+#include "Socket.h"
 
 #include <atomic>
 #include <cstdint>
@@ -16,12 +17,17 @@ namespace ipc {
  * @brief Accepts frames from the OBS module over loopback TCP.
  *
  * TCP rather than shared memory: identical on both platforms, and nothing to
- * clean up after a crash. One client at a time.
+ * clean up after a crash.
+ *
+ * One client at a time: a second connection waits in the listen backlog,
+ * unserved, until the first disconnects.
  */
 class FrameServer {
 public:
-  /// Receives the ROI, already converted to RGB. Runs on the accept thread.
-  using FrameCallback = std::function<void(cv::Mat)>;
+  /// Receives the ROI converted to RGB, the frame's sequence, the region scanned as
+  /// full-frame fractions, and its "report timings" switch. Runs on the accept thread.
+  using FrameCallback = std::function<void(cv::Mat rgb, uint64_t sequence, cv::Rect2f roi,
+                                           bool reportTimings)>;
 
   FrameServer(uint16_t port, uint64_t token, FrameCallback callback);
   ~FrameServer();
@@ -33,31 +39,31 @@ public:
   void start();
   void stop();
 
-  /// Sends a result back to the module. The box arrives in crop fractions and
-  /// is mapped onto the full frame here.
-  void sendResult(uint64_t sequence, bool detected, bool accepted, float boxX,
-                  float boxY, float boxW, float boxH, float confidence, float topScore);
+  /// Sends a result back to the module. The box arrives as fractions of roi, the
+  /// region its frame's callback delivered, and is mapped onto the full frame here.
+  void sendResult(uint64_t sequence, const cv::Rect2f &roi, bool detected, bool accepted,
+                  float boxX, float boxY, float boxW, float boxH, float confidence,
+                  float topScore);
 
-  uint64_t lastSequence() const;
-  uint64_t framesReceived() const { return received_.load(); }
+  uint64_t framesScanned() const { return scanned_.load(); }
+
+  /// Frames that arrived complete but could not be converted for scanning.
+  /// Protocol-level rejections are excluded; the log names those.
   uint64_t framesRejected() const { return rejected_.load(); }
 
 private:
-  void acceptLoop();
-  void serveClient(int clientFd);
+  void acceptLoop(net::Handle listenFd);
+  void serveClient(net::Handle clientFd);
 
   uint16_t port_;
   uint64_t token_;
   FrameCallback callback_;
 
-  int listenFd_ = -1;
-  std::atomic<int> clientFd_{-1};
+  net::Handle listenFd_ = net::kInvalidHandle;
+  net::Handle clientFd_ = net::kInvalidHandle; // guarded by sendMutex_
   std::mutex sendMutex_;
-  /// Region of the most recent frame, for mapping boxes back out.
-  std::atomic<float> roi_[4]{{0.0f}, {0.0f}, {1.0f}, {1.0f}};
-  std::atomic<uint64_t> sequence_{0};
   std::atomic<bool> running_{false};
-  std::atomic<uint64_t> received_{0};
+  std::atomic<uint64_t> scanned_{0};
   std::atomic<uint64_t> rejected_{0};
   std::thread thread_;
 };

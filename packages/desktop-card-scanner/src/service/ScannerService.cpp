@@ -2,23 +2,30 @@
 
 #include <DatabaseManager.h>
 #include <ScannerRegistry.h>
+#include <benchmark/BenchmarkCollector.h>
 #include <core/ScannerPipeline.h>
 
+#include <util/Log.h>
+#include <util/OpenCvThreads.h>
+
 #include <chrono>
-#include <iostream>
+#include <iomanip>
+#include <mutex>
+#include <sstream>
 
 namespace cardscanner {
 namespace desktop {
 
 ScannerService::ScannerService(const ScannerConfig &config,
-                              SessionConfig sessionConfig)
-    : session_(sessionConfig) {
-  // Keeps OpenCV's pool out of the inference runtime's way.
-  cv::setNumThreads(0);
+                               SessionConfig sessionConfig, Listener listener)
+    : session_(sessionConfig), listener_(std::move(listener)) {
+  util::configureOpenCvThreads();
 
   ScannerRegistry::setConfig(config);
   ScannerRegistry::initializeModels();
+}
 
+void ScannerService::start() {
   worker_ = std::thread([this] { workerLoop(); });
 }
 
@@ -38,17 +45,25 @@ void ScannerService::stop() {
   }
 }
 
+void ScannerService::setReportTimings(bool enabled) {
+  reportTimings_.store(enabled, std::memory_order_relaxed);
+#if !CARDSCANNER_BENCHMARK
+  if (enabled) {
+    static std::once_flag warned;
+    std::call_once(warned, [] {
+      util::logLine("perf", "timings are switched on, but this build compiled "
+                            "the timers out (CARDSCANNER_BENCHMARK=0)");
+    });
+  }
+#endif
+}
+
 Diagnostics ScannerService::diagnostics() const {
   std::lock_guard<std::mutex> lock(diagnosticsMutex_);
   return diagnostics_;
 }
 
-void ScannerService::setListener(Listener listener) {
-  std::lock_guard<std::mutex> lock(listenerMutex_);
-  listener_ = std::move(listener);
-}
-
-bool ScannerService::submitFrame(cv::Mat frame) {
+bool ScannerService::submitFrame(Frame frame) {
   bool evicted = false;
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -64,8 +79,15 @@ bool ScannerService::submitFrame(cv::Mat frame) {
 }
 
 void ScannerService::workerLoop() {
+  // Per-second averages for the [perf] log line. Worker-locals, so no lock.
+  auto perfWindowStart = std::chrono::steady_clock::now();
+  int perfFrames = 0;
+  double perfYolo = 0, perfPreproc = 0, perfEmbed = 0, perfDbSearch = 0,
+         perfTotal = 0;
+  auto lastFrameAt = std::chrono::steady_clock::now();
+
   while (true) {
-    cv::Mat job;
+    Frame job;
     {
       std::unique_lock<std::mutex> lock(mutex_);
       // Also wakes periodically so the session's timers still fire when the
@@ -82,19 +104,32 @@ void ScannerService::workerLoop() {
     }
 
     bool changed = false;
-    if (!job.empty()) {
+    if (!job.image.empty()) {
+      lastFrameAt = std::chrono::steady_clock::now();
       try {
         auto &dbManager = DatabaseManager::getInstance();
 
         // Skip rather than block while a model swap owns the scanner.
         ScanLease lease;
         if (lease) {
+          using benchmark::BenchmarkCollector;
+          using benchmark::Stage;
+
+          // Taken inside the lease, mirroring mobile and scanImageFile: the
+          // models cannot be swapped out from under the snapshot.
           auto ctx = ScannerRegistry::getScannerContext();
 
-          // Core throttles inside processFrame; repeating the rule here
-          // would be a second copy to keep in sync.
+          // Off, the frame runs unmeasured: with no record open the
+          // collector ignores every write the pipeline makes.
+          const bool timings = reportTimings_.load(std::memory_order_relaxed);
+          if (timings) {
+            BenchmarkCollector::reset();
+            BenchmarkCollector::beginBenchmarkRecord();
+          }
+          // No rate limit here or in core (maxFrameRate 0): the filter and the
+          // mailbox bound what arrives; a second cap only dropped frames to jitter.
           const auto result = core::ScannerPipeline::processFrame(
-              job, ctx.config, dbManager, ctx.yoloModel.get(),
+              job.image, ctx.config, dbManager, ctx.yoloModel.get(),
               ctx.embeddingModel.get(), ctx.setSymbolYoloModel.get(),
               ctx.setSymbolEmbedder.get(), ctx.fabColorClassifier.get(),
               &ctx.gameEmbeddingModels);
@@ -102,69 +137,97 @@ void ScannerService::workerLoop() {
           // Recorded whether or not anything matched.
           Diagnostics diag;
           diag.hasFrame = true;
+          diag.sequence = job.sequence;
+          diag.roi = job.roi;
           diag.detections = int(result.cards.size());
           diag.processingMs = result.processingTimeMs;
-          // Same rule ScanSession uses, so the outlined card and the named
-          // card are the same one: best match score, falling back to detection
-          // confidence when nothing matched.
-          const cardscanner::ProcessedCard *best = nullptr;
-          for (const auto &card : result.cards) {
-            if (card.matches.empty()) {
-              continue;
-            }
-            if (!best || card.matches[0].score > best->matches[0].score) {
-              best = &card;
-            }
+          diag.timingsEnabled = timings;
+          if (timings) {
+            BenchmarkCollector::endBenchmarkRecord();
+            diag.measured =
+                BenchmarkCollector::getBenchmarkedRan(Stage::YoloSegmentation);
           }
-          if (best == nullptr) {
-            for (const auto &card : result.cards) {
-              if (!best || card.detectionConfidence > best->detectionConfidence) {
-                best = &card;
-              }
-            }
+          if (diag.measured) {
+            diag.yoloMs =
+                BenchmarkCollector::getBenchmarkedMs(Stage::YoloSegmentation);
+            diag.preprocMs =
+                BenchmarkCollector::getBenchmarkedMs(Stage::Preproc);
+            diag.embedMs = BenchmarkCollector::getBenchmarkedMs(Stage::Embed);
+            diag.dbSearchMs =
+                BenchmarkCollector::getBenchmarkedMs(Stage::DbSearch);
           }
-          if (best && !job.empty()) {
-            diag.boxX = float(best->boundingBox.x) / float(job.cols);
-            diag.boxY = float(best->boundingBox.y) / float(job.rows);
-            diag.boxW = float(best->boundingBox.width) / float(job.cols);
-            diag.boxH = float(best->boundingBox.height) / float(job.rows);
-          }
-          if (best) {
+          if (const ProcessedCard *best = bestVisibleCard(result)) {
+            diag.boxX = float(best->boundingBox.x) / float(job.image.cols);
+            diag.boxY = float(best->boundingBox.y) / float(job.image.rows);
+            diag.boxW = float(best->boundingBox.width) / float(job.image.cols);
+            diag.boxH = float(best->boundingBox.height) / float(job.image.rows);
             diag.detectionConfidence = best->detectionConfidence;
             diag.predictedGame = best->predictedGameName;
             diag.predictedGameConfidence = best->predictedGameConfidence;
-            if (!best->matches.empty()) {
+            if (best->hasMatches()) {
               diag.topScore = best->matches[0].score;
               diag.topCardId = best->matches[0].cardId;
             }
           }
+          // One session call under one lock: the accepted answer and the
+          // state it describes cannot come from two different moments.
+          diag.accepted = session_.onScanResult(result);
           {
             std::lock_guard<std::mutex> lock(diagnosticsMutex_);
-            diag.accepted = session_.onScanResult(result);
             diagnostics_ = diag;
           }
           changed = true;
+
+          if (diag.measured) {
+            perfFrames++;
+            perfYolo += diag.yoloMs;
+            perfPreproc += diag.preprocMs;
+            perfEmbed += diag.embedMs;
+            perfDbSearch += diag.dbSearchMs;
+            perfTotal += diag.processingMs;
+          }
         }
       } catch (const std::exception &e) {
         // One bad frame must not take the server down.
-        std::cerr << "scan failed: " << e.what() << "\n";
+        util::logLine("scan", e.what());
+      }
+    }
+
+    // The feed went quiet: the last readout must not stand as if current.
+    if (std::chrono::steady_clock::now() - lastFrameAt > kFeedTimeout) {
+      std::lock_guard<std::mutex> lock(diagnosticsMutex_);
+      if (diagnostics_.hasFrame) {
+        diagnostics_ = Diagnostics{};
+        changed = true;
+      }
+    }
+
+    // Outside the frame block: the loop wakes every 100ms regardless, so the
+    // last window still lands once the feed goes quiet.
+    if (perfFrames > 0) {
+      const auto now = std::chrono::steady_clock::now();
+      if (now - perfWindowStart >= std::chrono::seconds(1)) {
+        std::ostringstream line;
+        line << perfFrames << " frame(s), avg ms  yolo " << std::fixed
+             << std::setprecision(1) << perfYolo / perfFrames << "  preproc "
+             << perfPreproc / perfFrames << "  embed "
+             << perfEmbed / perfFrames << "  dbSearch "
+             << perfDbSearch / perfFrames << "  total "
+             << perfTotal / perfFrames;
+        util::logLine("perf", line.str());
+        perfWindowStart = now;
+        perfFrames = 0;
+        perfYolo = perfPreproc = perfEmbed = perfDbSearch = perfTotal = 0;
       }
     }
 
     changed = session_.tick() || changed;
 
     if (changed) {
-      Listener listener;
-      {
-        std::lock_guard<std::mutex> lock(listenerMutex_);
-        listener = listener_;
-      }
-      if (listener) {
-        try {
-          listener();
-        } catch (const std::exception &e) {
-          std::cerr << "listener threw: " << e.what() << "\n";
-        }
+      try {
+        listener_();
+      } catch (const std::exception &e) {
+        util::logLine("scan", std::string("listener threw: ") + e.what());
       }
     }
   }

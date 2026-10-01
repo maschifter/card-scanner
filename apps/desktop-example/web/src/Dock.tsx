@@ -1,4 +1,4 @@
-import { useScannerState } from './useScannerState';
+import { useLastMeasured, useScannerState } from './useScannerState';
 import { emptyScan, type ScannedCard } from './types';
 import './dock.css';
 
@@ -10,6 +10,8 @@ export default function Dock({ port }: { port: number }) {
   const { state, connection, send } = useScannerState(port);
   const scan = state.scan ?? emptyScan;
   const active = state.emitted ?? state.candidate;
+
+  const perf = useLastMeasured(scan);
 
   return (
     <div className="dock">
@@ -80,6 +82,16 @@ export default function Dock({ port }: { port: number }) {
         />
         <span className="num">{(state.settings?.acceptScore ?? 0.6).toFixed(2)}</span>
       </label>
+
+      {perf ? (
+        <div className="row perf">
+          <span>
+            yolo {perf.yoloMs.toFixed(1)} · prep {perf.preprocMs.toFixed(1)} ·
+            embed {perf.embedMs.toFixed(1)} · db {perf.dbSearchMs.toFixed(1)} ·
+            total {perf.ms.toFixed(1)} ms
+          </span>
+        </div>
+      ) : null}
 
       <div className="history">
         {state.history?.map((card: ScannedCard) => (

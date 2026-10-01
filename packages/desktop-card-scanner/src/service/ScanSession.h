@@ -34,6 +34,8 @@ struct SessionConfig {
   /// Survives frames with no detection, so one blurred frame does not reset
   /// the streak.
   int gracePeriodMs = 400;
+  /// Applied only once nothing has been accepted for the grace period: any card
+  /// still on the table, even a different one, keeps the emitted one on stream.
   int emittedTimeoutMs = 1500;
 };
 
@@ -44,6 +46,14 @@ struct CardInfo {
   int detections = 0;
 };
 
+/// Best identified card in a frame (highest top-match score); null when
+/// nothing matched. One shared rule, so outline and name never diverge.
+const ProcessedCard *bestMatchedCard(const ScanResult &result);
+
+/// bestMatchedCard, falling back to the most confident bare detection when
+/// nothing matched. The fallback card has no matches; check before indexing.
+const ProcessedCard *bestVisibleCard(const ScanResult &result);
+
 /**
  * @brief Turns per-frame scan results into stream-facing state.
  *
@@ -52,37 +62,50 @@ struct CardInfo {
  */
 class ScanSession {
 public:
+  /// Everything a broadcast needs, read under one lock so the fields cannot
+  /// contradict each other mid-commit.
+  struct Snapshot {
+    Status status = Status::Idle;
+    Mode mode = Mode::Auto;
+    std::optional<CardInfo> candidate;
+    std::optional<CardInfo> emitted;
+    std::vector<CardInfo> history;
+    SessionConfig config;
+  };
+
   explicit ScanSession(SessionConfig config = {});
 
-  /// Feeds one frame's results. Returns true when observable state changed.
+  /// Feeds one frame's results. Returns true when the identified card is
+  /// the one now on stream - the wire's "accepted" bit.
   bool onScanResult(const ScanResult &result);
 
   /// Applies the grace period and emitted timeout. Call periodically; returns
   /// true when observable state changed.
   bool tick();
 
-  Status status() const;
-  Mode mode() const;
-  std::optional<CardInfo> candidate() const;
-  std::optional<CardInfo> emitted() const;
-  std::vector<CardInfo> history() const;
+  Snapshot snapshot() const;
 
   void setConfig(SessionConfig config);
+  /// Kept alongside snapshot(): set_settings wants the config alone for its
+  /// read-modify-write, without paying for a history copy.
   SessionConfig config() const;
 
-  /// @return true when observable state changed, so the caller re-broadcasts.
-  bool setMode(Mode mode);
-  /// Commits the waiting candidate. Manual mode only; no-op otherwise.
-  bool emitCurrent();
-  bool clearEmitted();
+  /// The dock's mutators. No change reports: the control server re-broadcasts
+  /// after every command, whether or not anything changed.
+  void setMode(Mode mode);
+  /// Commits the waiting candidate; no-op without one.
+  void emitCurrent();
+  void clearEmitted();
   /// Puts a card from the history back on stream.
-  bool emitFromHistory(const std::string &cardId);
+  void emitFromHistory(const std::string &cardId);
 
 private:
   using Clock = std::chrono::steady_clock;
 
-  bool commitLocked();
+  void commitLocked();
   void recordHistoryLocked(const CardInfo &card);
+  /// Detections the candidate needs before it can be emitted.
+  int requiredDetectionsLocked() const;
 
   mutable std::mutex mutex_;
   SessionConfig config_;

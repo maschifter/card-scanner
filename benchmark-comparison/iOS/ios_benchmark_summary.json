@@ -1,46 +1,38 @@
 {
-  "comparison": "benchmark_old vs benchmark_new (average times, warmup iterations excluded)",
-  "note": "New version searches through more games, so db_search_ms is expected to be higher.",
-  "metrics": {
-    "total_ms": {
-      "old": 41.22,
-      "new": 22.86,
-      "diff_ms": -18.37,
-      "diff_pct": -44.6
-    },
-    "yolo_ms": {
-      "old": 33.92,
-      "new": 16.12,
-      "diff_ms": -17.8,
-      "diff_pct": -52.5
-    },
-    "preproc_ms": {
-      "old": 0.12,
-      "new": 0.11,
-      "diff_ms": -0.01,
-      "diff_pct": -8.3
-    },
-    "save_ms": {
-      "old": 4.63,
-      "new": 4.3,
-      "diff_ms": -0.33,
-      "diff_pct": -7.0
-    },
-    "embedder_ms": {
-      "old": 1.97,
-      "new": 1.36,
-      "diff_ms": -0.6,
-      "diff_pct": -30.5
-    },
-    "db_search_ms": {
-      "old": 0.3,
-      "new": 0.91,
-      "diff_ms": 0.61,
-      "diff_pct": 203.8
-    }
+  "summary": {
+    "basis": "mean ms per scan over the scans that ran the full pipeline, warmup iterations excluded",
+    "yolo_ms": 5.66,
+    "preproc_ms": 0.1,
+    "embedder_ms": 1.33,
+    "db_search_ms": 0.44,
+    "save_ms": 4.22,
+    "total_ms": 7.57,
+    "accuracy_pct": 89.13
   },
-  "sample_size": {
-    "old_records_excl_warmup": 400,
-    "new_records_excl_warmup": 920
-  }
+  "run": {
+    "date": "2026-09-04",
+    "device": "iPhone 16 (iPhone17,3)",
+    "os": "iOS 26.6.1",
+    "backend": "CoreML-delegated .pte",
+    "models": "mobile .pte models (apps/mobile-example)",
+    "images": "mobile-example games_images, 19 games / 92 cards, warmup 2, iterations 10",
+    "note": "total_ms excludes save_ms: the median gap between totalMs and yolo+preproc+embedder+db_search is 0.02 ms."
+  },
+  "scans": {
+    "measured": 920,
+    "full_pipeline": 870,
+    "correct": 820,
+    "no_detection": 50,
+    "game_mismatch": 10,
+    "below_threshold": 30,
+    "wrong_match": 10
+  },
+  "extra_models": [
+    {
+      "label": "FAB color",
+      "ran": 20,
+      "out_of": 870,
+      "ms": 0.41
+    }
+  ]
 }

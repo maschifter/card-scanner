@@ -1,0 +1,101 @@
+{
+  "meta": {
+    "generated": "2026-09-07"
+  },
+  "offlineBenchmark": {
+    "setup": "desktop_card_scanner harness over 92 photos (19 games, 10 measured iterations each); no OBS, no camera. Mean ms per full-pipeline scan, same basis as the mobile summaries.",
+    "runs": [
+      {
+        "file": "mac/2026-09-04-ane-fp16.json",
+        "platform": "macOS (M2 Pro)",
+        "backend": "CoreML, models placed on the Neural Engine (CoreML's default compute units)",
+        "models": "fp16",
+        "yoloMs": 2.192,
+        "embedderMs": 0.574,
+        "dbSearchMs": 0.659,
+        "totalMs": 3.535,
+        "accuracyPercent": 86.957
+      },
+      {
+        "file": "mac/2026-09-04-gpu-fp16.json",
+        "platform": "macOS (M2 Pro)",
+        "backend": "CoreML, restricted to GPU and CPU with MLComputeUnits=CPUAndGPU, so the Neural Engine is unused",
+        "models": "fp16",
+        "yoloMs": 11.38,
+        "embedderMs": 3.591,
+        "dbSearchMs": 1.407,
+        "totalMs": 16.827,
+        "accuracyPercent": 85.87
+      },
+      {
+        "file": "mac/2026-09-04-cpu-fp16.json",
+        "platform": "macOS (M2 Pro)",
+        "backend": "ONNX Runtime CPU provider, set with CARD_SCANNER_EP=cpu",
+        "models": "fp16",
+        "yoloMs": 21.103,
+        "embedderMs": 3.909,
+        "dbSearchMs": 0.924,
+        "totalMs": 26.337,
+        "accuracyPercent": 86.957
+      },
+      {
+        "file": "windows/2026-09-02-laptop-dml-fp32.json",
+        "platform": "Windows laptop",
+        "backend": "DirectML, the default provider on Windows",
+        "models": "fp32",
+        "yoloMs": 20.118,
+        "embedderMs": 4.054,
+        "dbSearchMs": 3.378,
+        "totalMs": 28.291,
+        "accuracyPercent": 85.87
+      },
+      {
+        "file": "windows/2026-09-07-desktop-rtx4060-dml-fp16.json",
+        "platform": "Windows 11 desktop, dedicated GPU (RTX 4060)",
+        "backend": "DirectML, the default provider on Windows",
+        "models": "fp16",
+        "yoloMs": 5.138,
+        "embedderMs": 0.903,
+        "dbSearchMs": 0.576,
+        "totalMs": 6.774,
+        "accuracyPercent": 85.87
+      },
+      {
+        "file": "windows/2026-09-07-laptop-dml-fp16.json",
+        "platform": "Windows laptop, integrated GPU (Core Ultra 7 165U)",
+        "backend": "DirectML on the integrated GPU, the default provider on Windows; ColorBarModel falls back to CPU",
+        "models": "fp16",
+        "yoloMs": 10.821,
+        "embedderMs": 2.506,
+        "dbSearchMs": 0.688,
+        "totalMs": 14.289,
+        "accuracyPercent": 86.957
+      }
+    ]
+  },
+  "obsPluginLive": {
+    "setup": "OBS 32 plugin on the same Mac, live camera at ~25 fps with no card in view, so only segmentation ran; scan.ms over 120 s per backend, camera video effects off. Percentiles, not means: the point of the capture is the shape over time.",
+    "runs": [
+      {
+        "backend": "CoreML, Neural Engine (default compute units)",
+        "p50": 15.51,
+        "p90": 26.46,
+        "p99": 33.55,
+        "shape": "jumps 4 -> 25 ms, ~70 s period"
+      },
+      {
+        "backend": "CoreML, GPU and CPU only (MLComputeUnits=CPUAndGPU)",
+        "note": "Same reverted patch as the offline GPU row.",
+        "p50": 8.85,
+        "p90": 11.69,
+        "p99": 13.46,
+        "shape": "flat"
+      }
+    ]
+  },
+  "summary": [
+    "Offline the Neural Engine wins by a wide margin: 3.5 ms per frame against 16.8 on the GPU and 26.3 on the CPU provider, all fp16.",
+    "Inside OBS the Neural Engine path ramps from 4 to 25 ms on a ~70 s cycle (p50 15.5); CPUAndGPU is flat at 8.9 ms.",
+    "On the one Windows machine benchmarked twice, fp16 plus the 5670390 code and ONNX Runtime changes took a scan from 28.3 to 14.3 ms. A control run isolating the models puts 8.3 ms of that on code and runtime and 5.7 ms on fp16 itself."
+  ]
+}

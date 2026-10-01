@@ -26,3 +26,14 @@ button:disabled { opacity: 0.4; cursor: default; }
 .entry img, .entry .blank { width: 26px; height: 36px; border-radius: 3px;
                             background: #33363d; object-fit: cover; }
 .entry-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Timings readout: the dock is dark, so black bold needs its own light chip. */
+.perf span {
+  background: rgba(255, 255, 255, 0.92);
+  color: #000;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 3px 8px;
+  border-radius: 6px;
+}

@@ -83,7 +83,8 @@
       "below_threshold": 50,
       "no_detection": 50,
       "wrong_match": 10,
-      "accuracy_pct": 88.0
+      "accuracy_pct": 88.0,
+      "note": "Shared old-vs-new figures. iOS on the 2026-09-04 CoreML run scores 820/920 (89.1%)."
     },
     "old_games_only": {
       "scope": "The 8 games present in both runs (fab, lorcana, mtg, onepiece, pokemon, riftbound, rise, sorcery): 40 cards, 400 measured runs per platform.",
@@ -116,70 +117,46 @@
     }
   },
   "platform_timing_results_ms": {
-    "note": "New version searches through more games, so the db_search time is expected to be higher. Total time contains evetything (optional save included etc).",
+    "note": "Average ms per scan, warmup iterations excluded. Android and iOS are single runs on different backends and different averaging bases (Android over all measured scans, iOS over full-pipeline scans only), so the platforms are not directly comparable.",
     "android": {
-      "total_ms": {
-        "old": 56.389,
-        "new": 51.035,
-        "diff": -5.354,
-        "diff_pct": -9.5
+      "run": "2026-09-07 Samsung Galaxy S24 (SM-S921B), XNNPACK-delegated .pte with the segmentation model in fp16. 19 games / 92 cards / 920 measured runs.",
+      "total_ms": 27.079,
+      "stage_sum_ms": 32.385,
+      "yolo_ms": 22.239,
+      "preproc_ms": 0.193,
+      "save_ms": 5.475,
+      "embedder_ms": 3.585,
+      "db_search_ms": 0.893,
+      "accuracy_pct": 88.04,
+      "note": "total_ms excludes save_ms on this run; stage_sum_ms is the figure to compare against the previous fp32 run, which included save in total_ms.",
+      "previous_fp32_run": {
+        "note": "Same suite and device, fp32 segmentation model, build about 10 days older.",
+        "total_ms": 51.035,
+        "stage_sum_ms": 50.783,
+        "yolo_ms": 39.363,
+        "preproc_ms": 0.202,
+        "save_ms": 5.902,
+        "embedder_ms": 3.408,
+        "db_search_ms": 1.908,
+        "accuracy_pct": 88.04
       },
-      "yolo_ms": {
-        "old": 45.82,
-        "new": 39.363,
-        "diff": -6.457,
-        "diff_pct": -14.1
-      },
-      "preproc_ms": {
-        "old": 0.196,
-        "new": 0.202,
-        "diff": 0.007,
-        "diff_pct": 3.5
-      },
-      "embed_ms": {
-        "old": 3.909,
-        "new": 3.408,
-        "diff": -0.501,
-        "diff_pct": -12.8
-      },
-      "db_search_ms": {
-        "old": 0.663,
-        "new": 1.908,
-        "diff": 1.245,
-        "diff_pct": 187.8
+      "fp16_vs_fp32": {
+        "yolo_ms_pct": -43.5,
+        "stage_sum_ms_pct": -36.2,
+        "accuracy_pct_diff": 0.0,
+        "caveat": "Not a clean A/B: db_search also halved, which the model swap cannot explain."
       }
     },
     "ios": {
-      "total_ms": {
-        "old": 41.22,
-        "new": 22.86,
-        "diff_ms": -18.37,
-        "diff_pct": -44.6
-      },
-      "yolo_ms": {
-        "old": 33.92,
-        "new": 16.12,
-        "diff_ms": -17.8,
-        "diff_pct": -52.5
-      },
-      "preproc_ms": {
-        "old": 0.12,
-        "new": 0.11,
-        "diff_ms": -0.01,
-        "diff_pct": -8.3
-      },
-      "embedder_ms": {
-        "old": 1.97,
-        "new": 1.36,
-        "diff_ms": -0.6,
-        "diff_pct": -30.5
-      },
-      "db_search_ms": {
-        "old": 0.3,
-        "new": 0.91,
-        "diff_ms": 0.61,
-        "diff_pct": 203.8
-      }
+      "run": "2026-09-04 iPhone 16 (iPhone17,3), iOS 26.6.1, CoreML-delegated .pte. 19 games / 92 cards / 920 measured runs.",
+      "total_ms": 7.57,
+      "yolo_ms": 5.66,
+      "preproc_ms": 0.1,
+      "save_ms": 4.22,
+      "embedder_ms": 1.33,
+      "db_search_ms": 0.44,
+      "accuracy_pct": 89.13,
+      "note": "total_ms excludes save_ms on this run."
     }
   },
   "benchmark_input_changes_on_shared_games": {

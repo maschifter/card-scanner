@@ -1,0 +1,36 @@
+{
+  "summary": {
+    "basis": "mean ms per scan over the scans that ran the full pipeline, warmup iterations excluded",
+    "yoloMs": 20.118,
+    "preprocMs": 0.308,
+    "embedderMs": 4.054,
+    "dbSearchMs": 3.378,
+    "totalMs": 28.291,
+    "accuracyPercent": 85.87
+  },
+  "run": {
+    "date": "2026-09-02",
+    "platform": "Windows laptop, integrated GPU",
+    "backend": "DirectML, ONNX Runtime 1.24.4 DirectML build",
+    "models": "fp32",
+    "images": "mobile-example games_images, 19 games / 92 images, warmup 2, iterations 10",
+    "notes": "First iteration per process up to 304 ms from DirectML shader compilation. fp16 on DirectML untested yet."
+  },
+  "scans": {
+    "measured": 920,
+    "fullPipeline": 900,
+    "correct": 790,
+    "noDetection": 20,
+    "gameMismatch": 40,
+    "belowThreshold": 0,
+    "wrongMatch": 70
+  },
+  "extraModels": [
+    {
+      "label": "FAB color",
+      "ran": 20,
+      "outOf": 900,
+      "msPerScan": 8.404
+    }
+  ]
+}

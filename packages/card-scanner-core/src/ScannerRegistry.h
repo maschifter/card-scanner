@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/ScannerPipeline.h"
+#include "types/BenchmarkRecord.h"
 #include "types/ScanResults.h"
 #include "types/ScannerConfig.h"
 #include <DatabaseManager.h>
@@ -11,6 +12,7 @@
 #include <shared_mutex>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace cardscanner {
 
@@ -123,8 +125,31 @@ public:
   static bool isBenchmarkRunning();
 
   /**
+   * @brief Runs a benchmark over still images with the scanner to itself:
+   * claims the benchmark slot, waits out the scans already in flight, then
+   * hands the current models to BenchmarkRunner.
+   *
+   * Lives here rather than at each integration layer because the order of the
+   * claim, the drain and the model check is what keeps a run from measuring a
+   * pipeline somebody else is still using. Callers own only their own I/O -
+   * where the images come from and what becomes of the JSON.
+   *
+   * @throws std::runtime_error if a benchmark is already running or the models
+   * are not initialized.
+   */
+  static BenchmarkRunResult
+  runBenchmark(const std::vector<BenchmarkImageInput> &images,
+               int warmupIterations, int benchmarkIterations,
+               DatabaseManager &dbManager);
+
+private:
+  static void resetModelsLocked();
+
+  /**
    * @brief Claims the benchmark slot for the calling thread. Take
-   * pipelineMutex_ exclusively after it to drain the scans already running.
+   * pipelineMutex_ exclusively after it to drain the scans already running -
+   * private, because runBenchmark() is the one place that pairing is made in
+   * the right order.
    * @throws std::runtime_error if a benchmark is already running.
    */
   static void beginBenchmark();
@@ -133,9 +158,6 @@ public:
    * @brief Releases the benchmark slot. Pair with beginBenchmark().
    */
   static void endBenchmark();
-
-private:
-  static void resetModelsLocked();
 
   static std::shared_ptr<cardscanner::YoloSegmentationModel> yoloModel_;
   static std::shared_ptr<cardscanner::CardEmbeddingModel>

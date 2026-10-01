@@ -1,7 +1,6 @@
 #include "ScannerConfigLoader.h"
-
+#include <PathProvider.h>
 #include <nlohmann/json.hpp>
-
 #include <algorithm>
 #include <fstream>
 #include <initializer_list>
@@ -17,12 +16,19 @@ using nlohmann::json;
 
 /// Reads an optional scalar, falling back to the C++ default.
 template <typename T>
-T optional(const json &obj, const char *key, T fallback) {
+T valueOrDefault(const json &obj, const char *key, T fallback) {
   const auto it = obj.find(key);
   if (it == obj.end() || it->is_null()) {
     return fallback;
   }
-  return it->get<T>();
+  try {
+    return it->get<T>();
+  } catch (const json::type_error &e) {
+    const std::string what = e.what();
+    const auto tag = what.find("] ");
+    throw std::runtime_error(std::string("config: '") + key + "' " +
+                             (tag == std::string::npos ? what : what.substr(tag + 2)));
+  }
 }
 
 std::string requiredString(const json &obj, const char *key) {
@@ -93,7 +99,9 @@ GameClassMap parseGameClassMapping(const json &root) {
     std::vector<std::string> games;
     if (value.is_string()) {
       games.push_back(value.get<std::string>());
-    } else if (value.is_array()) {
+    } else if (value.is_array() &&
+               std::all_of(value.begin(), value.end(),
+                           [](const json &name) { return name.is_string(); })) {
       // Several names when the model merges games it cannot tell apart.
       games = value.get<std::vector<std::string>>();
     } else {
@@ -120,9 +128,9 @@ GameClassMap parseGameClassMapping(const json &root) {
     }
   }
 
-  // Checks the map is self-consistent, not that it matches the model. A
-  // cross-check against the segmentation output channel dim (4 + numClasses +
-  // 32) needs the backend to expose shapes.
+  // Checks the map is self-consistent. YoloSegmentationModel::segment matches
+  // the entry count against the model's channel dim on the first scan; the
+  // order cannot be checked.
 
   return mapping;
 }
@@ -136,12 +144,12 @@ ScannerConfig::GameConfig parseGameConfig(const json &obj,
 
   ScannerConfig::GameConfig game;
 
-  game.embeddingModelPath =
-      resolveModel(modelsDir, optional<std::string>(obj, "embeddingModelPath", ""));
+  game.embeddingModelPath = resolveModel(
+      modelsDir, valueOrDefault<std::string>(obj, "embeddingModelPath", ""));
 
   const auto confidence = obj.find("confidenceThreshold");
-  if (confidence != obj.end() && confidence->is_number()) {
-    game.confidenceThreshold = confidence->get<float>();
+  if (confidence != obj.end() && !confidence->is_null()) {
+    game.confidenceThreshold = valueOrDefault<float>(obj, "confidenceThreshold", 0.0f);
   }
 
   const auto setSymbol = obj.find("setSymbolDetection");
@@ -150,16 +158,16 @@ ScannerConfig::GameConfig parseGameConfig(const json &obj,
                     {"detectionModelPath", "embeddingModelPath", "detectionThreshold",
                      "confidenceThreshold", "imageSize"});
     game.setSymbolDetectionModelPath = resolveModel(
-        modelsDir, optional<std::string>(*setSymbol, "detectionModelPath", ""));
+        modelsDir, valueOrDefault<std::string>(*setSymbol, "detectionModelPath", ""));
     game.setSymbolEmbedderModelPath = resolveModel(
-        modelsDir, optional<std::string>(*setSymbol, "embeddingModelPath", ""));
-    game.setSymbolDetectionThreshold = optional<float>(
+        modelsDir, valueOrDefault<std::string>(*setSymbol, "embeddingModelPath", ""));
+    game.setSymbolDetectionThreshold = valueOrDefault<float>(
         *setSymbol, "detectionThreshold", game.setSymbolDetectionThreshold);
-    game.setSymbolConfidenceThreshold = optional<float>(
+    game.setSymbolConfidenceThreshold = valueOrDefault<float>(
         *setSymbol, "confidenceThreshold", game.setSymbolConfidenceThreshold);
     // Must match the exported model's input_shape or inference fails.
     game.setSymbolImageSize =
-        optional<int>(*setSymbol, "imageSize", game.setSymbolImageSize);
+        valueOrDefault<int>(*setSymbol, "imageSize", game.setSymbolImageSize);
   }
 
   const auto color = obj.find("colorDetection");
@@ -167,11 +175,11 @@ ScannerConfig::GameConfig parseGameConfig(const json &obj,
     warnUnknownKeys(*color, prefix + "colorDetection.",
                     {"modelPath", "dotsRegionRatio", "minDotsRegionSize"});
     game.colorDetectionModelPath = resolveModel(
-        modelsDir, optional<std::string>(*color, "modelPath", ""));
+        modelsDir, valueOrDefault<std::string>(*color, "modelPath", ""));
     game.dotsRegionRatio =
-        optional<double>(*color, "dotsRegionRatio", game.dotsRegionRatio);
+        valueOrDefault<double>(*color, "dotsRegionRatio", game.dotsRegionRatio);
     game.minDotsRegionSize =
-        optional<int>(*color, "minDotsRegionSize", game.minDotsRegionSize);
+        valueOrDefault<int>(*color, "minDotsRegionSize", game.minDotsRegionSize);
   }
 
   return game;
@@ -181,7 +189,7 @@ ScannerConfig::GameConfig parseGameConfig(const json &obj,
 std::filesystem::path resolveDir(const json &root, const char *key,
                                  const std::filesystem::path &base,
                                  const std::string &fallback) {
-  const std::filesystem::path value(optional<std::string>(root, key, fallback));
+  const std::filesystem::path value(valueOrDefault<std::string>(root, key, fallback));
   return value.is_absolute() ? value : (base / value);
 }
 
@@ -208,7 +216,8 @@ LoadedConfig loadConfigFile(const std::filesystem::path &configPath) {
                    "minGameConfidence", "maxMatches", "searchCandidates",
                    "captureImage", "useDetectionSelection", "useSidewaysFlipCache",
                    "blurThreshold", "lowLightThreshold", "lowLightGamma",
-                   "maxFrameRate", "gameClassMapping", "gameSpecificConfig"});
+                   "maxFrameRate", "gameClassMapping", "gameSpecificConfig",
+                   "productEndpoint", "productImageBase", "productImageTransform"});
 
   const std::filesystem::path base =
       std::filesystem::absolute(configPath).parent_path();
@@ -218,6 +227,13 @@ LoadedConfig loadConfigFile(const std::filesystem::path &configPath) {
   loaded.paths.databases = resolveDir(root, "databasesDir", base, "databases");
   loaded.paths.cache = resolveDir(root, "cacheDir", base, "cache");
 
+  loaded.products.endpoint =
+      valueOrDefault<std::string>(root, "productEndpoint", loaded.products.endpoint);
+  loaded.products.imageBase =
+      valueOrDefault<std::string>(root, "productImageBase", loaded.products.imageBase);
+  loaded.products.imageTransform = valueOrDefault<std::string>(
+      root, "productImageTransform", loaded.products.imageTransform);
+
   ScannerConfig &config = loaded.scanner;
 
   config.segmentationModelPath =
@@ -225,34 +241,38 @@ LoadedConfig loadConfigFile(const std::filesystem::path &configPath) {
   config.embeddingModelPath =
       resolveModel(modelsDir, requiredString(root, "embeddingModelPath"));
 
-  config.scanMode = optional<std::string>(root, "scanMode", "single");
+  config.scanMode = valueOrDefault<std::string>(root, "scanMode", "single");
   if (config.scanMode != "single" && config.scanMode != "multiple") {
     throw std::runtime_error("config: scanMode must be 'single' or 'multiple', got '" +
                              config.scanMode + "'");
   }
 
   // Matching mobile's defaults, so both paths score the same images alike.
-  config.segmentationThreshold = optional<float>(root, "segmentationThreshold", 0.6f);
-  config.iouThreshold = optional<float>(root, "iouThreshold", 0.7f);
-  config.confidenceThreshold = optional<float>(root, "confidenceThreshold", 0.6f);
-  config.disambiguationThreshold = optional<float>(
+  config.segmentationThreshold =
+      valueOrDefault<float>(root, "segmentationThreshold", 0.6f);
+  config.iouThreshold = valueOrDefault<float>(root, "iouThreshold", 0.7f);
+  config.confidenceThreshold = valueOrDefault<float>(root, "confidenceThreshold", 0.6f);
+  config.disambiguationThreshold = valueOrDefault<float>(
       root, "disambiguationThreshold", ScannerConfig::DEFAULT_DISAMBIGUATION_THRESHOLD);
-  config.minGameConfidence = optional<float>(root, "minGameConfidence", 1e-5f);
+  config.minGameConfidence = valueOrDefault<float>(root, "minGameConfidence", 1e-5f);
 
-  config.maxMatches = optional<int>(root, "maxMatches", 5);
-  config.searchCandidates = optional<int>(root, "searchCandidates", 100);
-  config.captureImage = optional<bool>(root, "captureImage", false);
+  config.maxMatches = valueOrDefault<int>(root, "maxMatches", 5);
+  config.searchCandidates = valueOrDefault<int>(root, "searchCandidates", 100);
+  config.captureImage = valueOrDefault<bool>(root, "captureImage", false);
 
-  config.useDetectionSelection = optional<bool>(root, "useDetectionSelection", true);
-  config.useSidewaysFlipCache = optional<bool>(root, "useSidewaysFlipCache", true);
+  config.useDetectionSelection =
+      valueOrDefault<bool>(root, "useDetectionSelection", true);
+  config.useSidewaysFlipCache =
+      valueOrDefault<bool>(root, "useSidewaysFlipCache", true);
 
-  config.blurThreshold = optional<double>(root, "blurThreshold", 0.0);
-  config.lowLightThreshold = optional<double>(
+  config.blurThreshold = valueOrDefault<double>(root, "blurThreshold", 0.0);
+  config.lowLightThreshold = valueOrDefault<double>(
       root, "lowLightThreshold", ScannerConfig::DEFAULT_LOW_LIGHT_THRESHOLD);
-  config.lowLightGamma = optional<double>(root, "lowLightGamma",
+  config.lowLightGamma = valueOrDefault<double>(root, "lowLightGamma",
                                           ScannerConfig::DEFAULT_LOW_LIGHT_GAMMA);
-  config.maxFrameRate =
-      optional<int>(root, "maxFrameRate", ScannerConfig::DEFAULT_MAX_FRAME_RATE);
+  // 0: no throttle in core. The OBS filter's max_fps is the only gate; a second
+  // cap on the same interval returned dropped frames as empty scans.
+  config.maxFrameRate = valueOrDefault<int>(root, "maxFrameRate", 0);
 
   config.gameClassMapping = parseGameClassMapping(root);
 
@@ -281,6 +301,13 @@ LoadedConfig loadConfigFile(const std::filesystem::path &configPath) {
   }
 
   return loaded;
+}
+
+void applyDataPaths(const DataPaths &paths) {
+  std::filesystem::create_directories(paths.databases);
+  std::filesystem::create_directories(paths.cache);
+  pathprovider::set_db_path(paths.databases.string());
+  pathprovider::set_cache_path(paths.cache.string());
 }
 
 } // namespace desktop

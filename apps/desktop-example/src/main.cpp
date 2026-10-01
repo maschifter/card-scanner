@@ -2,20 +2,23 @@
 // how the inference seam and accuracy work get exercised.
 //
 // Usage: desktop_card_scanner <config.json> <image>
+//        desktop_card_scanner <config.json> --benchmark <image-dir>
+//            [--out <file>] [--warmup N] [--iterations N] [--manifest <file>]
 // Exit:  0 identified, 2 scanned but nothing identified, 1 error.
+//        --benchmark: 0 on a completed run, 1 error.
 
+#include <benchmark/OfflineBenchmark.h>
 #include <config/ScannerConfigLoader.h>
 
 #include <DatabaseManager.h>
-#include <PathProvider.h>
 #include <ScannerRegistry.h>
 #include <types/ScanResults.h>
-
-#include <opencv2/core/utility.hpp>
+#include <util/OpenCvThreads.h>
 
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <string>
 
 namespace {
 
@@ -53,26 +56,28 @@ void printCard(const cardscanner::ProcessedCard &card, size_t index) {
   }
 }
 
+/// Config -> data paths -> models, the order both modes need: pathprovider
+/// has to be pointed at the data directories before anything constructs
+/// DatabaseManager, which reads the db path exactly once.
+cardscanner::desktop::LoadedConfig
+startScanner(const std::filesystem::path &configPath) {
+  auto loaded = cardscanner::desktop::loadConfigFile(configPath);
+  cardscanner::desktop::applyDataPaths(loaded.paths);
+
+  cardscanner::util::configureOpenCvThreads();
+
+  cardscanner::ScannerRegistry::setConfig(loaded.scanner);
+  cardscanner::ScannerRegistry::initializeModels();
+  return loaded;
+}
+
 int run(const std::filesystem::path &configPath,
         const std::filesystem::path &imagePath) {
   if (!std::filesystem::exists(imagePath)) {
     throw std::runtime_error("image not found: " + imagePath.string());
   }
 
-  auto loaded = cardscanner::desktop::loadConfigFile(configPath);
-
-  // PathProvider's contract: both must be set before DatabaseManager is first
-  // constructed, since it reads the db path once.
-  std::filesystem::create_directories(loaded.paths.databases);
-  std::filesystem::create_directories(loaded.paths.cache);
-  pathprovider::set_db_path(loaded.paths.databases.string());
-  pathprovider::set_cache_path(loaded.paths.cache.string());
-
-  // Keeps OpenCV's pool out of the inference runtime's way.
-  cv::setNumThreads(0);
-
-  cardscanner::ScannerRegistry::setConfig(loaded.scanner);
-  cardscanner::ScannerRegistry::initializeModels();
+  const auto loaded = startScanner(configPath);
 
   auto &dbManager = cardscanner::DatabaseManager::getInstance();
   const auto games = dbManager.getKnownGames();
@@ -111,16 +116,64 @@ int run(const std::filesystem::path &configPath,
   return identified > 0 ? 0 : 2;
 }
 
+int runBenchmark(int argc, char **argv) {
+  cardscanner::desktop::OfflineBenchmarkOptions options;
+  options.imagesDir = argv[3];
+  if ((argc - 4) % 2 != 0) {
+    throw std::runtime_error("options come in '--flag value' pairs");
+  }
+  for (int i = 4; i + 1 < argc; i += 2) {
+    const std::string flag = argv[i];
+    if (flag == "--out") {
+      options.outPath = argv[i + 1];
+    } else if (flag == "--warmup") {
+      options.warmupIterations = std::stoi(argv[i + 1]);
+    } else if (flag == "--iterations") {
+      options.benchmarkIterations = std::stoi(argv[i + 1]);
+    } else if (flag == "--manifest") {
+      options.manifestPath = argv[i + 1];
+    } else {
+      throw std::runtime_error("unknown option: " + flag);
+    }
+  }
+  if (options.warmupIterations < 0 || options.benchmarkIterations < 1) {
+    throw std::runtime_error("--warmup must be >= 0, --iterations >= 1");
+  }
+
+  const auto loaded = startScanner(argv[1]);
+  if (options.outPath.empty()) {
+    options.outPath =
+        loaded.paths.cache / cardscanner::desktop::benchmarkFileName();
+  }
+
+  if (cardscanner::DatabaseManager::getInstance().getKnownGames().empty()) {
+    std::cerr << "warning: no databases found in " << loaded.paths.databases
+              << "; dbSearch timings will be hollow\n";
+  }
+
+  const size_t records = cardscanner::desktop::runOfflineBenchmark(options);
+
+  cardscanner::ScannerRegistry::releaseModels();
+
+  std::cout << records << " record(s) -> " << options.outPath << "\n";
+  return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
-  if (argc != 3) {
-    std::cerr << "usage: " << argv[0] << " <config.json> <image>\n";
+  const bool benchmark = argc >= 3 && std::string(argv[2]) == "--benchmark";
+  if (benchmark ? argc < 4 : argc != 3) {
+    std::cerr << "usage: " << argv[0] << " <config.json> <image>\n"
+              << "       " << argv[0]
+              << " <config.json> --benchmark <image-dir>"
+              << " [--out <file>] [--warmup N] [--iterations N]"
+              << " [--manifest <file>]\n";
     return 1;
   }
 
   try {
-    return run(argv[1], argv[2]);
+    return benchmark ? runBenchmark(argc, argv) : run(argv[1], argv[2]);
   } catch (const std::exception &e) {
     std::cerr << "error: " << e.what() << "\n";
     return 1;

@@ -31,9 +31,6 @@ public:
   /// Terminates the child and stops supervising. Safe to call twice.
   void stop();
 
-  bool running() const { return pid_.load() > 0; }
-  const std::string &logPath() const { return logPath_; }
-
 private:
   void superviseLoop();
   bool spawnOnce();
@@ -46,6 +43,9 @@ private:
   uint16_t controlPort_;
 
   std::atomic<int> pid_{0};
+  /// The log is truncated for the first spawn and appended to after that, so
+  /// a crash's output survives the respawn that follows it.
+  bool firstSpawn_ = true;
 #ifdef _WIN32
   /// void* rather than HANDLE so this header stays free of windows.h.
   void *process_ = nullptr;

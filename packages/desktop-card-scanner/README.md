@@ -12,33 +12,33 @@ covers the package itself.
 ## What is in here
 
 The package splits along the process boundary. Everything in `service/`,
-`ipc/`, `protocol/`, `backends/`, `config/`, and `net/` links into the scanner
+`ipc/`, `protocol/`, `backends/`, `config/`, and `http/` links into the scanner
 server. Everything in `module/` and `obsbridge/` links into the OBS plugin,
 which takes `ipc/FrameProtocol.h` and nothing else from the server side.
 
 ### Server side
 
-| Path | What it does |
-|---|---|
-| `backends/onnx/OnnxSession.cpp` | Defines `cardscanner::inference::loadSession` against ONNX Runtime, and the only translation unit that includes it. |
-| `service/ScannerService` | Owns the worker thread and a depth-1 keep-latest mailbox. A newer frame evicts the older one; the producer never waits. |
-| `service/ScanSession` | The state machine: idle, detecting, candidate ready, emitted. Holds the history ring and the thresholds. |
-| `service/ScannerServer` | The façade that owns the whole server. Construct it, call `start()`, and the sockets, the worker, and the lookups come up together. |
-| `service/ProductClient` | Resolves card names and art over HTTP on its own thread, so the scan worker never waits on the network. |
-| `protocol/StateMessage` | Serializes the whole scanner state as one JSON message. |
-| `ipc/FrameServer` | Receives frames on port 27846, validates the header, and converts the scan region to RGB. |
-| `ipc/ControlServer` | The WebSocket endpoint on port 27845. One server for the process, so a second filter can attach. |
-| `ipc/OverlayServer` | Serves the overlay page over HTTP on port 27847. |
-| `config/ScannerConfigLoader` | Reads a JSON config into a fully populated `ScannerConfig`. |
+| Path                            | What it does                                                                                                                        |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `backends/onnx/OnnxSession.cpp` | Defines `cardscanner::inference::loadSession` against ONNX Runtime, and the only translation unit that includes it.                 |
+| `service/ScannerService`        | Owns the worker thread and a depth-1 keep-latest mailbox. A newer frame evicts the older one; the producer never waits.             |
+| `service/ScanSession`           | The state machine: idle, detecting, candidate ready, emitted. Holds the history ring and the thresholds.                            |
+| `service/ScannerServer`         | The façade that owns the whole server. Construct it, call `start()`, and the sockets, the worker, and the lookups come up together. |
+| `service/ProductClient`         | Resolves card names and art over HTTP on its own thread, so the scan worker never waits on the network.                             |
+| `protocol/StateMessage`         | Serializes the whole scanner state as one JSON message.                                                                             |
+| `ipc/FrameServer`               | Receives frames on port 27846, validates the header, and converts the scan region to RGB. Serves one filter at a time.              |
+| `ipc/ControlServer`             | The WebSocket endpoint on port 27845; the overlay and the dock both attach to it.                                                   |
+| `ipc/OverlayServer`             | Serves the overlay page over HTTP on port 27847.                                                                                    |
+| `config/ScannerConfigLoader`    | Reads a JSON config into a fully populated `ScannerConfig`.                                                                         |
 
 ### OBS side
 
-| Path | What it does |
-|---|---|
-| `module/obs-module.cpp` | The filter: registers it, reads its settings, draws the scan region, and adds the overlay to a scene. |
-| `module/ServerProcess` | Starts the scanner server, supervises it, and stops it. |
-| `obsbridge/FrameClient` | The frame socket: a depth-1 mailbox and a writer thread, so `filter_video` never blocks. |
-| `ipc/FrameProtocol.h` | The wire format. Depends on `<cstdint>` alone, which is what lets the module link libobs and nothing else. |
+| Path                    | What it does                                                                                               |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `module/obs-module.cpp` | The filter: registers it, reads its settings, draws the scan region, and adds the overlay to a scene.      |
+| `module/ServerProcess`  | Starts the scanner server, supervises it, and stops it.                                                    |
+| `obsbridge/FrameClient` | The frame socket: a depth-1 mailbox and a writer thread, so `filter_video` never blocks.                   |
+| `ipc/FrameProtocol.h`   | The wire format. Depends on `<cstdint>` alone, which is what lets the module link libobs and nothing else. |
 
 ## The inference seam
 
@@ -57,32 +57,44 @@ cmake -S . -B build && cmake --build build
 ctest --test-dir build
 ```
 
-ONNX Runtime, the ObjectBox host runtime, nlohmann/json, and IXWebSocket are
-fetched at configure time. OpenCV is the one host dependency.
+Every dependency arrives at configure time, pinned to a hash (archives) or a
+commit (git checkouts): OpenCV, nlohmann/json and IXWebSocket as sources, ONNX
+Runtime and the ObjectBox host runtime as prebuilt shared libraries, and
+libcurl as sources on Windows, where the system has none. Nothing but the
+toolchain is looked up on the host.
 
 To build the OBS module as well, configure with `-DBUILD_OBS_MODULE=ON`. That
 also fetches the obs-studio source, because OBS ships no headers in its app
-bundle. Pin `OBS_VERSION` to the OBS you have installed: the interface changes
-between major versions, and a mismatch fails when OBS loads the module rather
-than when you build it.
+bundle. Pin `OBS_VERSION` to the OBS you have installed: older headers load
+fine, newer ones fail when OBS loads the module. It has run on 30.2 (Windows)
+and 32 (macOS).
 
-### OpenCV must be 4.x
+### OpenCV
 
-Core compiles against the OpenCV **4** headers vendored in its `third-party/`
-directory, so the libraries linked here must also be 4.x. Versions 4 and 5 are
-not ABI compatible, and a mismatch links without complaint and misbehaves at
-runtime, so CMake fails at configure time instead.
+The libraries are OpenCV 4.14.0, built static: only `core`, `imgproc` and
+`imgcodecs`, with the bundled JPEG, PNG and zlib, no GUI, no video, no OpenCL,
+no host libraries. On macOS OpenCV also builds oneTBB in, because GCD ignores
+`setNumThreads()`, and pulls KleidiCV, whose kernels make `resize` and the YUV
+conversions several times faster; both are downloads OpenCV pins itself. About
+a minute and a half of build time on an M2 Pro.
 
-Homebrew's `opencv@4` is keg-only, so a bare `find_package` picks up `opencv` 5
-on any machine that has both. CMake here locates `opencv@4` explicitly:
+Core's vendored headers are opencv-mobile's 4.11 set, the same the mobile
+packages link against. The 4.14 libraries link to them because every
+declaration and enum value the pipeline uses is identical in both tags; OpenCV
+does not promise that across minor versions, so a bump means re-checking it.
 
-```sh
-brew install opencv@4
-```
+They are linked `LINK_ONLY`, so their include directories never reach the
+compiler and core's vendored headers stay the only OpenCV headers in the
+binary. OpenCV also caches `EXECUTABLE_OUTPUT_PATH`, which would move every
+later executable into `<build>/bin`; the package unsets it.
 
-`OpenCV_INCLUDE_DIRS` is deliberately not on the include path. Core exports its
-own vendored headers, and those are the only OpenCV headers in the binary. The
-build links the system libraries without compiling against their headers.
+### Shared libraries beside the executable
+
+ONNX Runtime and ObjectBox ship as shared libraries only, so
+`cardscanner_copy_runtime_dlls()` copies them beside every executable that
+links `cardscanner_desktop`, on macOS as well as Windows. Those executables
+carry `@executable_path` as their only rpath, so a copied directory keeps
+working wherever it lands. Call the function on any new executable.
 
 ## Hardware acceleration
 
@@ -94,18 +106,43 @@ like acceleration that did nothing.
 To pin a provider, set `CARD_SCANNER_EP`:
 
 ```sh
-CARD_SCANNER_EP=cpu ./build/card-scanner-server config.json
+CARD_SCANNER_EP=cpu ./build/server/card-scanner-server config.json
 ```
 
-Models with external weights run on CPU regardless. The accelerators do not
-read `.onnx.data` sidecars.
+The shipped models are fp16, which is what lets CoreML run them on the Neural
+Engine; that needs ONNX Runtime 1.24.4 or newer, pinned in `CMakeLists.txt`.
+On an idle M2 Pro, Release, over a 19-game 92-image sweep, a scan takes 3.5 ms
+end to end against 8.3 ms with the fp32 set, and the segmentation model alone
+runs in 0.9 ms on the ANE against 16 ms on the CPU EP. All five models go to
+CoreML; `SetSymbolRecognitionModel` is the one it makes slower (about 3 ms
+against 1 ms on CPU), but it only runs for MTG.
 
-Measure before you assume this helps. On an Apple M-series machine, CoreML
-moved the median scan from 34.2 ms to 33.0 ms, which is inside the noise, so
-the ladder exists for the platforms where it pays rather than as a default win.
-CoreML may also run fp16, and embeddings are compared by cosine against a
-database built on CPU fp32, so check the score distribution and not only the
-top-1 count.
+Benchmark on a quiet machine with `CARD_SCANNER_EP` held fixed and
+compare the p50: the ANE queues behind other ML clients, OBS included, and the
+mean then measures the queue. Embeddings are compared by cosine against a
+database built in fp32, so after swapping a model check the score distribution
+and not only the top-1 count.
+
+### Windows
+
+DirectML is compiled into ONNX Runtime, so the build takes the runtime from
+NuGet rather than the GitHub release the other platforms use: those assets are
+CPU-only or CUDA, and CUDA would demand a CUDA and cuDNN install on the user's
+machine. Any Direct3D 12 GPU works, NVIDIA, AMD and Intel alike.
+
+Every DLL the server loads must sit beside the executable.
+`cardscanner_copy_runtime_dlls()` puts the linked ones there (`objectbox.dll`,
+`onnxruntime.dll`) plus two that nothing links:
+`onnxruntime_providers_shared.dll`, which ONNX Runtime loads by hand, and
+`DirectML.dll` — deliberately the redistributable, not the older copy in
+`System32`. OpenCV and libcurl are static, so no DLL of theirs exists to
+forget; libcurl is built HTTP-only on Schannel, Windows' own TLS.
+
+Anything assembling a bundle must copy the whole directory rather than
+re-derive the list, as `install-obs-plugin` does. A missing DLL costs nothing
+at build time and fails at startup with `STATUS_DLL_NOT_FOUND` (0xC0000135),
+which `cmd` reports as "is not recognized as an internal or external
+command".
 
 ## `gameClassMapping` is a real contract
 
@@ -114,11 +151,12 @@ and its **entry count decodes the model's prediction tensor**. It must be
 contiguous from `0`, and it must match the class order the model was exported
 with.
 
-A mismatch does not raise an error. It misroutes every database search and
-looks like poor recognition. The loader enforces contiguity and rejects empty
-entries, which catches a malformed map but not a map that disagrees with the
-model. Checking that needs the segmentation model's output channel dimension,
-which is `4 + numClasses + 32`, and the backend does not expose shapes yet.
+The loader enforces contiguity and rejects empty entries, and the first scan
+checks the entry count against the model: the prediction tensor carries
+`4 + numClasses + 32` channels per anchor, and a count that disagrees fails
+with an error naming both numbers. The order is not checked. A map with the
+right count in the wrong order raises nothing; it misroutes every database
+search and looks like poor recognition.
 
 ## Comparing two card databases
 

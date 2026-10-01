@@ -32,9 +32,8 @@ std::vector<CardMatch> SearchStrategy::searchCard(
       searchMultipleDatabases(cardImage, topGames, config, dbManager,
                               defaultEmbedder, gameEmbedders);
 
-  log(LOG_LEVEL::Debug,
-      "[CardScanner] Retrieved %zu total matches from databases",
-      allResults.size());
+  log(LOG_LEVEL::Debug, "[CardScanner] Retrieved", allResults.size(),
+      "total matches from databases");
   // Filter to best game
   return filterToBestGame(allResults, config);
 }

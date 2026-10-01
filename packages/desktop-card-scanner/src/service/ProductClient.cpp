@@ -1,20 +1,18 @@
 #include "ProductClient.h"
 
-#include "../net/HttpClient.h"
+#include <http/HttpClient.h>
+#include <util/Log.h>
 
 #include <nlohmann/json.hpp>
-
-#include <iostream>
 
 namespace cardscanner {
 namespace desktop {
 
 namespace {
 using json = nlohmann::json;
-constexpr const char *kImageBase = "https://ik.imagekit.io/cardnexus/production";
 } // namespace
 
-ProductClient::ProductClient(std::string endpoint) : endpoint_(std::move(endpoint)) {}
+ProductClient::ProductClient(ProductSource source) : source_(std::move(source)) {}
 
 ProductClient::~ProductClient() { stop(); }
 
@@ -76,7 +74,7 @@ void ProductClient::workerLoop() {
 
     const json body = {
         {"json", {{"productId", cardId}, {"prices", {{"marketplace", "Cardmarket"}}}}}};
-    const auto response = net::postJson(endpoint_, body.dump(), &running_);
+    const auto response = http::postJson(source_.endpoint, body.dump(), &running_);
     if (!running_) {
       return; // aborted by stop()
     }
@@ -87,14 +85,18 @@ void ProductClient::workerLoop() {
       queued_.erase(cardId);
 
       if (response.status != 200) {
+        const std::string reason = response.error.empty()
+                                       ? "HTTP " + std::to_string(response.status)
+                                       : response.error;
+        // Only the server's own rejection is permanent; a 5xx or a transport
+        // error can succeed on the next state change.
         if (response.status >= 400 && response.status < 500) {
           if (failed_.insert(cardId).second) {
-            std::cerr << "product lookup " << cardId << ": HTTP " << response.status
-                      << " (not retrying this card)\n";
+            util::logLine("product", "lookup " + cardId + ": " + reason +
+                                         " (not retrying this card)");
           }
         } else {
-          std::cerr << "product lookup " << cardId << ": HTTP " << response.status
-                    << " (retrying)\n";
+          util::logLine("product", "lookup " + cardId + ": " + reason + " (retrying)");
         }
       } else {
         try {
@@ -102,8 +104,9 @@ void ProductClient::workerLoop() {
           Product product;
           product.name = parsed.value("name", "");
           if (parsed.contains("image") && parsed["image"].contains("path")) {
-            product.imageUrl =
-                kImageBase + parsed["image"]["path"].get<std::string>() + "/tr:w-500,q-80";
+            product.imageUrl = source_.imageBase +
+                               parsed["image"]["path"].get<std::string>() +
+                               source_.imageTransform;
           }
           if (parsed.contains("expansion") && parsed["expansion"].is_object()) {
             product.setName = parsed["expansion"].value("name", "");
@@ -121,7 +124,7 @@ void ProductClient::workerLoop() {
       try {
         onResolved_(cardId);
       } catch (const std::exception &e) {
-        std::cerr << "product callback threw: " << e.what() << "\n";
+        util::logLine("product", std::string("callback threw: ") + e.what());
       }
     }
   }

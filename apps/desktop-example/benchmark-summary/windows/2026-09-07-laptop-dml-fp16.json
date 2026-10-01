@@ -1,0 +1,58 @@
+{
+  "summary": {
+    "basis": "mean ms per scan over the scans that ran the full pipeline, warmup iterations excluded",
+    "yoloMs": 10.821,
+    "preprocMs": 0.16,
+    "embedderMs": 2.506,
+    "dbSearchMs": 0.688,
+    "totalMs": 14.289,
+    "accuracyPercent": 86.957
+  },
+  "run": {
+    "date": "2026-09-07",
+    "platform": "Windows 11 Pro laptop, integrated GPU",
+    "backend": "DirectML, ONNX Runtime 1.24.4 DirectML build",
+    "models": "fp16",
+    "images": "mobile-example games_images, 19 games / 92 images, warmup 2, iterations 10",
+    "buildFlags": "-DCARDSCANNER_BENCHMARK=1, Release, Visual Studio 17 2022 + MSVC"
+  },
+  "hardware": {
+    "gpuUsedForInference": {
+      "name": "Intel(R) Graphics (integrated, Core Ultra 7 165U iGPU)",
+      "driverVersion": "32.0.101.8724"
+    },
+    "otherGpuPresent": null,
+    "cpu": {
+      "name": "Intel(R) Core(TM) Ultra 7 165U",
+      "cores": 12,
+      "logicalProcessors": 14,
+      "maxClockMHz": 1700
+    },
+    "ramBytes": 33777467392,
+    "os": "Microsoft Windows 11 Pro 10.0.26200"
+  },
+  "executionProviders": {
+    "CardSegmentationModel.onnx": "dml",
+    "CardRecognitionModel.onnx": "dml",
+    "SetSymbolDetectionModel.onnx": "dml",
+    "SetSymbolRecognitionModel.onnx": "dml",
+    "ColorBarModel.onnx": "cpu (automatic fallback; DirectML rejects this model)"
+  },
+  "scans": {
+    "measured": 920,
+    "fullPipeline": 900,
+    "correct": 800,
+    "noDetection": 20,
+    "gameMismatch": 0,
+    "belowThreshold": 0,
+    "wrongMatch": 100
+  },
+  "extraModels": [
+    {
+      "label": "FAB color",
+      "ran": 20,
+      "outOf": 900,
+      "msPerScan": 1.068
+    }
+  ]
+}

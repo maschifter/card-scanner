@@ -85,15 +85,18 @@ The models and the databases come from Git LFS, so run `git lfs pull` first if
 you have not already.
 
 ```sh
-cd apps/desktop-example/web && yarn install && yarn build && cd ..
-cmake -S . -B build -DBUILD_OBS_MODULE=ON
-cmake --build build --target install-obs-plugin
+cd apps/desktop-example && node tools/release.mjs
 ```
+
+That fetches and compiles every dependency, builds the overlay and the plugin,
+and installs the bundle into OBS. The
+[OBS plugin README](apps/desktop-example/README.md#install) has the options.
 
 Restart OBS, add the **Card Scanner** filter to your camera source, and click
 **Add overlay to current scene**. The
 [OBS plugin README](apps/desktop-example/README.md) covers the settings, the
 dock, the control protocol, and troubleshooting.
 
-macOS on Apple silicon is the tested platform. Windows support is written but
-has not been compiled or run on Windows yet.
+Both macOS on Apple silicon and Windows 11 (DirectML) build and run the plugin.
+macOS is where most of the testing happens; the files under
+`apps/desktop-example/benchmark-summary/` record what each platform was measured on.

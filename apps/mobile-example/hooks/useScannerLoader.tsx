@@ -58,7 +58,7 @@ const loadScanner = async () => {
     blurThreshold: 0,
     lowLightThreshold: 65,
     lowLightGamma: 2.0,
-    maxFrameRate: 20,
+    maxFrameRate: 30,
     gameClassMapping: {
       0: ['fab'],
       1: ['lorcana'],

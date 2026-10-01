@@ -1,8 +1,8 @@
 #include "StateMessage.h"
 
-#include "../service/ProductClient.h"
-#include "../service/ScanSession.h"
-#include "../service/ScannerService.h"
+#include <service/ProductClient.h>
+#include <service/ScanSession.h>
+#include <service/ScannerService.h>
 
 #include <nlohmann/json.hpp>
 
@@ -30,23 +30,24 @@ json cardToJson(const CardInfo &card, ProductClient &products) {
 } // namespace
 
 std::string stateMessage(ScannerService &service, ProductClient &products) {
-  auto &session = service.session();
+  // Snapshot for one consistent view; diagnostics first, mirroring the
+  // worker's publish order, so they can lag the session but never lead it.
   const auto diagnostics = service.diagnostics();
+  const auto session = service.session().snapshot();
 
-  const auto config = session.config();
   json history = json::array();
-  for (const auto &entry : session.history()) {
+  for (const auto &entry : session.history) {
     history.push_back(cardToJson(entry, products));
   }
 
-  json payload = {{"status", toString(session.status())},
-                  {"mode", toString(session.mode())},
+  json payload = {{"status", toString(session.status)},
+                  {"mode", toString(session.mode)},
                   {"history", history},
                   {"settings",
-                   {{"acceptScore", config.acceptScore},
-                    {"stableDetections", config.stableDetections},
-                    {"gracePeriodMs", config.gracePeriodMs},
-                    {"emittedTimeoutMs", config.emittedTimeoutMs}}},
+                   {{"acceptScore", session.config.acceptScore},
+                    {"stableDetections", session.config.stableDetections},
+                    {"gracePeriodMs", session.config.gracePeriodMs},
+                    {"emittedTimeoutMs", session.config.emittedTimeoutMs}}},
                   {"candidate", nullptr},
                   {"emitted", nullptr},
                   // Always present, so the overlay can say why nothing shows.
@@ -58,13 +59,22 @@ std::string stateMessage(ScannerService &service, ProductClient &products) {
                     {"gameConfidence", diagnostics.predictedGameConfidence},
                     {"topScore", diagnostics.topScore},
                     {"topCardId", diagnostics.topCardId},
-                    {"ms", diagnostics.processingMs}}}};
+                    {"ms", diagnostics.processingMs},
+                    // Stage timings are junk when measured is false; 
+                    // clients hold the last measured values, and drop
+                    // them when timings goes false.
+                    {"timings", diagnostics.timingsEnabled},
+                    {"measured", diagnostics.measured},
+                    {"yoloMs", diagnostics.yoloMs},
+                    {"preprocMs", diagnostics.preprocMs},
+                    {"embedMs", diagnostics.embedMs},
+                    {"dbSearchMs", diagnostics.dbSearchMs}}}};
 
-  if (auto candidate = session.candidate()) {
-    payload["candidate"] = cardToJson(*candidate, products);
+  if (session.candidate) {
+    payload["candidate"] = cardToJson(*session.candidate, products);
   }
-  if (auto emitted = session.emitted()) {
-    payload["emitted"] = cardToJson(*emitted, products);
+  if (session.emitted) {
+    payload["emitted"] = cardToJson(*session.emitted, products);
   }
   return json{{"type", "state"}, {"payload", payload}}.dump();
 }

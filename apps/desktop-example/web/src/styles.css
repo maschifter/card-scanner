@@ -1,13 +1,22 @@
 /* The Browser Source composites this over live video, so the page background
    must stay transparent and nothing may introduce scrollbars. */
-:root { color-scheme: dark; }
+:root {
+  color-scheme: dark;
+}
 
-html, body, #root {
+html,
+body,
+#root {
   margin: 0;
   height: 100%;
   background: transparent;
   overflow: hidden;
-  font: 16px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font:
+    16px/1.4 -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    system-ui,
+    sans-serif;
   color: #fff;
 }
 
@@ -19,9 +28,14 @@ html, body, #root {
      viewers, and an abrupt disappearance reads as a bug. */
   transform: translateY(24px);
   opacity: 0;
-  transition: opacity 0.25s ease, transform 0.25s ease;
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
 }
-.card.visible { opacity: 1; transform: translateY(0); }
+.card.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
 
 .panel {
   display: flex;
@@ -34,9 +48,22 @@ html, body, #root {
   backdrop-filter: blur(8px);
 }
 
-.art { width: 132px; border-radius: 8px; display: block; background: #222; }
-.name { font-size: 24px; font-weight: 650; letter-spacing: -0.01em; }
-.meta { opacity: 0.72; font-size: 15px; margin-top: 4px; }
+.art {
+  width: 132px;
+  border-radius: 8px;
+  display: block;
+  background: #222;
+}
+.name {
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.meta {
+  opacity: 0.72;
+  font-size: 15px;
+  margin-top: 4px;
+}
 .score {
   opacity: 0.5;
   font-size: 13px;
@@ -49,8 +76,12 @@ html, body, #root {
   right: 16px;
   top: 12px;
   font-size: 12px;
-  opacity: 0.45;
   font-variant-numeric: tabular-nums;
+}
+
+/* The connection/status line itself. */
+.status > div:first-child {
+  opacity: 0.45;
 }
 
 /* A candidate still gathering detections. Dimmed and outlined so it is clearly
@@ -69,7 +100,7 @@ html, body, #root {
 .readout {
   margin-top: 4px;
   font-size: 12px;
-  opacity: 0.75;
+  opacity: 0.34;
   text-align: right;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
@@ -79,11 +110,26 @@ html, body, #root {
   margin-top: 6px;
   font-size: 15px;
   font-weight: 600;
-  opacity: 0.95;
+  opacity: 0.43;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
 }
 .corner-score {
   opacity: 0.6;
   font-weight: 400;
   font-variant-numeric: tabular-nums;
+}
+
+/* Timings readout. Unlike .readout it has to stay readable over any video,
+   so black bold on a light chip instead of white on a shadow. */
+.readout.perf {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #000;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  opacity: 1;
+  text-shadow: none;
 }

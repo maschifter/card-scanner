@@ -8,13 +8,12 @@
 //     --overlay-port N    default 27847
 //     --overlay <path>    defaults to overlay.html beside the config
 //     --replay <dir>      pump images from a directory instead of waiting for OBS
+//     --timings           report stage timings, as the OBS filter's box does
 
 #include <config/ScannerConfigLoader.h>
-#include <net/HttpClient.h>
+#include <http/HttpClient.h>
 #include <service/ScannerServer.h>
 #include <util/ParentWatchdog.h>
-
-#include <PathProvider.h>
 
 #include <opencv2/opencv.hpp>
 
@@ -61,7 +60,7 @@ void replayDirectory(const std::filesystem::path &dir, desktop::ScannerServer &s
       cv::cvtColor(bgr, rgb, cv::COLOR_BGR2RGB);
       // Held long enough to clear the stability window.
       for (int i = 0; i < 6 && g_running; i++) {
-        server.submitFrame(rgb);
+        server.submitFrame({rgb});
         std::this_thread::sleep_for(std::chrono::milliseconds(120));
       }
     }
@@ -81,11 +80,16 @@ int main(int argc, char **argv) {
   const std::string configPath = argv[1];
   desktop::ServerOptions options;
   std::string replayDir;
+  bool timings = false;
 
   try {
-    for (int i = 2; i < argc - 1; i++) {
+    for (int i = 2; i < argc; i++) {
       const std::string flag = argv[i];
-      if (flag == "--token") {
+      if (flag == "--timings") {
+        timings = true;
+      } else if (i + 1 >= argc) {
+        break;
+      } else if (flag == "--token") {
         options.token = std::stoull(argv[++i]);
       } else if (flag == "--frame-port") {
         options.framePort = uint16_t(std::stoi(argv[++i]));
@@ -112,18 +116,21 @@ int main(int argc, char **argv) {
 
   std::signal(SIGINT, onSignal);
   std::signal(SIGTERM, onSignal);
-  // A write to a socket the module has closed must not kill us.
+#ifndef _WIN32
+  // A write to a socket the module has already closed must not kill us.
+  // POSIX-only: Windows has no SIGPIPE, and a send() to a closed socket
+  // reports WSAECONNRESET through the return value instead of raising
+  // anything, which the socket paths already handle.
   std::signal(SIGPIPE, SIG_IGN);
+#endif
   cardscanner::util::watchParent(g_running, [] { g_running = false; });
 
-  cardscanner::net::globalInit();
+  cardscanner::http::globalInit();
 
   try {
     auto loaded = cardscanner::desktop::loadConfigFile(configPath);
-    std::filesystem::create_directories(loaded.paths.databases);
-    std::filesystem::create_directories(loaded.paths.cache);
-    pathprovider::set_db_path(loaded.paths.databases.string());
-    pathprovider::set_cache_path(loaded.paths.cache.string());
+    cardscanner::desktop::applyDataPaths(loaded.paths);
+    options.products = loaded.products;
 
     if (options.overlayFile.empty()) {
       options.overlayFile =
@@ -132,6 +139,7 @@ int main(int argc, char **argv) {
 
     std::cout << "loading models...\n";
     desktop::ScannerServer server(loaded.scanner, {}, options);
+    server.service().setReportTimings(timings);
     server.start();
 
     std::cout << "ready\n"
@@ -148,8 +156,17 @@ int main(int argc, char **argv) {
       }
     }
 
-    std::cout << "\nshutting down (" << server.framesReceived()
-              << " frames received)\n";
+    if (replayDir.empty()) {
+      // Zero-zero is ambiguous: a module that never connected and one whose
+      // every connection was rejected both land here. The log tells them apart.
+      std::cout << "\nshutting down (" << server.framesScanned()
+                << " frames scanned, " << server.framesRejected() << " unusable)\n";
+    } else {
+      // Replayed frames bypass the socket counters; printing them here would
+      // always read zero-zero.
+      std::cout << "\nshutting down\n";
+    }
+
     // If stop() ever stalls once OBS is gone, the orphan would hold the ports
     // until someone killed it by hand.
     std::thread([] {
@@ -158,12 +175,12 @@ int main(int argc, char **argv) {
       std::_Exit(1);
     }).detach();
     server.stop();
-    cardscanner::net::globalCleanup();
+    cardscanner::http::globalCleanup();
     return 0;
 
   } catch (const std::exception &e) {
     std::cerr << "error: " << e.what() << "\n";
-    cardscanner::net::globalCleanup();
+    cardscanner::http::globalCleanup();
     return 1;
   }
 }

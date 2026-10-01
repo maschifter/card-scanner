@@ -5,7 +5,7 @@
 #include "PathProvider.h"
 #include "ScannerRegistry.h"
 #include <utils/ImageUtils.h>
-#include "benchmark/BenchmarkRunner.h"
+#include "types/BenchmarkRecord.h"
 #include "jsi/Promise.h"
 #include "JSISerializer.h"
 #include <Log.h>
@@ -346,29 +346,8 @@ void CardScannerInstaller::injectJSIBindings(
               runAsync(std::move(promise), [&dbManager, images = std::move(images),
                                             warmupIterations,
                                             benchmarkIterations]() -> SettleFn {
-                ScannerRegistry::beginBenchmark();
-                struct BenchmarkRunningGuard {
-                  ~BenchmarkRunningGuard() { ScannerRegistry::endBenchmark(); }
-                } benchmarkRunningGuard;
-
-                // New scans are already turned away by the flag above; this
-                // waits out the ones that started before it was set.
-                std::unique_lock<std::shared_timed_mutex> exclusive(
-                    ScannerRegistry::pipelineMutex());
-
-                auto ctx = ScannerRegistry::getScannerContext();
-
-                if (!ctx.yoloModel || !ctx.embeddingModel) {
-                  throw std::runtime_error(
-                      "Models not initialized. Call initializeScanner() "
-                      "first.");
-                }
-
-                auto runResult = benchmark::BenchmarkRunner::run(
-                    images, ctx.config, warmupIterations, benchmarkIterations,
-                    dbManager, ctx.yoloModel.get(), ctx.embeddingModel.get(),
-                    ctx.setSymbolYoloModel.get(), ctx.setSymbolEmbedder.get(),
-                    ctx.fabColorClassifier.get(), &ctx.gameEmbeddingModels);
+                auto runResult = ScannerRegistry::runBenchmark(
+                    images, warmupIterations, benchmarkIterations, dbManager);
 
                 return [runResult =
                             std::move(runResult)](jsi::Runtime &rt, Promise &p) {

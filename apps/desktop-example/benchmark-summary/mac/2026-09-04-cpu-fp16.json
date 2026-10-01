@@ -1,0 +1,42 @@
+{
+  "summary": {
+    "basis": "mean ms per scan over the scans that ran the full pipeline, warmup iterations excluded",
+    "yoloMs": 21.103,
+    "preprocMs": 0.078,
+    "embedderMs": 3.909,
+    "dbSearchMs": 0.924,
+    "totalMs": 26.337,
+    "accuracyPercent": 86.957
+  },
+  "run": {
+    "date": "2026-09-04T14:09",
+    "platform": "macOS 26.5.2, Apple M2 Pro 16 GB",
+    "backend": "ONNX Runtime 1.29.0 CPU provider (CARD_SCANNER_EP=cpu)",
+    "models": "fp16 (apps/desktop-example/assets/models)",
+    "images": "mobile-example games_images, 19 games / 92 images, warmup 2, iterations 10",
+    "conditions": "OBS closed, Chrome and Slack open"
+  },
+  "scans": {
+    "measured": 920,
+    "fullPipeline": 900,
+    "correct": 800,
+    "noDetection": 20,
+    "gameMismatch": 40,
+    "belowThreshold": 0,
+    "wrongMatch": 60
+  },
+  "extraModels": [
+    {
+      "label": "MTG set symbol",
+      "ran": 10,
+      "outOf": 900,
+      "msPerScan": 18.374
+    },
+    {
+      "label": "FAB color",
+      "ran": 20,
+      "outOf": 900,
+      "msPerScan": 2.823
+    }
+  ]
+}

@@ -38,7 +38,7 @@ if(CARDSCANNER_GENERATE_OBX_SCHEMA)
   FetchContent_Declare(
       objectbox-c
       GIT_REPOSITORY https://github.com/objectbox/objectbox-c.git
-      GIT_TAG        v4.1.0
+      GIT_TAG        f75a35c0d868779a8d3e6a1c2425d401a1b81ec8  # v4.1.0
   )
   FetchContent_MakeAvailable(objectbox-c)
   set(CMAKE_SYSTEM_NAME ${ORIGINAL_CMAKE_SYSTEM_NAME})
@@ -52,7 +52,7 @@ else()
   FetchContent_Declare(
       objectbox-c
       GIT_REPOSITORY https://github.com/objectbox/objectbox-c.git
-      GIT_TAG        v4.1.0
+      GIT_TAG        f75a35c0d868779a8d3e6a1c2425d401a1b81ec8  # v4.1.0
       SOURCE_SUBDIR  headers-only-no-cmake
   )
   FetchContent_MakeAvailable(objectbox-c)

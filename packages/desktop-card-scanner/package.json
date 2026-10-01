@@ -1,7 +1,7 @@
 {
   "name": "@cardnexus/desktop-card-scanner",
   "version": "0.1.0",
-  "description": "Desktop (macOS/Windows) wrapper for the card scanner. Placeholder - implementation lands in a follow-up.",
+  "description": "Desktop (macOS/Windows) wrapper for the card scanner: ONNX backend, scanner server, OBS module.",
   "private": true,
   "files": [
     "CMakeLists.txt",

@@ -1,0 +1,57 @@
+{
+  "summary": {
+    "basis": "mean ms per scan over the scans that ran the full pipeline, warmup iterations excluded",
+    "yoloMs": 5.138,
+    "preprocMs": 0.085,
+    "embedderMs": 0.903,
+    "dbSearchMs": 0.576,
+    "totalMs": 6.774,
+    "accuracyPercent": 85.87
+  },
+  "run": {
+    "date": "2026-09-07",
+    "platform": "Windows 11 Home desktop, dedicated GPU",
+    "backend": "DirectML, ONNX Runtime DirectML build",
+    "models": "fp16",
+    "images": "mobile-example games_images, 19 games / 92 images, warmup 2, iterations 10",
+    "buildFlags": "-DCARDSCANNER_BENCHMARK=1, Release, Ninja + MSVC 14.50"
+  },
+  "hardware": {
+    "gpuUsedForInference": {
+      "name": "NVIDIA GeForce RTX 4060",
+      "driverVersion": "32.0.15.9636"
+    },
+    "otherGpuPresent": {
+      "name": "AMD Radeon(TM) Graphics (integrated, Ryzen 7000 iGPU)",
+      "driverVersion": "31.0.24033.1003"
+    },
+    "cpu": {
+      "name": "AMD Ryzen 5 7600 6-Core Processor",
+      "cores": 6,
+      "logicalProcessors": 12,
+      "maxClockMHz": 3801
+    },
+    "ramBytes": 33488449536,
+    "os": "Microsoft Windows 11 Home 10.0.26200"
+  },
+  "executionProviders": {
+    "CardSegmentationModel.onnx": "dml",
+    "CardRecognitionModel.onnx": "dml",
+    "SetSymbolDetectionModel.onnx": "dml",
+    "SetSymbolRecognitionModel.onnx": "dml",
+    "ColorBarModel.onnx": "cpu (automatic fallback; DirectML rejects this model)"
+  },
+  "scans": {
+    "measured": 920,
+    "fullPipeline": 920,
+    "correct": 790,
+    "noDetection": 20,
+    "wrongMatch": 110,
+    "belowThreshold": 0
+  },
+  "comparisonWithPreviousWindowsRun": {
+    "previous": "2026-09-02, Windows laptop, integrated GPU, DirectML fp32: total 28.291 ms, accuracy 85.87%",
+    "current": "2026-09-07, this desktop, RTX 4060, DirectML fp16: total 6.774 ms, accuracy 85.87%",
+    "note": "About 4.2x faster end to end at identical accuracy. Different machine and different model precision, so this is not an isolated code-change comparison."
+  }
+}

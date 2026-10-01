@@ -3,7 +3,7 @@
 #include <curl/curl.h>
 
 namespace cardscanner {
-namespace net {
+namespace http {
 
 namespace {
 
@@ -41,7 +41,8 @@ HttpResponse postJson(const std::string &url, const std::string &body,
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &result.body);
   curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
   curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-  curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+  // No FOLLOWLOCATION: curl follows a 301/302/303 by re-issuing the POST as
+  // a bodyless GET. The API should never redirect; surface the 3xx instead.
   // Runs on a worker thread, so keep curl off signals.
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
   if (running != nullptr) {
@@ -51,8 +52,11 @@ HttpResponse postJson(const std::string &url, const std::string &body,
                      const_cast<std::atomic<bool> *>(running));
   }
 
-  if (curl_easy_perform(curl) == CURLE_OK) {
+  const CURLcode rc = curl_easy_perform(curl);
+  if (rc == CURLE_OK) {
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &result.status);
+  } else {
+    result.error = curl_easy_strerror(rc);
   }
 
   curl_slist_free_all(headers);
@@ -60,5 +64,5 @@ HttpResponse postJson(const std::string &url, const std::string &body,
   return result;
 }
 
-} // namespace net
+} // namespace http
 } // namespace cardscanner

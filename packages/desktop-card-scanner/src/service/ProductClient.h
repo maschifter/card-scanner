@@ -1,5 +1,7 @@
 #pragma once
 
+#include <config/ScannerConfigLoader.h>
+
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -32,7 +34,7 @@ public:
   /// Fires on the lookup thread once a card resolves.
   using ResolvedCallback = std::function<void(const std::string &cardId)>;
 
-  explicit ProductClient(std::string endpoint);
+  explicit ProductClient(ProductSource source);
   ~ProductClient();
 
   ProductClient(const ProductClient &) = delete;
@@ -47,7 +49,7 @@ public:
 private:
   void workerLoop();
 
-  std::string endpoint_;
+  ProductSource source_;
   ResolvedCallback onResolved_;
 
   mutable std::mutex mutex_;

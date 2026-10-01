@@ -1,5 +1,6 @@
 #include "ScannerRegistry.h"
 #include "Constants.h"
+#include "benchmark/BenchmarkRunner.h"
 #include "models/CardEmbeddingModel.h"
 #include "models/YoloSegmentationModel.h"
 #include "models/fab/FABColorClassifier.h"
@@ -235,5 +236,33 @@ void ScannerRegistry::beginBenchmark() {
 }
 
 void ScannerRegistry::endBenchmark() { benchmarkRunning_.store(false); }
+
+BenchmarkRunResult
+ScannerRegistry::runBenchmark(const std::vector<BenchmarkImageInput> &images,
+                              int warmupIterations, int benchmarkIterations,
+                              DatabaseManager &dbManager) {
+  beginBenchmark();
+  // Declared before the lock, so unwinding releases the scanner first and
+  // gives up the slot second.
+  struct BenchmarkRunningGuard {
+    ~BenchmarkRunningGuard() { ScannerRegistry::endBenchmark(); }
+  } benchmarkRunningGuard;
+
+  // New scans are already turned away by the flag above; this waits out the
+  // ones that started before it was set.
+  std::unique_lock<std::shared_timed_mutex> exclusive(pipelineMutex_);
+
+  const auto ctx = getScannerContext();
+  if (!ctx.yoloModel || !ctx.embeddingModel) {
+    throw std::runtime_error(
+        "benchmark: models not initialized; initialize the scanner first");
+  }
+
+  return benchmark::BenchmarkRunner::run(
+      images, ctx.config, warmupIterations, benchmarkIterations, dbManager,
+      ctx.yoloModel.get(), ctx.embeddingModel.get(),
+      ctx.setSymbolYoloModel.get(), ctx.setSymbolEmbedder.get(),
+      ctx.fabColorClassifier.get(), &ctx.gameEmbeddingModels);
+}
 
 } // namespace cardscanner

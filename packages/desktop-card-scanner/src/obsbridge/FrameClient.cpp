@@ -1,8 +1,9 @@
 #include "FrameClient.h"
 
-#include "../ipc/Socket.h"
+#include <ipc/Socket.h>
 
 #include <cstring>
+#include <span>
 
 namespace cardscanner {
 namespace obsbridge {
@@ -20,29 +21,36 @@ void FrameClient::start() {
   reader_ = std::thread([this] { readerLoop(); });
 }
 
+std::shared_ptr<FrameClient::Connection> FrameClient::connection() const {
+  std::lock_guard<std::mutex> lock(connectionMutex_);
+  return connection_;
+}
+
 void FrameClient::stop() {
   if (!running_.exchange(false)) {
     return;
   }
   pending_.notify_all();
 
-  // Before the joins, not after: the reader parks in recv() until the server
-  // sends something, and this runs on an OBS UI thread.
-  const int fd = socket_.load();
-  if (fd >= 0) {
-    ipc::net::shutdownBoth(fd);
+  // Unblocks reader/writer before the joins - this runs on an OBS UI thread.
+  if (const auto conn = connection()) {
+    ipc::net::shutdownBoth(conn->fd);
   }
-
   if (writer_.joinable()) {
     writer_.join();
+  }
+  // The writer may have dialled anew after the shutdown above; it is joined
+  // now, so no new descriptor can appear and this shutdown is final.
+  if (const auto conn = connection()) {
+    ipc::net::shutdownBoth(conn->fd);
   }
   if (reader_.joinable()) {
     reader_.join();
   }
-  const int last = socket_.exchange(-1);
-  if (last >= 0) {
-    ipc::net::closeHandle(last);
-  }
+  // Both threads are gone, so this is the last reference and the close.
+  std::lock_guard<std::mutex> lock(connectionMutex_);
+  connection_.reset();
+  connected_ = false;
 }
 
 bool FrameClient::submit(const ipc::FrameHeader &header, const uint8_t *const *planes,
@@ -121,31 +129,24 @@ bool FrameClient::latestDetection(float &x, float &y, float &w, float &h,
 
 void FrameClient::readerLoop() {
   while (running_) {
-    const int fd = socket_.load();
-    if (fd < 0 || !connected_) {
+    // A copy keeps the descriptor open for the whole recv(), whatever the
+    // writer does to connection_ meanwhile.
+    const auto conn = connection();
+    if (!conn || !conn->alive) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
       continue;
     }
 
-    // A loop rather than MSG_WAITALL, which Winsock does not support here.
     ipc::ResultHeader header{};
-    size_t got = 0;
-    bool ok = true;
-    while (got < sizeof(header) && running_) {
-      const long n = ipc::net::receive(fd, reinterpret_cast<uint8_t *>(&header) + got,
-                                       sizeof(header) - got);
-      if (n <= 0) {
-        ok = false;
-        break;
-      }
-      got += size_t(n);
-    }
-    if (!ok || got != sizeof(header)) {
-      // The writer owns reconnection.
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    if (!ipc::net::receiveExactly(conn->fd,
+                                  std::as_writable_bytes(std::span{&header, 1}))) {
+      conn->alive = false;
       continue;
     }
-    if (header.magic != ipc::kResultMagic) {
+    if (header.magic != ipc::kResultMagic ||
+        header.version != ipc::kFrameVersion) {
+      // Desynced or foreign peer. Flag only: the writer closes and redials.
+      conn->alive = false;
       continue;
     }
 
@@ -155,11 +156,11 @@ void FrameClient::readerLoop() {
   }
 }
 
-bool FrameClient::connectOnce() {
+std::shared_ptr<FrameClient::Connection> FrameClient::connectOnce() {
   ipc::net::startup();
-  const int fd = int(::socket(AF_INET, SOCK_STREAM, 0));
-  if (fd < 0) {
-    return false;
+  const ipc::net::Handle socketFd = ::socket(AF_INET, SOCK_STREAM, 0);
+  if (socketFd == ipc::net::kInvalidHandle) {
+    return nullptr;
   }
 
   sockaddr_in addr{};
@@ -167,47 +168,43 @@ bool FrameClient::connectOnce() {
   addr.sin_port = htons(port_);
   ::inet_pton(AF_INET, host_.c_str(), &addr.sin_addr);
 
-  if (::connect(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) < 0) {
-    ipc::net::closeHandle(fd);
-    return false;
+  if (::connect(socketFd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) < 0) {
+    ipc::net::closeHandle(socketFd);
+    return nullptr;
   }
 
   // Includes suppressing SIGPIPE, which would otherwise take OBS down.
-  ipc::net::configureConnected(fd);
+  ipc::net::configureConnected(socketFd);
 
-  socket_ = fd;
-  connected_ = true;
-  return true;
-}
-
-bool FrameClient::sendAll(const uint8_t *data, size_t bytes) {
-  size_t sent = 0;
-  while (sent < bytes) {
-    const int fd = socket_.load();
-    if (fd < 0) {
-      return false;
-    }
-    const long n = ipc::net::sendAll(fd, data + sent, bytes - sent);
-    if (n <= 0) {
-      return false;
-    }
-    sent += size_t(n);
+  auto conn = std::make_shared<Connection>(socketFd);
+  {
+    std::lock_guard<std::mutex> lock(connectionMutex_);
+    connection_ = conn;
   }
-  return true;
+  connected_ = true;
+  return conn;
 }
 
 void FrameClient::writerLoop() {
   int backoffMs = 200;
-  // Outside the loop so the two buffers cycle between the threads. Declared
-  // inside, it freed the real allocation each iteration and left scratch_ with
-  // zero capacity, making every submit() reallocate on OBS's capture thread.
+  // Outside the loop so the two buffers cycle between the threads; declared
+  // inside, every submit() would reallocate on OBS's capture thread.
   std::vector<uint8_t> frame;
 
   while (running_) {
-    if (!connected_) {
-      if (connectOnce()) {
-        backoffMs = 200;
-      } else {
+    auto conn = connection();
+    if (!conn || !conn->alive) {
+      connected_ = false;
+      if (conn) {
+        {
+          std::lock_guard<std::mutex> lock(connectionMutex_);
+          connection_.reset();
+        }
+        ipc::net::shutdownBoth(conn->fd);
+        conn.reset();
+      }
+      conn = connectOnce();
+      if (!conn) {
         // The server may not be up yet, or may have been restarted.
         for (int slept = 0; slept < backoffMs && running_; slept += 50) {
           std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -215,6 +212,7 @@ void FrameClient::writerLoop() {
         backoffMs = backoffMs < 3000 ? backoffMs * 2 : 3000;
         continue;
       }
+      backoffMs = 200;
     }
 
     frame.clear();
@@ -232,12 +230,8 @@ void FrameClient::writerLoop() {
       hasFrame_ = false;
     }
 
-    if (!sendAll(frame.data(), frame.size())) {
-      connected_ = false;
-      const int dead = socket_.exchange(-1);
-      if (dead >= 0) {
-        ipc::net::closeHandle(dead);
-      }
+    if (!ipc::net::sendFully(conn->fd, std::as_bytes(std::span{frame}))) {
+      conn->alive = false;
       continue;
     }
     sent_++;

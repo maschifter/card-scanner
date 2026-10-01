@@ -1,8 +1,9 @@
 #include "ParentWatchdog.h"
 
 #ifndef _WIN32
+#include "Log.h"
+
 #include <chrono>
-#include <iostream>
 #include <thread>
 #include <unistd.h>
 #endif
@@ -29,7 +30,8 @@ void watchParent(std::atomic<bool> &running, std::function<void()> onParentGone)
     while (running) {
       // A dead parent leaves us reparented, so the pid changing is the signal.
       if (::getppid() != original) {
-        std::cerr << "parent " << original << " exited; shutting down\n";
+        logLine("watchdog", "parent " + std::to_string(original) +
+                                " exited; shutting down");
         if (onParentGone) {
           onParentGone();
         }

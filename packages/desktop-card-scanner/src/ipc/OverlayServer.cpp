@@ -2,8 +2,9 @@
 
 #include <ixwebsocket/IXHttpServer.h>
 
+#include <util/Log.h>
+
 #include <fstream>
-#include <iostream>
 #include <sstream>
 
 namespace cardscanner {
@@ -16,7 +17,7 @@ OverlayServer::~OverlayServer() { stop(); }
 
 bool OverlayServer::start() {
   if (!std::filesystem::exists(file_)) {
-    std::cerr << "overlay not found at " << file_ << "; the URL will 404\n";
+    util::logLine("overlay", "not found at " + file_.string() + "; the URL will 404");
     return false;
   }
 
@@ -26,7 +27,8 @@ bool OverlayServer::start() {
       [file](ix::HttpRequestPtr, std::shared_ptr<ix::ConnectionState>) {
         // Per request rather than cached, so a rebuilt overlay needs no
         // server restart.
-        std::ifstream stream(file);
+        // Binary, or Windows text mode truncates the page at a 0x1A byte.
+        std::ifstream stream(file, std::ios::binary);
         std::stringstream buffer;
         buffer << stream.rdbuf();
 
@@ -39,7 +41,7 @@ bool OverlayServer::start() {
 
   const auto result = server_->listen();
   if (!result.first) {
-    std::cerr << "overlay server: " << result.second << "\n";
+    util::logLine("overlay", "listen failed: " + result.second);
     server_.reset();
     return false;
   }

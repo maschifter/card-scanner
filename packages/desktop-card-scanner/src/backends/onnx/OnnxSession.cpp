@@ -6,13 +6,13 @@
 #include <utils/PathUtils.h>
 
 #include <onnxruntime_cxx_api.h>
-#if defined(__APPLE__)
-#include <coreml_provider_factory.h>
-#endif
 
+#include <util/Log.h>
+
+#include <array>
 #include <cstdlib>
 #include <filesystem>
-#include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -23,8 +23,20 @@ namespace inference {
 namespace {
 
 /// One per process; ORT documents Env as safe to share across sessions.
+///
+/// Telemetry off. The macOS/Linux release dylib bundles Microsoft's 1DS
+/// uploader, whose exit-time teardown races an in-flight upload into a
+/// SIGABRT; only the env var keeps it from being created (the API call alone
+/// leaves it live, and covers the ETW events of the Windows build).
 Ort::Env &ortEnv() {
-  static Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "cardscanner");
+  static Ort::Env env = [] {
+#if !defined(_WIN32)
+    ::setenv("ORT_DISABLE_TELEMETRY", "1", 1);
+#endif
+    Ort::Env created(ORT_LOGGING_LEVEL_WARNING, "cardscanner");
+    created.DisableTelemetryEvents();
+    return created;
+  }();
   return env;
 }
 
@@ -35,43 +47,31 @@ Ort::Env &ortEnv() {
  * failing is normal, so each attempt is guarded and the winner is returned for
  * logging - a silent CPU fallback otherwise looks like acceleration working.
  */
-std::string appendProviders(Ort::SessionOptions &options, const std::string &modelPath) {
-  // Models with external weights stay on CPU: an accelerator re-serialising
-  // the graph resolves the sidecar as "<model>.onnx/<model>.onnx.data", taking
-  // the .onnx for a directory, and the load fails.
-  if (std::filesystem::exists(modelPath + ".data")) {
-    return "cpu (external weights)";
-  }
-
+std::string appendProviders(Ort::SessionOptions &options) {
   std::vector<std::string> ladder;
   if (const char *override = std::getenv("CARD_SCANNER_EP")) {
-    std::string spec(override);
-    size_t start = 0;
-    while (start <= spec.size()) {
-      const size_t comma = spec.find(',', start);
-      const size_t end = comma == std::string::npos ? spec.size() : comma;
-      if (end > start) {
-        ladder.push_back(spec.substr(start, end - start));
+    std::istringstream spec(override);
+    for (std::string name; std::getline(spec, name, ',');) {
+      if (!name.empty()) {
+        ladder.push_back(std::move(name));
       }
-      if (comma == std::string::npos) {
-        break;
-      }
-      start = comma + 1;
     }
   } else {
-    // CPU by default on measurement: CoreML came in at 33.0ms median against
-    // CPU's 34.2ms, and 36.9ms with every model on it, while adding ~0.5s per
-    // model to startup. These models are small enough that dispatch overhead
-    // cancels the gain. The ladder stays because the tradeoff is
-    // hardware-specific - a discrete GPU under DirectML may well differ.
+#if defined(__APPLE__)
+    ladder = {"coreml", "cpu"};
+#elif defined(_WIN32)
+    ladder = {"dml", "cpu"};
+#else
     ladder = {"cpu"};
+#endif
   }
 
   for (const auto &name : ladder) {
     try {
 #if defined(__APPLE__)
       if (name == "coreml") {
-        // No flags, so ORT decides per subgraph what CoreML can take.
+        // MLProgram format only; ORT still decides per subgraph what
+        // CoreML can take.
         options.AppendExecutionProvider("CoreML", {{"ModelFormat", "MLProgram"}});
         return "coreml";
       }
@@ -89,8 +89,8 @@ std::string appendProviders(Ort::SessionOptions &options, const std::string &mod
       options.AppendExecutionProvider(name, {});
       return name;
     } catch (const Ort::Exception &e) {
-      std::cerr << "inference: " << name << " unavailable (" << e.what()
-                << "), trying next\n";
+      util::logLine("inference",
+                    name + " unavailable (" + e.what() + "), trying next");
     }
   }
   return "cpu";
@@ -104,23 +104,44 @@ public:
     // ORT's default thread counts: this runs in its own process with no UI to
     // starve. Cap intra-op threads here if it competes with the capture path.
 
-    provider_ = appendProviders(options, modelPath_);
+    provider_ = appendProviders(options);
 
+    // Ort::Session takes ORTCHAR_T, which is wchar_t on Windows;
+    // path::c_str() yields the native type on every platform.
+    const std::filesystem::path modelPathNative(modelPath_);
     try {
-      session_ = Ort::Session(ortEnv(), modelPath_.c_str(), options);
+      session_ = Ort::Session(ortEnv(), modelPathNative.c_str(), options);
     } catch (const Ort::Exception &e) {
-      // ORT's exception does not carry the path, and callers need to know
-      // which model failed.
-      throw std::runtime_error("Failed to load model '" + modelPath_ +
-                               "': " + e.what());
+      // DirectML registers fine but rejects ColorBarModel's graph at Initialize;
+      // one model the GPU cannot build should run on CPU, not kill the scanner.
+      if (provider_ == "cpu") {
+        // ORT's exception does not carry the path, and callers need to know
+        // which model failed.
+        throw std::runtime_error("Failed to load model '" + modelPath_ +
+                                 "': " + e.what());
+      }
+      util::logLine("inference",
+                    std::filesystem::path(modelPath_).filename().string() +
+                        " failed to build on " + provider_ + " (" + e.what() +
+                        "), falling back to cpu");
+      Ort::SessionOptions cpuOptions;
+      cpuOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+      try {
+        session_ = Ort::Session(ortEnv(), modelPathNative.c_str(), cpuOptions);
+      } catch (const Ort::Exception &cpuError) {
+        throw std::runtime_error("Failed to load model '" + modelPath_ +
+                                 "': " + cpuError.what());
+      }
+      provider_ = "cpu";
     }
 
     cacheIoNames();
 
     // A failed registration is otherwise indistinguishable from a successful
-    // one.
-    std::cerr << "inference: " << modelPath_.substr(modelPath_.find_last_of('/') + 1)
-              << " on " << provider_ << "\n";
+    // one. filename() rather than find_last_of('/'): Windows paths use '\\'.
+    util::logLine("inference",
+                  std::filesystem::path(modelPath_).filename().string() + " on " +
+                      provider_);
   }
 
   std::vector<Tensor> run(const float *input,
@@ -136,9 +157,11 @@ public:
         memoryInfo, const_cast<float *>(input), elementCount, shape.data(),
         shape.size());
 
+    // Run() takes const char* const*, so a borrowed pointer is unavoidable.
+    const std::array<const char *, 1> inputNames{inputName_.c_str()};
     std::vector<Ort::Value> outputs;
     try {
-      outputs = session_.Run(Ort::RunOptions{nullptr}, inputNamePtrs_.data(),
+      outputs = session_.Run(Ort::RunOptions{nullptr}, inputNames.data(),
                              &inputTensor, 1, outputNamePtrs_.data(),
                              outputNamePtrs_.size());
     } catch (const Ort::Exception &e) {
@@ -169,10 +192,7 @@ private:
                                " inputs; this backend supplies exactly 1");
     }
 
-    inputNames_.reserve(inputCount);
-    for (size_t i = 0; i < inputCount; i++) {
-      inputNames_.emplace_back(session_.GetInputNameAllocated(i, allocator).get());
-    }
+    inputName_ = session_.GetInputNameAllocated(0, allocator).get();
 
     const size_t outputCount = session_.GetOutputCount();
     outputNames_.reserve(outputCount);
@@ -180,11 +200,8 @@ private:
       outputNames_.emplace_back(session_.GetOutputNameAllocated(i, allocator).get());
     }
 
-    // After both vectors are fully grown: a later push_back would reallocate
+    // After the vector is fully grown: a later push_back would reallocate
     // the strings and dangle these pointers.
-    for (const auto &name : inputNames_) {
-      inputNamePtrs_.push_back(name.c_str());
-    }
     for (const auto &name : outputNames_) {
       outputNamePtrs_.push_back(name.c_str());
     }
@@ -217,9 +234,9 @@ private:
   std::string provider_;
   Ort::Session session_{nullptr};
 
-  std::vector<std::string> inputNames_;
+  /// Exactly one input by contract; cacheIoNames enforces it.
+  std::string inputName_;
   std::vector<std::string> outputNames_;
-  std::vector<const char *> inputNamePtrs_;
   std::vector<const char *> outputNamePtrs_;
 };
 

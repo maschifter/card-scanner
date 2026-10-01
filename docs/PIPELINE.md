@@ -141,7 +141,7 @@ The scanner processes camera frames through a **5-stage pipeline**:
 
 Camera frames enter through the Nitro plugin. The Vision Camera v5 frame worklet snapshots the coordinate mapping while the frame is alive, then offloads to an `AsyncRunner` task ([`apps/mobile-example/utils/scanOnFrame.ts`](../apps/mobile-example/utils/scanOnFrame.ts)), which calls `scanFrame` on the runner's thread:
 
-1. `scanFrame(frame, coordinateSnapshot)` runs the whole scan synchronously on the calling thread and owns the Frame from the call on. Frames are rejected up front (no pixel copy) when another scan is in progress (`tryClaimScan`, which gives up rather than queue) or the `maxFrameRate` throttle window opens later than a ~35ms margin. A frame due earlier is copied and released first, then the scan sleeps the gap, so it starts right when the window opens instead of waiting for the next camera frame.
+1. `scanFrame(frame, coordinateSnapshot)` runs the whole scan synchronously on the calling thread and owns the Frame from the call on. Frames are rejected up front (no pixel copy) when another scan is in progress (`tryClaimScan`, which gives up rather than queue) or the `maxFrameRate` throttle window opens later than a ~20ms margin. A frame due earlier is copied and released first, then the scan sleeps the gap, so it starts right when the window opens instead of waiting for the next camera frame.
 2. The frame is converted to an RGB `cv::Mat` and rotated upright according to `frame.orientation` ([`utils/FrameTransform.cpp`](../packages/mobile-card-scanner/common/rnbridge/FrameTransform.cpp)) - a copy that never aliases the camera buffer - and the Frame is disposed right there, before the window wait and `ScannerPipeline::processFrame`. Dropped and failed frames are disposed on their exit path too (an RAII guard in `scanFrame`), so the Frame is disposed exactly once and the worklet must not dispose a Frame it handed to `scanFrame`.
 3. Resulting bounding boxes are inverse-mapped back to raw frame-buffer coordinates and delivered to the JS detection listener.
 
@@ -682,7 +682,7 @@ static std::chrono::steady_clock::time_point lastMLProcessTime;
 static std::mutex mlThrottleMutex;
 ```
 
-Thread-safe timestamp checking for frame rate limiting. `scanFrame` pre-checks the same throttle window (`mlWindowOpensAt`, atomic `maxFrameRate_`) so out-of-window frames are dropped before any copy, then sleeps out the last <=35ms until the window opens before extracting.
+Thread-safe timestamp checking for frame rate limiting. `scanFrame` pre-checks the same throttle window (`mlWindowOpensAt`, atomic `maxFrameRate_`) so out-of-window frames are dropped before any copy, then sleeps out the last <=20ms until the window opens before extracting.
 
 ### Async Frame Scans
 
