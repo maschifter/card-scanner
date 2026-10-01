@@ -9,7 +9,8 @@
 namespace cardscanner {
 namespace desktop {
 
-ScannerServer::ScannerServer(const ScannerConfig &config, SessionConfig sessionConfig,
+ScannerServer::ScannerServer(const ScannerConfig &config,
+                             core::SessionConfig sessionConfig,
                              ServerOptions options)
     : options_(std::move(options)),
       overlay_(options_.overlayPort, options_.overlayFile),
@@ -63,7 +64,7 @@ void applyCommand(ScannerService &service, const nlohmann::json &message) {
   auto &session = service.session();
 
   if (command == "set_mode") {
-    Mode mode = Mode::Auto;
+    core::ScanSession::Mode mode = core::ScanSession::Mode::Auto;
     if (parseMode(message.value("mode", ""), mode)) {
       session.setMode(mode);
     }

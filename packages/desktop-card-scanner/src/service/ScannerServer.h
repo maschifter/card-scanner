@@ -1,9 +1,9 @@
 #pragma once
 
 #include "ProductClient.h"
-#include "ScanSession.h"
 #include "ScannerService.h"
 
+#include <core/ScanSession.h>
 #include <ipc/ControlServer.h>
 #include <ipc/FrameProtocol.h>
 #include <ipc/FrameServer.h>
@@ -35,7 +35,7 @@ struct ServerOptions {
  */
 class ScannerServer {
 public:
-  ScannerServer(const ScannerConfig &config, SessionConfig sessionConfig,
+  ScannerServer(const ScannerConfig &config, core::SessionConfig sessionConfig,
                 ServerOptions options);
   ~ScannerServer();
 

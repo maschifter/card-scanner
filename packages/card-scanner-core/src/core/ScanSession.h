@@ -1,6 +1,6 @@
 #pragma once
 
-#include <types/ScanResults.h>
+#include "../types/ScanResults.h"
 
 #include <chrono>
 #include <mutex>
@@ -9,17 +9,7 @@
 #include <vector>
 
 namespace cardscanner {
-namespace desktop {
-
-enum class Status { Idle, Detecting, CandidateReady, Emitted };
-
-/// Auto commits a confirmed card straight to the stream; Manual holds it at
-/// CandidateReady until the dock says otherwise.
-enum class Mode { Auto, Manual };
-
-const char *toString(Status status);
-const char *toString(Mode mode);
-bool parseMode(const std::string &text, Mode &out);
+namespace core {
 
 /// Counts consecutive detections rather than milliseconds, so a dropped frame
 /// does not advance a timer.
@@ -62,6 +52,12 @@ const ProcessedCard *bestVisibleCard(const ScanResult &result);
  */
 class ScanSession {
 public:
+  enum class Status { Idle, Detecting, CandidateReady, Emitted };
+
+  /// Auto commits a confirmed card straight to the stream; Manual holds it at
+  /// CandidateReady until the dock says otherwise.
+  enum class Mode { Auto, Manual };
+
   /// Everything a broadcast needs, read under one lock so the fields cannot
   /// contradict each other mid-commit.
   struct Snapshot {
@@ -124,5 +120,9 @@ private:
   Clock::time_point emittedAt_{};
 };
 
-} // namespace desktop
+const char *toString(ScanSession::Status status);
+const char *toString(ScanSession::Mode mode);
+bool parseMode(const std::string &text, ScanSession::Mode &out);
+
+} // namespace core
 } // namespace cardscanner

@@ -274,7 +274,6 @@ add_library(cardscanner_desktop STATIC
     src/backends/onnx/OnnxSession.cpp
     src/benchmark/OfflineBenchmark.cpp
     src/config/ScannerConfigLoader.cpp
-    src/service/ScanSession.cpp
     src/service/ScannerService.cpp
     src/service/ScannerServer.cpp
     src/service/ProductClient.cpp

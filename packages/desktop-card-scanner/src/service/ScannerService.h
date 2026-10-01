@@ -1,7 +1,6 @@
 #pragma once
 
-#include "ScanSession.h"
-
+#include <core/ScanSession.h>
 #include <types/ScannerConfig.h>
 
 #include <atomic>
@@ -80,7 +79,7 @@ public:
   /// The listener is fixed for the service's lifetime; it may capture objects
   /// freely as long as they outlive this service - stop() joins the worker, so
   /// nothing fires after it returns.
-  ScannerService(const ScannerConfig &config, SessionConfig sessionConfig,
+  ScannerService(const ScannerConfig &config, core::SessionConfig sessionConfig,
                  Listener listener);
   ~ScannerService();
 
@@ -99,7 +98,7 @@ public:
   /// listener captures must call this before those objects unwind.
   void stop();
 
-  ScanSession &session() { return session_; }
+  core::ScanSession &session() { return session_; }
 
   /// Turns the stage timers on or off - the OBS filter's "show timings" box.
   /// Off, nothing is measured and Diagnostics::measured stays false.
@@ -111,7 +110,7 @@ public:
 private:
   void workerLoop();
 
-  ScanSession session_;
+  core::ScanSession session_;
   Diagnostics diagnostics_;
   /// Written per frame by the frame thread, read per frame by the worker.
   std::atomic<bool> reportTimings_{false};

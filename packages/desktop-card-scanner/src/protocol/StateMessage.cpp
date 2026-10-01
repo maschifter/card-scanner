@@ -1,13 +1,15 @@
 #include "StateMessage.h"
 
+#include <core/ScanSession.h>
 #include <service/ProductClient.h>
-#include <service/ScanSession.h>
 #include <service/ScannerService.h>
 
 #include <nlohmann/json.hpp>
 
 namespace cardscanner {
 namespace desktop {
+
+using core::CardInfo;
 
 namespace {
 

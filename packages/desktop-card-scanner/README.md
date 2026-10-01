@@ -2,8 +2,8 @@
 
 The desktop wrapper around `card-scanner-core`, mirroring how
 `mobile-card-scanner` wraps it for React Native. Core stays platform-agnostic;
-this package supplies the inference backend, the scan session, the OBS
-bindings, and the wire protocol between them.
+this package supplies the inference backend, the OBS bindings, and the wire
+protocol between them.
 
 For running the OBS plugin, see the
 [desktop example README](../../apps/desktop-example/README.md). This document
@@ -22,7 +22,7 @@ which takes `ipc/FrameProtocol.h` and nothing else from the server side.
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `backends/onnx/OnnxSession.cpp` | Defines `cardscanner::inference::loadSession` against ONNX Runtime, and the only translation unit that includes it.                 |
 | `service/ScannerService`        | Owns the worker thread and a depth-1 keep-latest mailbox. A newer frame evicts the older one; the producer never waits.             |
-| `service/ScanSession`           | The state machine: idle, detecting, candidate ready, emitted. Holds the history ring and the thresholds.                            |
+| `core/ScanSession`              | The state machine: idle, detecting, candidate ready, emitted. Holds the history ring and the thresholds. Lives in `card-scanner-core`. |
 | `service/ScannerServer`         | The façade that owns the whole server. Construct it, call `start()`, and the sockets, the worker, and the lookups come up together. |
 | `service/ProductClient`         | Resolves card names and art over HTTP on its own thread, so the scan worker never waits on the network.                             |
 | `protocol/StateMessage`         | Serializes the whole scanner state as one JSON message.                                                                             |

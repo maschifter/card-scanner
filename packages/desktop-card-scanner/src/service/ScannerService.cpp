@@ -15,8 +15,11 @@
 namespace cardscanner {
 namespace desktop {
 
+using core::bestVisibleCard;
+
 ScannerService::ScannerService(const ScannerConfig &config,
-                               SessionConfig sessionConfig, Listener listener)
+                               core::SessionConfig sessionConfig,
+                               Listener listener)
     : session_(sessionConfig), listener_(std::move(listener)) {
   util::configureOpenCvThreads();
 

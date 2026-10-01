@@ -3,9 +3,10 @@
 #include <algorithm>
 
 namespace cardscanner {
-namespace desktop {
+namespace core {
 
-const char *toString(Status status) {
+const char *toString(ScanSession::Status status) {
+  using Status = ScanSession::Status;
   switch (status) {
   case Status::Idle:
     return "idle";
@@ -19,15 +20,17 @@ const char *toString(Status status) {
   return "idle";
 }
 
-const char *toString(Mode mode) { return mode == Mode::Manual ? "manual" : "auto"; }
+const char *toString(ScanSession::Mode mode) {
+  return mode == ScanSession::Mode::Manual ? "manual" : "auto";
+}
 
-bool parseMode(const std::string &text, Mode &out) {
+bool parseMode(const std::string &text, ScanSession::Mode &out) {
   if (text == "auto") {
-    out = Mode::Auto;
+    out = ScanSession::Mode::Auto;
     return true;
   }
   if (text == "manual") {
-    out = Mode::Manual;
+    out = ScanSession::Mode::Manual;
     return true;
   }
   return false;
@@ -248,5 +251,5 @@ bool ScanSession::tick() {
   return changed;
 }
 
-} // namespace desktop
+} // namespace core
 } // namespace cardscanner
