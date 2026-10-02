@@ -3,16 +3,11 @@
 #include <ReactCommon/CallInvokerHolder.h>
 #include <fbjni/fbjni.h>
 
-#include <react/jni/CxxModuleWrapper.h>
-#include <react/jni/JMessageQueueThread.h>
-
 #include <memory>
-#include <utility>
 
 namespace cardscanner {
 
 using namespace facebook;
-using namespace react;
 
 class CardScannerInstallerModule : public jni::HybridClass<CardScannerInstallerModule> {
 public:
@@ -32,12 +27,10 @@ public:
 private:
   friend HybridBase;
 
-  jni::global_ref<CardScannerInstallerModule::javaobject> javaPart_;
   jsi::Runtime *jsiRuntime_;
   std::shared_ptr<facebook::react::CallInvoker> jsCallInvoker_;
 
   explicit CardScannerInstallerModule(
-      jni::alias_ref<CardScannerInstallerModule::jhybridobject> &jThis,
       jsi::Runtime *jsiRuntime,
       const std::shared_ptr<facebook::react::CallInvoker> &jsCallInvoker);
 };

@@ -1,13 +1,8 @@
 #include "SetSymbolEmbedder.h"
-#include "../../Constants.h"
 #include "../Embedding.h"
-#include <chrono>
-#include <iostream>
 #include <opencv2/opencv.hpp>
 
 namespace cardscanner {
-
-using namespace constants;
 
 // Set symbol specific constants
 namespace set_symbol {

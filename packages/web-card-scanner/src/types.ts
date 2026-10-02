@@ -59,7 +59,6 @@ export interface ScanTimings {
   embedMs: number;
   searchMs: number;
   stagesMs: number;
-  perCardMs: number;
   totalMs: number;
 }
 
@@ -74,7 +73,8 @@ export interface ScanResult {
 export type ScanMode = 'single' | 'multiple';
 
 export interface ScannerOptions {
-  /** Base URL serving the export-web-models.py output (per-model dirs). */
+  /** Base URL serving the export-web-models.py output (per-model dirs).
+   *  Weights are cached by URL: serve a new model set under a new URL. */
   modelsBaseUrl: string;
   search: SearchClient;
   /** Default 'multiple'. */

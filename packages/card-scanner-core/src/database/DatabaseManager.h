@@ -2,11 +2,9 @@
 #define DATABASE_MANAGER_H
 
 #include "ObjectBoxDB.h"
-#include <filesystem>
 #include <map>
 #include <memory>
 #include <mutex>
-#include <objectbox.hpp>
 #include <set>
 #include <string>
 

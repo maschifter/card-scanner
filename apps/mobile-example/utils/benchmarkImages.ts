@@ -175,7 +175,11 @@ export const BENCHMARK_IMAGES: BenchmarkImageAsset[] = [
   {
     game: 'fab',
     // What Happens Next? (Blue) (SUP209)
-    cardIds: ['68d1103bd292211af992ea66', '68d1103bd292211af992eaf7'],
+    cardIds: [
+      '68d1103bd292211af992ea66',
+      '68d1103bd292211af992eaf7',
+      '68d1103bd292211af992eaf8',
+    ],
     module: require('../assets/games_images/fab/card_5.jpg'),
   },
   // --- grand-archive ---

@@ -8,10 +8,8 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
-#include <iostream>
 #include <mutex>
 #include <optional>
-#include <shared_mutex>
 
 namespace cardscanner {
 namespace core {

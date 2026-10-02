@@ -3,7 +3,6 @@
 #include <Log.h>
 #include <executorch/extension/threadpool/cpuinfo_utils.h>
 #include <executorch/extension/threadpool/threadpool.h>
-#include <iostream>
 
 namespace cardscanner::threads::utils {
 

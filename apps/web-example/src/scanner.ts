@@ -4,23 +4,16 @@
 
 import { httpSearchClient, WebCardScanner } from '@cardnexus/web-card-scanner';
 
-export type Progress = (stage: string, done: number, total: number) => void;
 export type Report = (message: string) => void;
 
 let pending: Promise<WebCardScanner> | undefined;
-const listeners = new Set<Progress>();
 const errorListeners = new Set<Report>();
 
-export function loadScanner(
-  onProgress?: Progress,
-  onGpuError?: Report,
-): Promise<WebCardScanner> {
-  if (onProgress) listeners.add(onProgress);
+export function loadScanner(onGpuError?: Report): Promise<WebCardScanner> {
   if (onGpuError) errorListeners.add(onGpuError);
   pending ??= WebCardScanner.create({
     modelsBaseUrl: '/models',
     search: httpSearchClient('/api'),
-    onProgress: (...args) => listeners.forEach((l) => l(...args)),
     onGpuError: (message) => errorListeners.forEach((l) => l(message)),
   });
   return pending;

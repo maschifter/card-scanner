@@ -4,7 +4,6 @@
 #include "../../inference/InferenceSession.h"
 #include <opencv2/opencv.hpp>
 #include <string>
-#include <vector>
 
 namespace cardscanner {
 
@@ -15,7 +14,7 @@ namespace cardscanner {
  *
  * Architecture: MobileNetV3-Small classifier
  * Input: 100x100 RGB image (3-dots region)
- * Output: 3-class probabilities (yellow, red, blue)
+ * Output: 3-class probabilities (blue, red, yellow)
  *
  * @note This class is NOT thread-safe. The singleton instance should be
  * accessed through mutex-protected getters in ScannerRegistry.

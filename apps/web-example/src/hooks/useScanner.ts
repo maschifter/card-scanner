@@ -34,10 +34,8 @@ export function useScanner() {
       const games = Object.keys(health.games).length;
       const cards = Object.values(health.games).reduce((a, b) => a + b, 0);
       report(`backend: ${games} games, ${cards} cards\nloading models…`);
-      const s = await loadScanner(
-        (stage, done, total) =>
-          report(`loading ${stage}: ${((100 * done) / total).toFixed(0)}%`),
-        (message) => setStatus(`WebGPU error: ${message}`),
+      const s = await loadScanner((message) =>
+        setStatus(`WebGPU error: ${message}`),
       );
       if (cancelled) return;
       setScanner(s);

@@ -13,12 +13,12 @@ import { topKRows } from './topk.mjs';
 // Search thresholds from the training repo (card_nexus/config.py) — the
 // two-signal accept gate: a strong absolute score, or a moderate one that
 // stands clear of its runner-up.
-export const MATCH_CONF = 0.6;
-export const MATCH_CONF_LOW = 0.45;
-export const MATCH_MARGIN = 0.05;
-export const SEARCH_CANDIDATES = 100;
-export const MAX_MATCHES = 5;
-export const SET_SYMBOL_THRESHOLD = 0.6;
+const MATCH_CONF = 0.6;
+const MATCH_CONF_LOW = 0.45;
+const MATCH_MARGIN = 0.05;
+const SEARCH_CANDIDATES = 100;
+const MAX_MATCHES = 5;
+const SET_SYMBOL_THRESHOLD = 0.6;
 
 /** SearchStrategy.filterToBestGame with the card_nexus two-signal gate. Only
  *  the winning game's matches survive: reranking across games would let an

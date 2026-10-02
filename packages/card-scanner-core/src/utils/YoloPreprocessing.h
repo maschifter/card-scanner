@@ -27,6 +27,26 @@ namespace utils {
  */
 class YoloPreprocessing {
 public:
+  /// The resize and padding letterbox() applies; postprocessing reverses them.
+  struct Letterbox {
+    float r;       // scale ratio, new / old
+    int newUnpadW; // resized size before padding
+    int newUnpadH;
+    float dw; // padding per side, before rounding
+    float dh;
+  };
+
+  static Letterbox letterboxPlacement(int width, int height, int newSize) {
+    using namespace constants;
+    const float r = std::min(static_cast<float>(newSize) / height,
+                             static_cast<float>(newSize) / width);
+    const int newUnpadW = std::round(width * r);
+    const int newUnpadH = std::round(height * r);
+    return {r, newUnpadW, newUnpadH,
+            (newSize - newUnpadW) / letterbox::PADDING_DIVISOR,
+            (newSize - newUnpadH) / letterbox::PADDING_DIVISOR};
+  }
+
   /**
    * @brief Applies letterbox resizing to maintain aspect ratio with padding
    *
@@ -40,35 +60,22 @@ public:
   static cv::Mat letterbox(const cv::Mat &img, int newSize) {
     using namespace constants;
 
-    int height = img.rows;
-    int width = img.cols;
-
-    // Scale ratio (new / old)
-    float r = std::min(static_cast<float>(newSize) / height,
-                       static_cast<float>(newSize) / width);
-
-    // Compute new unpadded dimensions
-    int newUnpadW = std::round(width * r);
-    int newUnpadH = std::round(height * r);
-
-    // Compute padding
-    float dw = (newSize - newUnpadW) / letterbox::PADDING_DIVISOR;
-    float dh = (newSize - newUnpadH) / letterbox::PADDING_DIVISOR;
+    const Letterbox lb = letterboxPlacement(img.cols, img.rows, newSize);
 
     // Resize if needed
     cv::Mat resized;
-    if (height != newUnpadH || width != newUnpadW) {
-      cv::resize(img, resized, cv::Size(newUnpadW, newUnpadH), 0, 0,
+    if (img.rows != lb.newUnpadH || img.cols != lb.newUnpadW) {
+      cv::resize(img, resized, cv::Size(lb.newUnpadW, lb.newUnpadH), 0, 0,
                  cv::INTER_LINEAR);
     } else {
       resized = img;
     }
 
     // Add padding
-    int top = std::round(dh - letterbox::PADDING_ADJUST_MINUS);
-    int bottom = std::round(dh + letterbox::PADDING_ADJUST_PLUS);
-    int left = std::round(dw - letterbox::PADDING_ADJUST_MINUS);
-    int right = std::round(dw + letterbox::PADDING_ADJUST_PLUS);
+    int top = std::round(lb.dh - letterbox::PADDING_ADJUST_MINUS);
+    int bottom = std::round(lb.dh + letterbox::PADDING_ADJUST_PLUS);
+    int left = std::round(lb.dw - letterbox::PADDING_ADJUST_MINUS);
+    int right = std::round(lb.dw + letterbox::PADDING_ADJUST_PLUS);
 
     cv::Mat padded;
     cv::copyMakeBorder(resized, padded, top, bottom, left, right,

@@ -4,7 +4,6 @@
 #include "NitroSerializer.h"
 #include "ScannerRegistry.h"
 #include "core/ScannerPipeline.h"
-#include <DatabaseManager.h>
 #include <atomic>
 #include <chrono>
 #include <memory>

@@ -1,6 +1,5 @@
 #include "SetSymbolProcessor.h"
 #include "../Constants.h"
-#include "../PathProvider.h"
 #include "../benchmark/BenchmarkCollector.h"
 #include <Log.h>
 
@@ -25,19 +24,7 @@ SetSymbolInfo SetSymbolProcessor::processSetSymbol(
   }
 
   // Optimization: Only search for set symbol if top 2 matches are close
-  // If top match is clearly the best (score difference > threshold), skip
-  // detection
-  if (cardMatches.size() >= 2) {
-    double top1Score = cardMatches[0].score;
-    double top2Score = cardMatches[1].score;
-    double scoreDifference = top1Score - top2Score;
-
-    // If difference exceeds threshold, top match is clearly best
-    if (scoreDifference > disambiguationThreshold) {
-      return SetSymbolInfo(); // Skip set symbol detection
-    }
-  } else if (cardMatches.size() == 1) {
-    // Only one match - no need to disambiguate
+  if (!isAmbiguous(cardMatches, disambiguationThreshold)) {
     return SetSymbolInfo();
   }
 

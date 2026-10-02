@@ -1,17 +1,13 @@
 #include "CardScannerInstaller.h"
-#include "Constants.h"
 #include "DatabaseManager.h"
 #include "ObjectBoxDB.h"
-#include "PathProvider.h"
 #include "ScannerRegistry.h"
 #include <utils/ImageUtils.h>
 #include "types/BenchmarkRecord.h"
 #include "jsi/Promise.h"
 #include "JSISerializer.h"
-#include <Log.h>
 #include <filesystem>
 #include <functional>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <opencv2/opencv.hpp>
@@ -21,12 +17,6 @@
 #include <vector>
 
 #include "../backends/executorch/ThreadUtils.h"
-
-using namespace cardscanner::constants;
-
-#ifdef __ANDROID__
-#include <sys/resource.h>
-#endif
 
 namespace cardscanner {
 

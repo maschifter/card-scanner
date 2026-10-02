@@ -75,7 +75,6 @@ public:
   static void reset();
   static void beginBenchmarkRecord();
   static void endBenchmarkRecord();
-  static bool isBenchmarkRecording();
 
   static void addMs(Stage stage, double ms);
   static void set(Metric metric, double value);
@@ -119,9 +118,7 @@ public:
   static void reset() {}
   static void beginBenchmarkRecord() {}
   static void endBenchmarkRecord() {}
-  static bool isBenchmarkRecording() { return false; }
 
-  static void addMs(Stage, double) {}
   static void set(Metric, double) {}
   static void add(Metric, double) {}
   static void set(Label, std::string) {}

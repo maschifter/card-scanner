@@ -5,7 +5,6 @@
 #include <VisionCamera/HybridFrameSpec.hpp>
 #include <memory>
 #include <opencv2/imgproc.hpp>
-#include <string>
 
 namespace cardscanner {
 

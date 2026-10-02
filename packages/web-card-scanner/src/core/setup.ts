@@ -1,13 +1,15 @@
 import tgpu from 'typegpu';
 import {
+  bufferSource,
   createOpfsCache,
   fromSafetensors,
   initTie,
+  type nn,
+  parseSafetensorsHeader,
   type Value,
-  type WeightCache,
 } from '@tie/core';
 import type { TgpuRoot } from 'typegpu';
-import { loadYolo26Weights, Yolo26Model } from '@tie/zoo/yolo26';
+import { Yolo26Model } from '@tie/zoo/yolo26';
 import {
   CARD_EMBED_SIZE,
   COLOR_BAR_SIZE,
@@ -54,7 +56,7 @@ export async function createDevice(
       optionalFeatures: ['shader-f16', 'timestamp-query', 'subgroups'],
     },
   });
-  initTie(root); // sets the default root for the weight loaders
+  initTie(root); // half() checks the default root for shader-f16
   root.device.addEventListener('uncapturederror', (e) => {
     const message = (e as GPUUncapturedErrorEvent).error.message;
     console.error('WebGPU:', message);
@@ -82,79 +84,81 @@ export async function createRunners(
   const progress =
     (stage: string) => (_name: string, done: number, total: number) =>
       onProgress?.(stage, done, total);
-  const loadPlain = async <
-    M extends CardRecognitionModel | SetSymbolRecognitionModel | ColorBarModel,
-  >(
-    model: M,
-    dir: string,
-  ): Promise<M> => {
+
+  // One model set stays cached: a miss on the first file is a new set.
+  let first = true;
+  const load = async <M extends nn.AnyModule>(model: M, dir: string) => {
     const url = `${base}/${dir}/model.safetensors`;
-    const sd = await fromSafetensors(url, {
-      cache: cache as WeightCache,
-      cacheId: url,
-    });
+
+    // Only a whole model may be cached: not an HTML fallback, not an LFS
+    // pointer, not a file still being uploaded.
+    const download = async () => {
+      for (let attempt = 1; ; attempt++) {
+        let res: Response;
+        let body: ArrayBuffer;
+        try {
+          res = await fetch(url);
+          body = await res.arrayBuffer();
+        } catch (e) {
+          if (attempt === 3) throw e;
+          await new Promise((r) => setTimeout(r, 500 * attempt));
+          continue;
+        }
+        if (!res.ok) throw new Error(`${url}: ${res.status}`);
+        const bytes = new Uint8Array(body);
+        const { tensors } = await parseSafetensorsHeader(bufferSource(bytes));
+        const end = Math.max(...[...tensors.values()].map((t) => t.end));
+        if (bytes.length < end) throw new Error(`${url}: truncated`);
+        if (first) await cache?.clear();
+        return bytes;
+      }
+    };
+    const bytes = cache
+      ? await cache.getOrCompute(url, download)
+      : await download();
+    first = false;
+    const sd = await fromSafetensors(bufferSource(bytes));
     await model.loadStateDict(sd, { root, onProgress: progress(dir) });
     return model;
   };
-  const loadYolo = async <T extends 'segment' | 'detect'>(
-    task: T,
-    numClasses: number,
-    dir: string,
-  ) => {
-    const model = new Yolo26Model('n', { numClasses, task });
-    await loadYolo26Weights(model, `${base}/${dir}`, {
-      cache,
-      onProgress: progress(dir),
-    });
-    return model;
-  };
-  const seg = await loadYolo(
-    'segment',
-    NUM_GAME_CLASSES,
+  const seg = await load(
+    new Yolo26Model('n', { numClasses: NUM_GAME_CLASSES, task: 'segment' }),
     'CardSegmentationModel',
   );
-  const symbolDet = await loadYolo('detect', 1, 'SetSymbolDetectionModel');
-  const cardRec = await loadPlain(
+  const symbolDet = await load(
+    new Yolo26Model('n', { numClasses: 1, task: 'detect' }),
+    'SetSymbolDetectionModel',
+  );
+  const cardRec = await load(
     new CardRecognitionModel(),
     'CardRecognitionModel',
   );
-  const symbolRec = await loadPlain(
+  const symbolRec = await load(
     new SetSymbolRecognitionModel(),
     'SetSymbolRecognitionModel',
   );
-  const colorBar = await loadPlain(new ColorBarModel(), 'ColorBarModel');
+  const colorBar = await load(new ColorBarModel(), 'ColorBarModel');
 
   const segmentationAt = (size: number) =>
     new Runner(root, [3, size, size], 'scale255', (input: Value) => {
       const { levels, proto } = seg.forward(input);
       return [...levels, proto];
     });
+  const imagenetAt = (size: number, model: nn.Module) =>
+    new Runner(root, [3, size, size], 'imagenet', (input: Value) => [
+      model.forward(input),
+    ]);
   const runners: Runners = {
     segmentation: segmentationAt(segmentationInputSize),
-    cardRecognition: new Runner(
-      root,
-      [3, CARD_EMBED_SIZE, CARD_EMBED_SIZE],
-      'imagenet',
-      (input) => [cardRec.forward(input)],
-    ),
+    cardRecognition: imagenetAt(CARD_EMBED_SIZE, cardRec),
     setSymbolDetection: new Runner(
       root,
       [3, YOLO_INPUT_SIZE, YOLO_INPUT_SIZE],
       'scale255',
       (input) => [...symbolDet.forward(input)],
     ),
-    setSymbolRecognition: new Runner(
-      root,
-      [3, SYMBOL_EMBED_SIZE, SYMBOL_EMBED_SIZE],
-      'imagenet',
-      (input) => [symbolRec.forward(input)],
-    ),
-    colorBar: new Runner(
-      root,
-      [3, COLOR_BAR_SIZE, COLOR_BAR_SIZE],
-      'imagenet',
-      (input) => [colorBar.forward(input)],
-    ),
+    setSymbolRecognition: imagenetAt(SYMBOL_EMBED_SIZE, symbolRec),
+    colorBar: imagenetAt(COLOR_BAR_SIZE, colorBar),
   };
 
   const all = Object.values(runners);

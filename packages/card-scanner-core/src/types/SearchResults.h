@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace cardscanner {
 
@@ -18,6 +19,13 @@ struct CardSearchResult {
   /// Consecutive detections of this card; only ScanSession counts them.
   int detections = 0;
 };
+
+/// The top two matches score within `margin` of each other, so the top pick
+/// alone does not settle which card it is.
+inline bool isAmbiguous(const std::vector<CardSearchResult> &matches,
+                        double margin) {
+  return matches.size() > 1 && matches[0].score - matches[1].score <= margin;
+}
 
 /**
  * @struct SetSymbolInfo

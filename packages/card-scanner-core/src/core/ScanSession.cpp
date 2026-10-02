@@ -186,9 +186,7 @@ bool ScanSession::onScanResult(const ScanResult &result) {
   }
   lastSeen_ = Clock::now();
 
-  const bool ambiguousNow =
-      best->matches.size() > 1 &&
-      (top.score - best->matches[1].score) <= config_.ambiguityDelta;
+  const bool ambiguousNow = isAmbiguous(best->matches, config_.ambiguityDelta);
 
   if (candidate_ && candidate_->cardId == top.cardId) {
     candidate_->detections++;

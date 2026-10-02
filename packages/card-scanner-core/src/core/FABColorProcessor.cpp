@@ -5,8 +5,6 @@
 namespace cardscanner {
 namespace core {
 
-using cardscanner::LOG_LEVEL;
-
 FABColorInfo FABColorProcessor::processColorVariant(
     const cv::Mat &cardImage, const std::vector<CardSearchResult> &cardMatches,
     float disambiguationThreshold,
@@ -23,19 +21,7 @@ FABColorInfo FABColorProcessor::processColorVariant(
   }
 
   // Optimization: Only search for color variant if top 2 matches are close
-  // If top match is clearly the best (score difference > threshold), skip
-  // detection
-  if (cardMatches.size() >= 2) {
-    double top1Score = cardMatches[0].score;
-    double top2Score = cardMatches[1].score;
-    double scoreDifference = top1Score - top2Score;
-
-    // If difference exceeds threshold, top match is clearly best
-    if (scoreDifference > disambiguationThreshold) {
-      return FABColorInfo(); // Skip color detection
-    }
-  } else if (cardMatches.size() == 1) {
-    // Only one match - no need to disambiguate
+  if (!isAmbiguous(cardMatches, disambiguationThreshold)) {
     return FABColorInfo();
   }
 

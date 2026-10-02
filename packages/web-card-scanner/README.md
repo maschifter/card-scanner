@@ -4,7 +4,9 @@ Run the native card scanner pipeline in the browser on WebGPU. The package
 builds on TIE (`@tie/core` and `@tie/zoo`, vendored as tarballs in `vendor/`
 until the npm release). Every model runs in f16 with HWC4 conv storage. Your
 page downloads only the model weights (about 20 MB, cached in OPFS) and sends
-embeddings to a backend that owns the card databases.
+embeddings to a backend that owns the card databases. The cache is keyed by
+URL, so publish a new model set under a new `modelsBaseUrl`: files replaced in
+place never reach returning users.
 
 ## Quick start
 
@@ -108,12 +110,10 @@ The pipeline is cross-checked line by line against `card-scanner-core`:
 thresholds, decode, mask-to-quad including the topmost-edge orientation rule,
 dewarp, flip cache, candidate-game routing, accept gate, disambiguation, and
 sticky selection. Where the native C++ app and the training repo disagree,
-this port follows the training repo (`card_nexus/config.py`, `inference/`):
+this port follows the training repo (`card_nexus/config.py`, `inference/`),
+except the FaB pitch crop, which follows native:
 
-- FaB colour logits are `[blue, red, yellow]`. The C++ label array is
-  reversed against the deployed checkpoint's `class_to_idx`.
-- The FaB indicator crop is the top-left 13.4% × 9.6% of the dewarp, and a
-  colour read under 0.70 softmax confidence is discarded.
+- A FaB colour read under 0.70 softmax confidence is discarded.
 - The set-symbol crop grows the detected box by 10% before embedding.
 - Disambiguation fires on a top-2 margin of 0.05 or less (native default:
   0.02).

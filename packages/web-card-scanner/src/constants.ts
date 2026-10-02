@@ -49,10 +49,8 @@ export const DEFAULT_SYMBOL_DETECTION_THRESHOLD = 0.3;
  *  (card_nexus/inference/stages.py crop_symbol). */
 export const SYMBOL_CROP_PADDING = 0.1;
 
-/** FaB pitch-indicator crop: the top-left 100×100 px of a 745×1040 scan, as
- *  fractions of the dewarped card (card_nexus/inference/disambiguate.py). */
-export const FAB_INDICATOR_W = 100 / 745;
-export const FAB_INDICATOR_H = 100 / 1040;
+/** FaB pitch crop, as native (ScannerConfig.h). */
+export const DOTS_REGION_RATIO = 0.2;
 /** Reject a low-confidence colour read (card_nexus FAB_COLOUR_MIN_CONF). */
 export const FAB_COLOR_MIN_CONF = 0.7;
 

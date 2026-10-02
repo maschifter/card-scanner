@@ -1,9 +1,6 @@
 #include "CardEmbeddingModel.h"
 #include "../Constants.h"
 #include "Embedding.h"
-#include "DatabaseManager.h"
-#include <chrono>
-#include <iostream>
 #include <opencv2/opencv.hpp>
 
 namespace cardscanner {

@@ -69,7 +69,7 @@ function largestComponent(
 }
 
 /** Andrew monotone-chain convex hull, counter-clockwise. */
-export function convexHull(pts: Pt[]): Pt[] {
+function convexHull(pts: Pt[]): Pt[] {
   const sorted = [...pts].sort((a, b) => a.x - b.x || a.y - b.y);
   if (sorted.length <= 2) return sorted;
 
@@ -113,7 +113,7 @@ function pointLineDist(p: Pt, a: Pt, b: Pt): number {
 /** Closed-polygon Douglas-Peucker anchored at the two farthest-apart
  *  vertices; not a port of cv::approxPolyDP, so a vertex can land one or two
  *  cells from the native one. */
-export function approxPolyDP(poly: Pt[], eps: number): Pt[] {
+function approxPolyDP(poly: Pt[], eps: number): Pt[] {
   if (poly.length <= 4) return [...poly];
 
   // The two anchors: the farthest-apart pair of vertices.
@@ -158,7 +158,7 @@ export function approxPolyDP(poly: Pt[], eps: number): Pt[] {
 }
 
 /** Minimum-area enclosing rectangle of a convex hull (rotating edges). */
-export function minAreaRect(hull: Pt[]): Quad {
+function minAreaRect(hull: Pt[]): Quad {
   let best: Quad | null = null;
   let bestArea = Infinity;
 

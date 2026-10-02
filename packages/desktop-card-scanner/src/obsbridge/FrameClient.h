@@ -10,7 +10,6 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
-#include <span>
 #include <string>
 #include <thread>
 #include <vector>
@@ -41,10 +40,10 @@ public:
 
   /**
    * @brief Offers one frame. Copies and returns immediately.
+   * Dropped when not connected; a newer frame replaces one still waiting.
    * @param linesize bytes per row per plane; authoritative, buffers are padded
-   * @return false when dropped - not connected, or a newer frame was waiting.
    */
-  bool submit(const ipc::FrameHeader &header, const uint8_t *const *planes,
+  void submit(const ipc::FrameHeader &header, const uint8_t *const *planes,
               const uint32_t *linesize, const uint32_t *rows);
 
   /// Most recent detection reported by the server, in full-frame fractions.

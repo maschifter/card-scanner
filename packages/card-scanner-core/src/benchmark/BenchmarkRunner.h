@@ -2,13 +2,6 @@
 
 #include "../core/ScannerContext.h"
 #include "../types/BenchmarkRecord.h"
-#include "../types/ScannerConfig.h"
-#include <DatabaseManager.h>
-#include <models/CardEmbeddingModel.h>
-#include <models/YoloSegmentationModel.h>
-#include <models/fab/FABColorClassifier.h>
-#include <models/mtg/SetSymbolEmbedder.h>
-#include <models/mtg/SetSymbolYoloModel.h>
 #include <string>
 #include <vector>
 

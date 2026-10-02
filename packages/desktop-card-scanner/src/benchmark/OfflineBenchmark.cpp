@@ -1,6 +1,5 @@
 #include "OfflineBenchmark.h"
 
-#include <DatabaseManager.h>
 #include <ScannerRegistry.h>
 #include <types/BenchmarkRecord.h>
 

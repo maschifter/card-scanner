@@ -11,11 +11,9 @@ namespace cardscanner {
 using namespace facebook::jni;
 
 CardScannerInstallerModule::CardScannerInstallerModule(
-    jni::alias_ref<CardScannerInstallerModule::jhybridobject> &jThis,
     jsi::Runtime *jsiRuntime,
     const std::shared_ptr<facebook::react::CallInvoker> &jsCallInvoker)
-    : javaPart_(make_global(jThis)), jsiRuntime_(jsiRuntime),
-      jsCallInvoker_(jsCallInvoker) {}
+    : jsiRuntime_(jsiRuntime), jsCallInvoker_(jsCallInvoker) {}
 
 jni::local_ref<CardScannerInstallerModule::jhybriddata>
 CardScannerInstallerModule::initHybrid(
@@ -24,7 +22,7 @@ CardScannerInstallerModule::initHybrid(
         jsCallInvokerHolder) {
   auto jsCallInvoker = jsCallInvokerHolder->cthis()->getCallInvoker();
   auto rnRuntime = reinterpret_cast<jsi::Runtime *>(jsContext);
-  return makeCxxInstance(jThis, rnRuntime, jsCallInvoker);
+  return makeCxxInstance(rnRuntime, jsCallInvoker);
 }
 
 void CardScannerInstallerModule::setDbPath(jstring path) {

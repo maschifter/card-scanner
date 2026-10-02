@@ -2,17 +2,12 @@
 
 #include "ObjectBoxDB.h"
 #include "../Constants.h"
-#include "PathProvider.h"
 #include "objectbox-model.h" // Include the generated model header
 #include "objectbox.hpp"
 #include "schema.obx.hpp"
 #include <Log.h>
 #include <algorithm>
-#include <cassert>
-#include <cmath>
 #include <filesystem>
-#include <fstream>
-#include <sstream>
 
 using namespace cardscanner::constants;
 

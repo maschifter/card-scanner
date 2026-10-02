@@ -33,10 +33,6 @@ export interface CardDetection extends Box {
   maskH: number;
 }
 
-export interface ScoredBox extends Box {
-  score: number;
-}
-
 const DEFAULT_MASK_COEFFS = 32;
 const BOX_CHANNELS = 4;
 
@@ -174,25 +170,6 @@ function renderMask(
     }
   }
   return { mask, maskX: x1, maskY: y1, maskW, maskH };
-}
-
-export function decodeBoxes(
-  levels: readonly RawLevel[],
-  opts: { confThreshold: number; maxDet?: number },
-): ScoredBox[] {
-  const { confThreshold, maxDet = 8 } = opts;
-  const threshold = logit(confThreshold);
-
-  const out: ScoredBox[] = [];
-  for (const level of levels) {
-    const cells = level.h * level.w;
-    for (let i = 0; i < cells; i++) {
-      const score = channel(level, BOX_CHANNELS, i);
-      if (score < threshold) continue;
-      out.push({ ...cellBox(level, i), score: sigmoid(score) });
-    }
-  }
-  return out.sort((a, b) => b.score - a.score).slice(0, maxDet);
 }
 
 export function rawLevels(

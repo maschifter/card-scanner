@@ -1,6 +1,5 @@
 #include "DatabaseManager.h"
 #include "../Constants.h"
-#include "../database/objectbox-model.h"
 #include "../utils/PathUtils.h"
 #include "ObjectBoxDB.h"
 #include "PathProvider.h"

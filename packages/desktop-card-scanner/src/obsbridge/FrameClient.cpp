@@ -66,11 +66,11 @@ void FrameClient::stop() {
   connected_ = false;
 }
 
-bool FrameClient::submit(const ipc::FrameHeader &header, const uint8_t *const *planes,
+void FrameClient::submit(const ipc::FrameHeader &header, const uint8_t *const *planes,
                          const uint32_t *linesize, const uint32_t *rows) {
   if (!running_ || !connected_) {
     dropped_++;
-    return false;
+    return;
   }
 
   size_t payloadBytes = 0;
@@ -86,7 +86,6 @@ bool FrameClient::submit(const ipc::FrameHeader &header, const uint8_t *const *p
   out.version = ipc::kFrameVersion;
   out.token = token_;
   out.sequence = sequence_++;
-  out.planeCount = header.planeCount;
   out.payloadBytes = uint32_t(payloadBytes);
   for (uint32_t i = 0; i < header.planeCount; i++) {
     out.linesize[i] = linesize[i];
@@ -113,9 +112,7 @@ bool FrameClient::submit(const ipc::FrameHeader &header, const uint8_t *const *p
 
   if (evicted) {
     dropped_++;
-    return false;
   }
-  return true;
 }
 
 bool FrameClient::latestDetection(float &x, float &y, float &w, float &h,

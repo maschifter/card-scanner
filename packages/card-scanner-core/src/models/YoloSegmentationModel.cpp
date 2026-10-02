@@ -5,7 +5,6 @@
 #include "../utils/YoloPreprocessing.h"
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <opencv2/imgproc.hpp>
 #include <utility>
 
@@ -224,6 +223,10 @@ std::vector<Detection> YoloSegmentationModel::postprocess(
   // segment() already matched numFeatures against the tensor's channel dim
   int numPredictions = preds.size() / numFeatures;
 
+  // The letterbox to reverse
+  const auto lb = utils::YoloPreprocessing::letterboxPlacement(
+      originalImg.cols, originalImg.rows, imgsz_);
+
   // Data is stored as [feature][prediction] not [prediction][feature]
   // So we need to access it transposed
   for (int i = 0; i < numPredictions; i++) {
@@ -260,23 +263,12 @@ std::vector<Detection> YoloSegmentationModel::postprocess(
     float x2 = x + w / letterbox::PADDING_DIVISOR;
     float y2 = y + h / letterbox::PADDING_DIVISOR;
 
-    // Reverse letterbox transformation
-    // Calculate the scale and padding that was applied
-    float r = std::min(static_cast<float>(imgsz_) / originalImg.rows,
-                       static_cast<float>(imgsz_) / originalImg.cols);
-
-    // Calculate padding that was added
-    int newUnpadW = std::round(originalImg.cols * r);
-    int newUnpadH = std::round(originalImg.rows * r);
-    float dw = (imgsz_ - newUnpadW) / letterbox::PADDING_DIVISOR;
-    float dh = (imgsz_ - newUnpadH) / letterbox::PADDING_DIVISOR;
-
     // Remove padding offset and scale back to original size
     BBox box;
-    box.x1 = (x1 - dw) / r;
-    box.y1 = (y1 - dh) / r;
-    box.x2 = (x2 - dw) / r;
-    box.y2 = (y2 - dh) / r;
+    box.x1 = (x1 - lb.dw) / lb.r;
+    box.y1 = (y1 - lb.dh) / lb.r;
+    box.x2 = (x2 - lb.dw) / lb.r;
+    box.y2 = (y2 - lb.dh) / lb.r;
     box.conf = maxConf;
     box.cls = classId;
     box.class_confs = std::move(class_confs);

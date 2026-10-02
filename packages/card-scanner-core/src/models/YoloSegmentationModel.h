@@ -1,10 +1,8 @@
 #pragma once
 
-#include "Constants.h"
 #include "types/Detection.h"
 #include "types/ScannerConfig.h"
 #include "../inference/InferenceSession.h"
-#include <map>
 #include <memory>
 #include <opencv2/opencv.hpp>
 #include <span>

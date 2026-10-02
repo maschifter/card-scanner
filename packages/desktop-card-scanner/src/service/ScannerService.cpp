@@ -66,19 +66,16 @@ Diagnostics ScannerService::diagnostics() const {
   return diagnostics_;
 }
 
-bool ScannerService::submitFrame(Frame frame) {
-  bool evicted = false;
+void ScannerService::submitFrame(Frame frame) {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (shutdown_) {
-      return false;
+      return;
     }
-    evicted = mailbox_.has_value();
     // cv::Mat is refcounted, so ownership transfers without a pixel copy.
     mailbox_ = std::move(frame);
   }
   pending_.notify_one();
-  return !evicted;
 }
 
 void ScannerService::workerLoop() {

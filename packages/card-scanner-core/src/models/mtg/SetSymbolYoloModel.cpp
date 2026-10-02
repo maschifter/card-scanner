@@ -4,7 +4,6 @@
 #include "../../utils/YoloPreprocessing.h"
 #include <Log.h>
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <opencv2/imgproc.hpp>
 
@@ -60,18 +59,9 @@ SetSymbolYoloModel::postprocess(const cv::Mat &originalImg,
     numPredictions = preds.size() / 5;
   }
 
-  // Compute letterbox padding to reverse the transformation
-  // The letterbox adds padding to maintain aspect ratio
-  int origHeight = originalImg.rows;
-  int origWidth = originalImg.cols;
-  float r = std::min(static_cast<float>(imgsz_) / origHeight,
-                     static_cast<float>(imgsz_) / origWidth);
-
-  int newUnpadW = std::round(origWidth * r);
-  int newUnpadH = std::round(origHeight * r);
-
-  float dw = (imgsz_ - newUnpadW) / 2.0f;
-  float dh = (imgsz_ - newUnpadH) / 2.0f;
+  // The letterbox to reverse
+  const auto lb = utils::YoloPreprocessing::letterboxPlacement(
+      originalImg.cols, originalImg.rows, imgsz_);
 
   // Extract valid detections
   std::vector<SetSymbolBBox> boxes;
@@ -116,17 +106,17 @@ SetSymbolYoloModel::postprocess(const cv::Mat &originalImg,
     float y2_letterbox = cy + h / 2.0f;
 
     // Remove padding
-    float x1_unpadded = x1_letterbox - dw;
-    float y1_unpadded = y1_letterbox - dh;
-    float x2_unpadded = x2_letterbox - dw;
-    float y2_unpadded = y2_letterbox - dh;
+    float x1_unpadded = x1_letterbox - lb.dw;
+    float y1_unpadded = y1_letterbox - lb.dh;
+    float x2_unpadded = x2_letterbox - lb.dw;
+    float y2_unpadded = y2_letterbox - lb.dh;
 
     // Scale to original image size
     SetSymbolBBox bbox;
-    bbox.x1 = x1_unpadded / r;
-    bbox.y1 = y1_unpadded / r;
-    bbox.x2 = x2_unpadded / r;
-    bbox.y2 = y2_unpadded / r;
+    bbox.x1 = x1_unpadded / lb.r;
+    bbox.y1 = y1_unpadded / lb.r;
+    bbox.x2 = x2_unpadded / lb.r;
+    bbox.y2 = y2_unpadded / lb.r;
     bbox.confidence = conf;
 
     // Clamp to image bounds

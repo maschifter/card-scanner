@@ -10,11 +10,11 @@ namespace cardscanner {
 // FAB color classifier constants
 namespace fab_color {
 constexpr int INPUT_SIZE = 100; // Model input size (100x100)
-constexpr int NUM_CLASSES = 3;  // Yellow, Red, Blue
+constexpr int NUM_CLASSES = 3;  // Blue, Red, Yellow
 
 // Class label mapping: index -> color name
-// Model output: [yellow_logit, red_logit, blue_logit]
-constexpr const char *CLASS_LABELS[NUM_CLASSES] = {"yellow", "red", "blue"};
+// Model output: [blue_logit, red_logit, yellow_logit]
+constexpr const char *CLASS_LABELS[NUM_CLASSES] = {"blue", "red", "yellow"};
 } // namespace fab_color
 
 FABColorClassifier::FABColorClassifier(const std::string &modelPath) {

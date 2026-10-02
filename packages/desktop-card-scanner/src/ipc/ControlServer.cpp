@@ -5,7 +5,6 @@
 #include <ixwebsocket/IXWebSocketServer.h>
 
 #include <mutex>
-#include <set>
 #include <stdexcept>
 
 namespace cardscanner {

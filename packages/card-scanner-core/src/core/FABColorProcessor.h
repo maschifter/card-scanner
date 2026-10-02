@@ -2,7 +2,6 @@
 
 #include "../types/ScanResults.h"
 #include "../models/fab/FABColorClassifier.h"
-#include "../utils/ImageUtils.h"
 #include <opencv2/opencv.hpp>
 
 namespace cardscanner {

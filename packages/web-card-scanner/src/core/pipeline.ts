@@ -167,7 +167,6 @@ export class WebCardScanner {
         embedMs: acc.embed,
         searchMs: acc.search,
         stagesMs: acc.stages,
-        perCardMs: t1 - tDecode,
         totalMs: t1 - t0,
       },
     };

@@ -44,10 +44,6 @@ void BenchmarkCollector::endBenchmarkRecord() {
   g_isBenchmarkRecording = false;
 }
 
-bool BenchmarkCollector::isBenchmarkRecording() {
-  return g_isBenchmarkRecording;
-}
-
 void BenchmarkCollector::addMs(Stage stage, double ms) {
   if (!g_isBenchmarkRecording) {
     return;

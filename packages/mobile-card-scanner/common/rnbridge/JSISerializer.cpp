@@ -1,12 +1,9 @@
 #include "JSISerializer.h"
 #include "NitroSerializer.h"
-#include <Constants.h>
 #include <string>
 
 namespace cardscanner {
 namespace utils {
-
-using namespace cardscanner::constants;
 
 jsi::Object JSISerializer::serializeScanResult(jsi::Runtime &runtime,
                                                const ScanResult &result) {

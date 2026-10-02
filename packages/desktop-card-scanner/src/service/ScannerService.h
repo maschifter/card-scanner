@@ -91,8 +91,8 @@ public:
   /// listener can first fire.
   void start();
 
-  /// Offers a frame. Never blocks. False when dropped for a newer one.
-  bool submitFrame(Frame frame);
+  /// Offers a frame. Never blocks; a newer one replaces it while it waits.
+  void submitFrame(Frame frame);
 
   /// Stops the worker and joins it. Idempotent. Callers owning objects the
   /// listener captures must call this before those objects unwind.

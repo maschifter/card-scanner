@@ -1,3 +1,4 @@
+import { decodeDetections } from '@tie/zoo/yolo26';
 import {
   SYMBOL_CROP_PADDING,
   SYMBOL_EMBED_SIZE,
@@ -13,7 +14,7 @@ import {
   type Rect,
 } from '../inference/gpuPreprocess.ts';
 import type { Box } from '../utils/box.ts';
-import { decodeBoxes, rawLevels } from '../utils/decode.ts';
+import { rawLevels } from '../utils/decode.ts';
 import { l2Normalize } from '../utils/vector.ts';
 
 export async function matchSetSymbol(
@@ -29,8 +30,10 @@ export async function matchSetSymbol(
     YOLO_INPUT_SIZE,
   );
   const outs = await detector.run(dewarp, letterbox.placement);
-  const [top] = decodeBoxes(rawLevels(outs, YOLO_STRIDES), {
+  const [top] = decodeDetections(rawLevels(outs, YOLO_STRIDES), {
+    numClasses: 1,
     confThreshold: detectionThreshold,
+    maxDet: 1,
   });
   if (!top) return null;
 
