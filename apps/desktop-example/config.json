@@ -45,32 +45,32 @@
       "sorcery"
     ],
     "8": [
-      "cyberpunk"
+      "chrono-core"
     ],
     "9": [
+      "cyberpunk"
+    ],
+    "10": [
       "dbs-masters",
       "dbs-fusion"
     ],
-    "10": [
+    "11": [
       "eoa"
     ],
-    "11": [
+    "12": [
       "grand-archive"
     ],
-    "12": [
+    "13": [
       "gundam"
     ],
-    "13": [
+    "14": [
       "naruto-mythos"
     ],
-    "14": [
-      "swu"
-    ],
     "15": [
-      "chrono-core"
+      "palworld"
     ],
     "16": [
-      "palworld"
+      "swu"
     ]
   },
   "gameSpecificConfig": {
