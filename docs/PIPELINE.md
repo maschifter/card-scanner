@@ -395,7 +395,7 @@ std::vector<CardSearchResult> searchMultipleDatabases(
     const auto &gameToSearch = topGames[i];
 
     try {
-      GameStorePtr gameDb = dbManager.getOrCreateStore(gameToSearch);
+      GameStorePtr gameDb = dbManager.getStore(gameToSearch);
       if (!gameDb) continue;
 
       // Search in this game's database

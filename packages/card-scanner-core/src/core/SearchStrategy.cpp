@@ -43,7 +43,10 @@ std::vector<std::string>
 SearchStrategy::extractTopGames(const cardscanner::Detection &detection,
                                 const ScannerConfig &config) {
   // class_confs is sorted descending, so the first classes are the strongest
-  // and the first one below the floor ends the walk.
+  // and the first one below the floor ends the walk. Games that are not
+  // installed are skipped without taking a slot, so the next installed game
+  // moves up.
+  const auto installed = DatabaseManager::getInstance().getKnownGames();
   std::vector<std::string> databases;
   int classesTaken = 0;
 
@@ -58,21 +61,26 @@ SearchStrategy::extractTopGames(const cardscanner::Detection &detection,
     }
 
     auto it = config.gameClassMapping.find(classId);
-    if (it == config.gameClassMapping.end() || it->second.empty()) {
+    if (it == config.gameClassMapping.end()) {
       continue; // an unmapped class does not consume a slot
     }
 
+    bool tookGame = false;
     for (const auto &name : it->second) {
       if (static_cast<int>(databases.size()) >=
           constants::database::MAX_GAME_DATABASES) {
         break;
       }
-      if (std::find(databases.begin(), databases.end(), name) ==
-          databases.end()) {
+      if (installed.count(name) &&
+          std::find(databases.begin(), databases.end(), name) ==
+              databases.end()) {
         databases.push_back(name);
+        tookGame = true;
       }
     }
-    classesTaken++;
+    if (tookGame) {
+      classesTaken++;
+    }
   }
 
   return databases;
@@ -127,8 +135,7 @@ std::vector<CardSearchResult> SearchStrategy::searchMultipleDatabases(
 
     try {
       GameStorePtr gameDb =
-          cardscanner::DatabaseManager::getInstance().getOrCreateStore(
-              gameToSearch);
+          cardscanner::DatabaseManager::getInstance().getStore(gameToSearch);
       if (!gameDb) {
         continue;
       }

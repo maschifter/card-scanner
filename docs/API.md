@@ -294,7 +294,7 @@ The package provides a CRUD-like JSI interface for managing game databases. All 
 
 ### listDatabases
 
-Lists all installed game databases with full metadata.
+Lists all installed game databases with full metadata. A game counts as installed when its database holds at least one card.
 
 ```typescript
 function listDatabases(): Promise<DatabaseInfo[]>;
@@ -332,7 +332,7 @@ function getDatabaseInfo(gameName: string): Promise<DatabaseInfo | null>;
 
 **Returns:**
 
-- `Promise<DatabaseInfo | null>` - Database info, or null if not found
+- `Promise<DatabaseInfo | null>` - Database info, or null if not found. A database file that holds no cards reports `cardCount: 0`; the game is not installed and the scanner doesn't search it.
 
 **Example:**
 
@@ -775,9 +775,10 @@ When such a class fires, **every listed database is searched** and the highest-s
 
 This is why the database count can exceed the model's class count: the current model has 17 classes but 19 databases.
 
-Two consequences worth knowing:
+Three consequences worth knowing:
 
 - **The first name is canonical.** It is what `predictedGameName` reports, since the model only ever predicted the class. Which sibling actually wins is decided by score and surfaces as `gameName`, so the ordering is cosmetic.
+- **Only installed games are searched.** A game whose database is missing or holds no cards is skipped without taking a class or database slot, so the next installed game by confidence takes its place. A match from that game is accepted only if it clears its threshold; otherwise `predictedGameName` still reports the model's top game, so your app can offer to download it.
 - **Databases searched per detection are capped at 4** (`MAX_GAME_DATABASES`), while the _class_ cap stays 3 (`MAX_TOP_PREDICTIONS`). Each database costs a full embedding pass plus a vector search, so when two merged classes both land in the top 3, the lowest-ranked names are dropped rather than searched.
 
 **Current Mapping (17 classes → 19 databases):**

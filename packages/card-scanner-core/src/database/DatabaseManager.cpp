@@ -37,18 +37,20 @@ std::set<std::string> DatabaseManager::getKnownGames() const {
   return knownGames_;
 }
 
-GameStorePtr DatabaseManager::getOrCreateStore(const std::string &gameName) {
+GameStorePtr DatabaseManager::getStore(const std::string &gameName) {
   std::lock_guard<std::mutex> lock(mutex_);
-  knownGames_.insert(gameName);
+  if (!knownGames_.count(gameName)) {
+    return nullptr;
+  }
   auto it = activeStores_.find(gameName);
   if (it != activeStores_.end()) {
-    return it->second; // Store found in activeStores - Return it
+    return it->second;
   }
 
-  const std::string path = resolvePathFor(gameName);
-  GameStorePtr newGameStore = std::make_shared<ObjectBoxDB>(path);
-  activeStores_.emplace(gameName, newGameStore);
-  return newGameStore;
+  // Closed after a rolled-back swap; the file is still there.
+  GameStorePtr store = std::make_shared<ObjectBoxDB>(resolvePathFor(gameName));
+  activeStores_.emplace(gameName, store);
+  return store;
 }
 
 void DatabaseManager::scanForExistingStores() {
@@ -77,9 +79,28 @@ void DatabaseManager::scanForExistingStores() {
 
         fs::path dataFilePath = getStorePath(gameName);
 
-        if (fs::exists(dataFilePath) && fs::is_regular_file(dataFilePath)) {
+        if (!fs::exists(dataFilePath) || !fs::is_regular_file(dataFilePath)) {
+          continue;
+        }
 
-          knownGames_.insert(gameName);
+        // Older SDK versions left an empty store behind for every game a
+        // search or lookup touched, so the file alone does not mean the game
+        // is installed. Installed stores stay open for the search.
+        try {
+          auto it = activeStores_.find(gameName);
+          GameStorePtr store =
+              it != activeStores_.end()
+                  ? it->second
+                  : std::make_shared<ObjectBoxDB>(resolvePathFor(gameName));
+          if (!store->is_empty()) {
+            knownGames_.insert(gameName);
+            activeStores_[gameName] = store;
+          } else {
+            activeStores_.erase(gameName);
+          }
+        } catch (const std::exception &e) {
+          log(LOG_LEVEL::Error, "[CardScanner]", "opening the database for",
+              gameName, "failed:", e.what());
         }
       }
     }
@@ -126,7 +147,7 @@ void DatabaseManager::closeSetSymbolStore() {
 }
 
 // Held under mutex_ for the whole close -> rename -> reopen sequence, so a
-// concurrent getOrCreateStore cannot reopen the old file mid-swap.
+// concurrent getStore cannot reopen the old file mid-swap.
 bool DatabaseManager::swapDatabaseFile(const std::string &gameName,
                                        const std::string &sourcePath) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -203,7 +224,7 @@ bool DatabaseManager::swapDatabaseFile(const std::string &gameName,
 
 bool DatabaseManager::cardIdExists(const std::string &gameName,
                                     const std::string &cardId) {
-  GameStorePtr store = getOrCreateStore(gameName);
+  GameStorePtr store = getStore(gameName);
   if (store) {
     return store->card_id_exists(cardId);
   }

@@ -80,7 +80,7 @@ GameDbInfo readGameDbInfo(DatabaseManager &dbManager,
   GameDbInfo info;
   info.name = gameName;
   info.path = dbManager.getStorePath(gameName);
-  if (GameStorePtr db = dbManager.getOrCreateStore(gameName)) {
+  if (GameStorePtr db = dbManager.getStore(gameName)) {
     info.cardCount = db->get_card_count();
     info.creationTimestamp = db->get_metadata_value("creation_timestamp");
   }

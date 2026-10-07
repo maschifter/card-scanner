@@ -21,7 +21,8 @@ using GameStorePtr = std::shared_ptr<ObjectBoxDB>;
  *
  * Key Features:
  * - Thread-safe singleton using Meyer's pattern (C++11 guarantees)
- * - Lazy initialization - databases opened on first access
+ * - Installed games only - a game counts as installed when its store holds
+ *   cards, and no store is ever created for any other game
  * - Store management - open/close/swap operations
  * - Auto-discovery - scans filesystem for existing databases
  *
@@ -37,7 +38,7 @@ using GameStorePtr = std::shared_ptr<ObjectBoxDB>;
  * Usage:
  * @code
  * auto& manager = DatabaseManager::getInstance();
- * GameStorePtr mtgDb = manager.getOrCreateStore("mtg");
+ * GameStorePtr mtgDb = manager.getStore("mtg");
  * GameStorePtr setSymbolDb = manager.getSetSymbolStore();
  * @endcode
  */
@@ -76,7 +77,7 @@ public:
   std::string resolvePathFor(const std::string &gameName) const;
 
   /**
-   * @brief Returns set of all known games discovered during initialization
+   * @brief Returns the installed games: those whose store holds cards
    * @return Set of game names (e.g., {"mtg", "pokemon"})
    */
   std::set<std::string> getKnownGames() const;
@@ -84,18 +85,18 @@ public:
   // --- Game Access ---
 
   /**
-   * @brief Gets or creates a database store for the specified game
+   * @brief Returns the database store for an installed game
    * @param gameName Name of the game (e.g., "mtg", "pokemon")
-   * @return The ObjectBoxDB instance, or nullptr on failure.
+   * @return The ObjectBoxDB instance, or nullptr when the game is not
+   *   installed.
    *
-   * Opens the database if not already open. Creates the directory structure
-   * if it doesn't exist. Thread-safe.
+   * Opens the database if not already open. Never creates a store. Thread-safe.
    *
    * Hold on to what you get back for as long as you are reading from it. The
    * database stays alive while anyone still has it, so closing or swapping it
    * elsewhere cannot pull it away mid-search.
    */
-  GameStorePtr getOrCreateStore(const std::string &gameName);
+  GameStorePtr getStore(const std::string &gameName);
 
   // --- Set Symbol Access ---
 
@@ -107,7 +108,7 @@ public:
    * recognition via embedding search.
    *
    * Hold on to what you get back for as long as you are reading from it, same
-   * as getOrCreateStore().
+   * as getStore().
    */
   GameStorePtr getSetSymbolStore();
 
@@ -124,8 +125,9 @@ public:
   /**
    * @brief Scans filesystem for existing database directories
    *
-   * Populates knownGames_ with all games that have database directories.
-   * Called automatically during initialization.
+   * Populates knownGames_ with the games whose store holds cards, opening
+   * each store to count them, and closes the empty ones. Called
+   * automatically during initialization and after a swap.
    */
   void scanForExistingStores();
 

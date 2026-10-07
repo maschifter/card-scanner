@@ -31,6 +31,9 @@ public:
   // Get total card count
   uint64_t get_card_count();
 
+  // True when the store holds no cards; cheaper than counting them
+  bool is_empty();
+
   // Get metadata value for a given key
   std::string get_metadata_value(const std::string &key);
 

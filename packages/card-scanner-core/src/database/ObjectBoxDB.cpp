@@ -154,6 +154,11 @@ uint64_t ObjectBoxDB::get_card_count() {
   return box.count();
 }
 
+bool ObjectBoxDB::is_empty() {
+  obx::Box<Card> box(*store);
+  return box.isEmpty();
+}
+
 std::string ObjectBoxDB::get_metadata_value(const std::string &key) {
   try {
     obx::Box<Metadata> box(*store);
