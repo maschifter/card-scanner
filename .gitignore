@@ -101,9 +101,6 @@ apps/desktop-example/assets/cache/
 
 # custom
 *.tgz
-# ...except the vendored TIE packages the root resolutions point at. This
-# negation must stay after the *.tgz rule above: the last match wins.
-!vendor/*.tgz
 Makefile
 
 .claude

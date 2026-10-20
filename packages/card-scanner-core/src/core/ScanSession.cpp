@@ -198,6 +198,9 @@ bool ScanSession::onScanResult(const ScanResult &result) {
     ambiguous_ = ambiguousNow;
     status_ = Status::Detecting;
   }
+  if (!best->language.isEmpty()) {
+    candidate_->language = best->language;
+  }
 
   if (candidate_->detections < requiredDetectionsLocked()) {
     status_ = Status::Detecting;

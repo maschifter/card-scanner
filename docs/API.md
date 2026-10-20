@@ -32,6 +32,7 @@ Complete API reference for `@cardnexus/card-scanner`.
     - [AlternativeMatch](#alternativematch)
     - [SetSymbolInfo](#setsymbolinfo)
     - [FABColorInfo](#fabcolorinfo)
+    - [CardLanguageInfo](#cardlanguageinfo)
     - [DatabaseInfo](#databaseinfo)
     - [InitializationResult](#initializationresult)
     - [SwapResult](#swapresult)
@@ -447,6 +448,7 @@ interface ScannerConfig {
 
   // Optional: Features
   captureImage?: boolean; // Save cropped images
+  languageModelPath?: string; // Print-language classifier; unset = no `language` on cards
   disambiguationThreshold?: number; // Min score diff for game-specific detection (default: 0.02)
   minGameConfidence?: number; // Min YOLO class confidence for a game's DB to be searched (default: 0.1)
 
@@ -569,6 +571,7 @@ interface DetectedCard {
   // Game-specific metadata
   setSymbol?: SetSymbolInfo; // MTG: set symbol detection
   fabColor?: FABColorInfo; // FAB: color variant detection
+  language?: CardLanguageInfo; // Any game: print language of a matched card
 }
 ```
 
@@ -639,6 +642,19 @@ Flesh and Blood color variant detection result.
 interface FABColorInfo {
   color: string; // "red", "yellow", or "blue"
   similarity: number; // Match confidence [0.0, 1.0]
+}
+```
+
+---
+
+### CardLanguageInfo
+
+Print language of a matched card, absent when the model is not confident.
+
+```typescript
+interface CardLanguageInfo {
+  code: string; // "de", "en", "es", "fr", "it", "ja", "ko", "pt", "ru", "zhs" or "zht"
+  similarity: number; // Model confidence [0.0, 1.0]
 }
 ```
 

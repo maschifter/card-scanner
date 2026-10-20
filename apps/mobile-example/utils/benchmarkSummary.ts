@@ -46,7 +46,7 @@ const STAGE_FIELDS: [label: string, key: keyof BenchmarkRecord][] = [
   ['preproc', 'preprocMs'],
 ];
 
-/** Per-step fields of the optional, game-specific models. */
+/** Per-step fields of the optional models. */
 const SET_SYMBOL_FIELDS: [label: string, key: keyof BenchmarkRecord][] = [
   ['yolo', 'setSymbolYoloMs'],
   ['preproc', 'setSymbolPreprocMs'],
@@ -56,6 +56,11 @@ const SET_SYMBOL_FIELDS: [label: string, key: keyof BenchmarkRecord][] = [
 
 const FAB_COLOR_FIELDS: [label: string, key: keyof BenchmarkRecord][] = [
   ['classify', 'fabColorClassifyMs'],
+];
+
+const LANGUAGE_FIELDS: [label: string, key: keyof BenchmarkRecord][] = [
+  ['preproc', 'languagePreprocMs'],
+  ['classify', 'languageClassifyMs'],
 ];
 
 export interface StageStat {
@@ -273,6 +278,7 @@ export const summarize = (records: BenchmarkRecord[]): BenchmarkSummary => {
         SET_SYMBOL_FIELDS,
       ),
       extraModelStat('FAB color', pipeline, 'fabColorRan', FAB_COLOR_FIELDS),
+      extraModelStat('Language', pipeline, 'languageRan', LANGUAGE_FIELDS),
     ].filter((m): m is ExtraModelStat => m !== null),
 
     games: gameStats(runs, pipeline),

@@ -4,9 +4,9 @@
  *  Input [3,224,224] ImageNet-normalized; output [1,256], L2-normalize on
  *  the CPU after readback. */
 
-import { add, nn, toHwc4, type Value } from '@tie/core';
+import { add, nn, toHwc4, type Value } from '../runntime.ts';
 import { ConvUnit, type ConvSpec, type Lin, type Stage } from './layers.ts';
-import { globalAvgPool, relu, toRow } from './ops.ts';
+import { globalAvgPool, toRow } from './ops.ts';
 
 const { Conv2d, Linear, Module, ModuleList } = nn;
 
@@ -29,15 +29,15 @@ class Uib extends Module {
   constructor(private readonly spec: UibSpec) {
     super();
     if (spec.dwStart) this.dw_start = new ConvUnit(spec.dwStart);
-    this.pw_exp = new ConvUnit(spec.pwExp);
-    if (spec.dwMid) this.dw_mid = new ConvUnit(spec.dwMid);
+    this.pw_exp = new ConvRelu(spec.pwExp);
+    if (spec.dwMid) this.dw_mid = new ConvRelu(spec.dwMid);
     this.pw_proj = new ConvUnit(spec.pwProj);
   }
 
   forward(x: Value): Value {
     let y = this.dw_start ? this.dw_start.forward(x) : x;
-    y = relu(this.pw_exp.forward(y));
-    if (this.dw_mid) y = relu(this.dw_mid.forward(y));
+    y = this.pw_exp.forward(y);
+    if (this.dw_mid) y = this.dw_mid.forward(y);
     y = this.pw_proj.forward(y);
     return this.spec.residual ? add(y, x) : y;
   }
@@ -45,8 +45,8 @@ class Uib extends Module {
 
 /** Conv + ReLU stage (timm ConvBnAct → `.conv` key). */
 class ConvRelu extends ConvUnit {
-  override forward(x: Value): Value {
-    return relu(super.forward(x));
+  constructor(spec: ConvSpec) {
+    super({ ...spec, activation: 'relu' });
   }
 }
 
@@ -88,6 +88,7 @@ class Backbone extends Module {
     kernelSize: 3,
     stride: 2,
     padding: 1,
+    activation: 'relu',
   });
   readonly blocks = new ModuleList<nn.AnyModule>([
     new ModuleList([
@@ -116,15 +117,18 @@ class Backbone extends Module {
     ]),
     new ModuleList([new ConvRelu({ in: 128, out: 960, k: 1 })]),
   ]);
-  readonly conv_head = new Conv2d(960, 1280, { kernelSize: 1 });
+  readonly conv_head = new Conv2d(960, 1280, {
+    kernelSize: 1,
+    activation: 'relu',
+  });
 
   forward(x: Value): Value {
-    let y = relu(this.conv_stem.forward(toHwc4(x)));
+    let y = this.conv_stem.forward(toHwc4(x));
     for (const stage of this.blocks.items) {
       y = (stage as Stage).forward(y);
     }
     y = globalAvgPool(y);
-    return relu(this.conv_head.forward(y));
+    return this.conv_head.forward(y);
   }
 }
 

@@ -277,6 +277,8 @@ const VisionCameraDebug = () => {
                           `${(currentCard.confidenceScore * 100).toFixed(1)}%`}
                         {currentCard.setSymbol?.setCode &&
                           ` • ${currentCard.setSymbol.setCode.toUpperCase()}`}
+                        {currentCard.language &&
+                          ` • ${currentCard.language.code.toUpperCase()} ${(currentCard.language.similarity * 100).toFixed(1)}%`}
                       </Text>
                     )}
                   </View>

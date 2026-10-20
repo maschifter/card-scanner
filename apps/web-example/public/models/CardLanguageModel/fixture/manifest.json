@@ -1,0 +1,29 @@
+{
+  "input": {
+    "name": "input",
+    "shape": [
+      1,
+      3,
+      512,
+      256
+    ]
+  },
+  "outputs": [
+    {
+      "name": "card_probs",
+      "shape": [
+        1,
+        10
+      ],
+      "file": "output.card_probs.bin"
+    },
+    {
+      "name": "zh_traditional_prob",
+      "shape": [
+        1,
+        1
+      ],
+      "file": "output.zh_traditional_prob.bin"
+    }
+  ]
+}

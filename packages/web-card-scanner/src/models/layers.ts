@@ -2,18 +2,14 @@
  *  mirror the checkpoint keys exactly (see
  *  apps/web-example/tools/export-web-models.py — the exporter lifts BN-folded
  *  weights out of the ONNX graph, so every conv here carries a bias and no
- *  BatchNorm module exists at runtime).
- *
- *  TIE's conv kernel fuses SiLU and nothing else, so activations are applied
- *  after the conv from `ops.ts` rather than through the `act` option. */
+ *  BatchNorm module exists at runtime). */
 
-import { mul, nn, type Value } from '@tie/core';
+import { nn, type Value } from '../runntime.ts';
 import {
   broadcastGate,
   dims3,
   globalAvgPool,
-  hardsigmoid,
-  relu,
+  timesHardsigmoid,
 } from './ops.ts';
 
 const { Conv2d, Module } = nn;
@@ -33,6 +29,7 @@ export interface ConvSpec {
   k: number;
   stride?: number;
   groups?: number;
+  activation?: 'relu';
 }
 
 export function conv2d(spec: ConvSpec): Conv {
@@ -41,6 +38,7 @@ export function conv2d(spec: ConvSpec): Conv {
     stride: spec.stride ?? 1,
     padding: Math.floor(spec.k / 2),
     groups: spec.groups ?? 1,
+    activation: spec.activation,
   });
 }
 
@@ -68,7 +66,12 @@ export class SqueezeExcite extends Module {
 
   constructor(channels: number, reduced: number) {
     super();
-    this.conv_reduce = conv2d({ in: channels, out: reduced, k: 1 });
+    this.conv_reduce = conv2d({
+      in: channels,
+      out: reduced,
+      k: 1,
+      activation: 'relu',
+    });
     this.conv_expand = conv2d({ in: reduced, out: channels, k: 1 });
   }
 
@@ -80,8 +83,8 @@ export class SqueezeExcite extends Module {
       );
     }
     const pooled = globalAvgPool(x);
-    const squeezed = relu(this.conv_reduce.forward(pooled));
-    const gate = hardsigmoid(this.conv_expand.forward(squeezed));
-    return mul(x, broadcastGate(gate, h));
+    const squeezed = this.conv_reduce.forward(pooled);
+    const gate = this.conv_expand.forward(squeezed);
+    return timesHardsigmoid(x, broadcastGate(gate, h));
   }
 }

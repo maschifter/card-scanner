@@ -3,7 +3,7 @@
  *  Input [3,96,96] ImageNet-normalized; output [1,128], L2-normalize on the
  *  CPU after readback. */
 
-import { add, nn, toHwc4, type Value } from '@tie/core';
+import { add, nn, toHwc4, type Value } from '../runntime.ts';
 import {
   conv2d,
   ConvUnit,
@@ -14,15 +14,9 @@ import {
   type Lin,
   type Stage,
 } from './layers.ts';
-import { globalAvgPool, hardswish, relu, toRow } from './ops.ts';
+import { globalAvgPool, hardswish, toRow } from './ops.ts';
 
 const { Conv2d, Linear, Module, ModuleList } = nn;
-
-/** Apply the block's activation (TIE fuses SiLU only, so these ride after
- *  the conv — see ops.ts). */
-function activate(x: Value, act: ConvAct): Value {
-  return act === 'relu' ? relu(x) : hardswish(x);
-}
 
 interface IrSpec {
   pw: ConvSpec;
@@ -48,13 +42,15 @@ class InvertedResidual extends Module {
     const mid = spec.pw.out;
     const stride = spec.dwStride ?? 1;
     this.act = spec.act;
-    this.conv_pw = conv2d(spec.pw);
+    const activation = spec.act === 'relu' ? 'relu' : undefined;
+    this.conv_pw = conv2d({ ...spec.pw, activation });
     this.conv_dw = conv2d({
       in: mid,
       out: mid,
       k: spec.dwK,
       stride,
       groups: mid,
+      activation,
     });
     if (spec.seReduced) this.se = new SqueezeExcite(mid, spec.seReduced);
     this.conv_pwl = conv2d(spec.pwl);
@@ -62,8 +58,10 @@ class InvertedResidual extends Module {
   }
 
   forward(x: Value): Value {
-    let y = activate(this.conv_pw.forward(x), this.act);
-    y = activate(this.conv_dw.forward(y), this.act);
+    let y = this.conv_pw.forward(x);
+    if (this.act === 'hardswish') y = hardswish(y);
+    y = this.conv_dw.forward(y);
+    if (this.act === 'hardswish') y = hardswish(y);
     if (this.se) y = this.se.forward(y);
     y = this.conv_pwl.forward(y);
     return this.residual ? add(y, x) : y;
@@ -73,12 +71,19 @@ class InvertedResidual extends Module {
 /** timm DepthwiseSeparableConv (first mnv3 block):
  *  conv_dw(+ReLU) → se → conv_pw. */
 class DsConv extends Module {
-  readonly conv_dw = conv2d({ in: 16, out: 16, k: 3, stride: 2, groups: 16 });
+  readonly conv_dw = conv2d({
+    in: 16,
+    out: 16,
+    k: 3,
+    stride: 2,
+    groups: 16,
+    activation: 'relu',
+  });
   readonly se = new SqueezeExcite(16, 8);
   readonly conv_pw = conv2d({ in: 16, out: 16, k: 1 });
 
   forward(x: Value): Value {
-    const y = this.se.forward(relu(this.conv_dw.forward(x)));
+    const y = this.se.forward(this.conv_dw.forward(x));
     return this.conv_pw.forward(y);
   }
 }

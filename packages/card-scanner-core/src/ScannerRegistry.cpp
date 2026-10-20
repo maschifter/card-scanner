@@ -4,6 +4,7 @@
 #include "benchmark/BenchmarkRunner.h"
 #include "core/CardSelection.h"
 #include "models/CardEmbeddingModel.h"
+#include "models/CardLanguageModel.h"
 #include "models/YoloSegmentationModel.h"
 #include "models/fab/FABColorClassifier.h"
 #include "models/mtg/SetSymbolEmbedder.h"
@@ -29,6 +30,8 @@ std::shared_ptr<cardscanner::SetSymbolEmbedder>
     ScannerRegistry::setSymbolEmbedder_ = nullptr;
 std::shared_ptr<cardscanner::FABColorClassifier>
     ScannerRegistry::fabColorClassifier_ = nullptr;
+std::shared_ptr<cardscanner::CardLanguageModel>
+    ScannerRegistry::languageModel_ = nullptr;
 std::mutex ScannerRegistry::modelMutex_;
 std::shared_timed_mutex ScannerRegistry::pipelineMutex_;
 std::atomic<bool> ScannerRegistry::benchmarkRunning_{false};
@@ -124,6 +127,7 @@ void ScannerRegistry::resetModelsLocked() {
   setSymbolYoloModel_.reset();
   setSymbolEmbedder_.reset();
   fabColorClassifier_.reset();
+  languageModel_.reset();
 
   try {
     cardscanner::DatabaseManager::getInstance().closeSetSymbolStore();
@@ -161,6 +165,11 @@ void ScannerRegistry::initializeModels() {
     if (!config_.embeddingModelPath.empty()) {
       embeddingModel_ = std::make_shared<cardscanner::CardEmbeddingModel>(
           config_.embeddingModelPath);
+    }
+
+    if (!config_.languageModelPath.empty()) {
+      languageModel_ = std::make_shared<cardscanner::CardLanguageModel>(
+          config_.languageModelPath);
     }
 
     // Load game-specific configurations
@@ -235,6 +244,7 @@ core::ScannerContext ScannerRegistry::getScannerContext() {
           setSymbolYoloModel_,
           setSymbolEmbedder_,
           fabColorClassifier_,
+          languageModel_,
           gameEmbeddingModels_};
 }
 

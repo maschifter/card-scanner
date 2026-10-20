@@ -83,7 +83,7 @@ void ScannerService::workerLoop() {
   auto perfWindowStart = std::chrono::steady_clock::now();
   int perfFrames = 0;
   double perfYolo = 0, perfPreproc = 0, perfEmbed = 0, perfDbSearch = 0,
-         perfTotal = 0;
+         perfLanguage = 0, perfTotal = 0;
   auto lastFrameAt = std::chrono::steady_clock::now();
 
   while (true) {
@@ -139,6 +139,9 @@ void ScannerService::workerLoop() {
             diag.embedMs = BenchmarkCollector::getBenchmarkedMs(Stage::Embed);
             diag.dbSearchMs =
                 BenchmarkCollector::getBenchmarkedMs(Stage::DbSearch);
+            diag.languageMs =
+                BenchmarkCollector::getBenchmarkedMs(Stage::LanguagePreproc) +
+                BenchmarkCollector::getBenchmarkedMs(Stage::LanguageClassify);
           }
           if (const ProcessedCard *best = bestVisibleCard(result)) {
             diag.boxX = float(best->boundingBox.x) / float(job.image.cols);
@@ -168,6 +171,7 @@ void ScannerService::workerLoop() {
             perfPreproc += diag.preprocMs;
             perfEmbed += diag.embedMs;
             perfDbSearch += diag.dbSearchMs;
+            perfLanguage += diag.languageMs;
             perfTotal += diag.processingMs;
           }
         }
@@ -196,12 +200,14 @@ void ScannerService::workerLoop() {
              << std::setprecision(1) << perfYolo / perfFrames << "  preproc "
              << perfPreproc / perfFrames << "  embed "
              << perfEmbed / perfFrames << "  dbSearch "
-             << perfDbSearch / perfFrames << "  total "
+             << perfDbSearch / perfFrames << "  language "
+             << perfLanguage / perfFrames << "  total "
              << perfTotal / perfFrames;
         log(LOG_LEVEL::Info, "[Perf]", line.str());
         perfWindowStart = now;
         perfFrames = 0;
-        perfYolo = perfPreproc = perfEmbed = perfDbSearch = perfTotal = 0;
+        perfYolo = perfPreproc = perfEmbed = perfDbSearch = perfLanguage =
+            perfTotal = 0;
       }
     }
 

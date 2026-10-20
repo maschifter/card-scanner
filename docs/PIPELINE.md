@@ -25,7 +25,7 @@ The scanner processes camera frames through a **5-stage pipeline**:
 2. **Image Extraction** - Crops cards from frame
 3. **Low-Light Enhancement** - Brightens dark images (optional)
 4. **Card Recognition** - Searches databases for matches
-5. **Game-Specific Metadata** - Detects set symbols (MTG) or colors (FAB)
+5. **Game-Specific Metadata** - Detects set symbols (MTG), colors (FAB) and the print language
 
 **Key Features:**
 
@@ -122,6 +122,9 @@ The scanner processes camera frames through a **5-stage pipeline**:
 │      ├─> Check if top 2 matches are close                   │
 │      ├─> Extract top-left region (3-dot indicator)          │
 │      └─> Classify color (red/yellow/blue)                   │
+│                                                              │
+│  5C. Print Language (if languageModelPath is set)           │
+│      └─> Classify the print language of the whole card      │
 └──────────┬───────────────────────────────────────────────────┘
            │
            ▼
@@ -634,6 +637,16 @@ cv::Mat extractDotsRegion(const cv::Mat &cardImage,
 
 - Input: Top-left square region
 - Output: Color ("red", "yellow", "blue") + similarity
+
+---
+
+### 5C. Print Language
+
+**Source:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp) → [`CardLanguageModel.cpp`](../packages/card-scanner-core/src/models/CardLanguageModel.cpp)
+
+Runs on every matched card of any game when `languageModelPath` is set.
+
+- Output: Language code ("en", "ja", "zhs", ...) + similarity, or none when the model is not confident
 
 ---
 

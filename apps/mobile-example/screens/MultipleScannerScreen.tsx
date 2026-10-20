@@ -167,6 +167,12 @@ const MultipleScannerScreen = () => {
                       Match Confidence: {pct(card.confidenceScore)}
                     </Text>
                   )}
+                  {card.language && (
+                    <Text style={styles.confidenceText}>
+                      Language: {card.language.code.toUpperCase()} (
+                      {pct(card.language.similarity)})
+                    </Text>
+                  )}
 
                   {card.capturedImage && (
                     <Image

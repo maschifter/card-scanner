@@ -16,7 +16,7 @@ namespace benchmark {
 
 /**
  * @enum Stage
- * @brief Contains stages of pipeline steps measured in time and FAB/MTG-specific stages.
+ * @brief Contains stages of pipeline steps measured in time and FAB/MTG/language stages.
  */
 enum class Stage : uint8_t {
   YoloSegmentation,
@@ -32,6 +32,9 @@ enum class Stage : uint8_t {
 
   FabColorPreproc,
   FabColorClassify,
+
+  LanguagePreproc,
+  LanguageClassify,
 
   _Count,
 };

@@ -458,11 +458,18 @@ const VisionCameraScanner = () => {
 
                   {/* Card Info */}
                   <View style={styles.cardInfoOverlay}>
-                    <Text style={styles.cardSetText}>
+                    <Text style={styles.cardSetText} numberOfLines={1}>
                       #{index + 1}{' '}
                       {card.setSymbol?.setCode.toUpperCase() ||
                         card.gameName?.toUpperCase()}
                     </Text>
+                    {card.language && (
+                      <View style={styles.languageBadge}>
+                        <Text style={[styles.cardSetText, styles.languageText]}>
+                          {card.language.code.toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 </View>
               ))}
@@ -730,9 +737,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cardSetText: {
+    flexShrink: 1,
     color: '#fff',
     fontSize: 9,
     fontWeight: '600',
+  },
+  languageBadge: {
+    marginLeft: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 4,
+    paddingHorizontal: 4,
+  },
+  languageText: {
+    fontWeight: 'bold',
   },
   button: {
     backgroundColor: '#2196F3',

@@ -55,6 +55,10 @@ void printCard(const cardscanner::ProcessedCard &card, size_t index) {
     std::cout << "  colour:    " << card.fabColor.color << " ("
               << card.fabColor.similarity << ")\n";
   }
+  if (!card.language.isEmpty()) {
+    std::cout << "  language:  " << card.language.code << " ("
+              << card.language.similarity << ")\n";
+  }
 }
 
 /// Config -> data paths -> models, the order both modes need: pathprovider

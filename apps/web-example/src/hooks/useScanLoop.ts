@@ -74,6 +74,7 @@ export function useScanLoop(
     busyRef.current = true;
     try {
       const result = await scanner.scan(src);
+      if (!result) return;
       const views = await toViews(result.cards);
       setCards((prev) => (releaseThumbs(prev), views));
       setTimings(result.timings);
@@ -92,15 +93,20 @@ export function useScanLoop(
     }
   }, [scanner, sourceRef, onError]);
 
-  // The scan itself is the pacer; the setTimeout yield keeps input events
-  // and the rAF painter responsive between scans.
+  // Keep-latest, as the desktop server: a frame that came mid-scan goes next.
   useEffect(() => {
     if (!looping) return;
     let active = true;
     (async () => {
       while (active) {
+        const src = sourceRef.current;
+        const nextFrame = new Promise((r) =>
+          src instanceof HTMLVideoElement
+            ? src.requestVideoFrameCallback(r)
+            : setTimeout(r, 0),
+        );
         await scanOnce();
-        await new Promise((r) => setTimeout(r, 0));
+        await nextFrame;
       }
       // As on mobile; a still image keeps its result.
       if (sourceRef.current instanceof HTMLVideoElement)

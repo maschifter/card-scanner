@@ -7,6 +7,7 @@ export interface ScannedCard {
   game: string;
   score: number;
   detections: number;
+  language?: { code: string; similarity: number };
   /** Present once the product lookup resolves. */
   name?: string;
   set?: string;
@@ -34,6 +35,7 @@ export interface ScanDiagnostics {
   preprocMs: number;
   embedMs: number;
   dbSearchMs: number;
+  languageMs: number;
 }
 
 export interface Settings {
@@ -73,6 +75,7 @@ export const emptyScan: ScanDiagnostics = {
   preprocMs: 0,
   embedMs: 0,
   dbSearchMs: 0,
+  languageMs: 0,
 };
 
 export const initialState: ScannerState = {

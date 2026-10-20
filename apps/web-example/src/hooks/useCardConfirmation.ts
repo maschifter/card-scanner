@@ -15,6 +15,7 @@ export interface ConfirmedCard {
   score: number;
   setSymbol: CardView['setSymbol'];
   fabColor: CardView['fabColor'];
+  language: CardView['language'];
   /** Copy of the confirming frame's dewarp (the live thumb gets recycled). */
   thumb: HTMLCanvasElement;
 }
@@ -89,6 +90,7 @@ export function useCardConfirmation() {
       score: top.score,
       setSymbol,
       fabColor: card.fabColor,
+      language: card.language,
       thumb: snapshot(card.thumb),
     };
     confirmedRef.current.add(entry.cardId);

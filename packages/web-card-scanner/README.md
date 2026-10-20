@@ -1,12 +1,11 @@
 # @cardnexus/web-card-scanner
 
 Run the native card scanner pipeline in the browser on WebGPU. The package
-builds on TIE (`@tie/core` and `@tie/zoo`, vendored as tarballs in `vendor/`
-until the npm release). Every model runs in f16 with HWC4 conv storage. Your
-page downloads only the model weights (about 20 MB, cached in OPFS) and sends
-embeddings to a backend that owns the card databases. The cache is keyed by
-URL, so publish a new model set under a new `modelsBaseUrl`: files replaced in
-place never reach returning users.
+builds on TIE (`runntime`, the git submodule `vendor/runntime`). Every model
+runs in f16 with HWC4 conv storage. Your page downloads only the model weights
+(about 20 MB, cached in OPFS) and sends embeddings to a backend that owns the
+card databases. The cache is keyed by URL, so publish a new model set under a
+new `modelsBaseUrl`: files replaced in place never reach returning users.
 
 ## Quick start
 
@@ -20,16 +19,18 @@ const scanner = await WebCardScanner.create({
 });
 
 // A <video>, <img> (downscaled to 1280 px) or ImageData; needs pixels.
-const { cards, timings } = await scanner.scan(videoElement);
+// Null when the throttle dropped the frame, else { cards, timings }.
+const result = await scanner.scan(videoElement);
 ```
 
 Each `ScannedCard` gives you the detection box and quad in frame pixels (of
 the downscaled frame for a video or image, see `captureSize`), the dewarped
 card image, the L2-normalized embedding, the candidate games, the backend
-matches, and the set-symbol or pitch-colour result when the disambiguation
-stage ran. Use `ScanTimings` to see where the frame's time went. For a
-complete client, see `apps/web-example`: `hooks/useScanner.ts` boots the
-scanner and `hooks/useScanLoop.ts` drives the scan loop.
+matches, the set-symbol or pitch-colour result when the disambiguation
+stage ran, and the print language of a matched card. Use `ScanTimings` to
+see where the frame's time went. For a complete client, see
+`apps/web-example`: `hooks/useScanner.ts` boots the scanner and
+`hooks/useScanLoop.ts` drives the scan loop.
 
 You need:
 
@@ -39,6 +40,7 @@ You need:
   build time.
 - The `tsover` TypeScript fork to type-check TIE sources (see this package's
   `devDependencies`). Keep it scoped to web workspaces.
+- The `vendor/runntime` submodule checked out (`git submodule update --init`).
 
 ## Search backend
 
@@ -57,26 +59,31 @@ Concurrent frames on a new card share one in-flight request.
 ## Models
 
 - CardSegmentationModel and SetSymbolDetectionModel: the deployed yolo26n
-  checkpoints through `@tie/zoo/yolo26` (end-to-end one2one head, no NMS).
+  checkpoints through TIE's `zoo/yolo26` (end-to-end one2one head, no NMS).
 - CardRecognitionModel (timm `mobilenetv4_conv_small`),
   SetSymbolRecognitionModel (timm `mobilenetv3_small_075`), and
   ColorBarModel: TIE nn ports of the training repo's PyTorch definitions
   (`~/SWM_AI/card-scanner-models`, package `card_nexus`). Export BN-folded
   weights with `apps/web-example/tools/export-web-models.py`, and check parity against the
   deployed ONNX with the web example's `/parity.html`.
+- CardLanguageModel: a TIE nn port of the deployed ONNX graph, exported and
+  checked the same way. Its tail, a vote of the rows most on text, runs on
+  the CPU. `classifyLanguage: false` leaves the model out.
 
 Conv stacks run HWC4 f16 end to end. A model enters the layout with `toHwc4`
-at the stem, and only the Linear heads see an f32 row. TIE's conv epilogue
-fuses SiLU and nothing else, so `models/ops.ts` composes ReLU, HardSwish, and
-HardSigmoid from `clamp` and the scalar ops. Those pass HWC4 storage through
-untouched, and the zero-padded channel lanes stay zero through both ReLU and
-HardSwish. Global average pooling goes row-major for the mean and returns to
-the layout. A squeeze-excite gate broadcasts back over the map with a
-nearest-neighbour `upsample2d`, which for a one-pixel map is a copy.
+at the stem, and only the Linear heads see an f32 row. A ReLU right after a
+conv is fused into the conv kernel. `models/ops.ts` composes the other ReLUs
+and HardSwish from `clamp` and ops that map 0 to 0, which TIE requires on HWC4
+storage: the zero-padded channel lanes must stay zero. CardLanguageModel's row
+pooling goes row-major for the mean and returns to the layout. A squeeze-excite
+gate broadcasts back over the map with a nearest-neighbour `upsample2d`, which
+for a one-pixel map is a copy.
 
-The package consumes TIE unmodified: the vendored tarballs are packed straight
-from upstream `main`, with no local patches. Keep `typegpu` on `^0.11`: the
-tarballs depend on `^0.11.9`.
+The submodule is pinned to a commit of upstream `main` and stays unmodified.
+To move it, check out the new commit in `vendor/runntime`, check
+`/parity.html` and `/bench.html`, then `git add vendor/runntime` and commit.
+After pulling such a commit, run `git submodule update`. Keep `typegpu` on
+`^0.12`: TIE depends on `^0.12.5`.
 
 ## Pipeline
 
@@ -85,7 +92,10 @@ than 40 ms, see `slowGpuInputSize` and `scanner.loadTestMs`) → segmentation �
 per detection: mask → quad (hull + approxPolyDP ladder, minAreaRect fallback)
 → perspective dewarp 403×640 → squash 224² → embedding → `SearchClient` → MTG
 set-symbol or FaB colour-bar stage under the disambiguation gate, with the
-sideways 180° retry.
+sideways 180° retry → print language of a matched card. As on native, the
+`maxFrameRate` throttle (default 30 scans/s) first drops a video frame that
+comes too early (`scan` resolves to null), else waits out the gap, outside
+`ScanTimings`.
 
 Model inputs are preprocessed on the GPU (`inference/gpuPreprocess.ts`): one
 compute dispatch samples the source through a placement (letterbox, crop, or
@@ -128,12 +138,13 @@ The layout mirrors the native card-scanner-core:
 
 - `constants.ts` and `types.ts`: every tuned number, and the public result
   and config types.
+- `runntime.ts`: TIE, re-exported from the `vendor/runntime` sources.
 - `core/`: `setup.ts` (device, weights, runners), `pipeline.ts` (the
   per-frame loop: segmentation, decode, selection), `cardProcessor.ts` (per
   card: dewarp, embed, search, flip retry, stages), `cardSelection.ts`,
   `searchStrategy.ts` (candidate-game routing), `setSymbolProcessor.ts`,
-  `fabColorProcessor.ts`, `httpSearchClient.ts`, `cachedSearchClient.ts`,
-  `profile.ts`.
+  `fabColorProcessor.ts`, `languageProcessor.ts`, `httpSearchClient.ts`,
+  `cachedSearchClient.ts`, `profile.ts`.
 - `models/`: the TIE nn ports plus their shared layers and helpers.
 - `inference/`: `runner.ts` (captured-frame model runner),
   `gpuPreprocess.ts` (pixels-to-normalized-CHW compute kernel) and
@@ -161,7 +172,7 @@ flicker in and out between frames:
   boxes toward new detections and holds them 400 ms through a missed
   frame.
 
-Known gaps versus native, all deliberate: no blur, low-light, or frame-rate
-gates, and no NMS (YOLO26's one-to-one head doesn't need it). Card corners
+Known gaps versus native, all deliberate: no blur or low-light gates, and no
+NMS (YOLO26's one-to-one head doesn't need it). Card corners
 come from this package's own convex-hull and Douglas-Peucker code rather than
 OpenCV, so a corner can land one or two mask cells from the native one.

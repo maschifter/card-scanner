@@ -18,7 +18,7 @@ inline std::vector<float> embedImage(inference::InferenceSession &session,
   cv::Mat resized;
   cv::resize(image, resized, cv::Size(inputSize, inputSize));
   const std::vector<float> input =
-      utils::ImageNetNormalization::normalizeImage(resized, inputSize);
+      utils::ImageNetNormalization::normalizeImage(resized);
 
   const auto outputs = session.run(
       input.data(), {1, constants::model::RGB_CHANNELS, inputSize, inputSize});

@@ -5,6 +5,13 @@
 
 namespace cardscanner {
 
+struct CardLanguageInfo {
+  std::string code; // "de", "en", ..., "zhs", "zht"; empty when unreadable
+  float similarity = 0.0f;
+
+  bool isEmpty() const { return code.empty(); }
+};
+
 /**
  * @struct CardSearchResult
  * @brief One card from a similarity search, with its score.
@@ -18,6 +25,7 @@ struct CardSearchResult {
   double score = 0.0;
   /// Consecutive detections of this card; only ScanSession counts them.
   int detections = 0;
+  CardLanguageInfo language;
 };
 
 /// The top two matches score within `margin` of each other, so the top pick

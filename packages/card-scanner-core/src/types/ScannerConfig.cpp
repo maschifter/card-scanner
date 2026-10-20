@@ -335,6 +335,7 @@ parseScannerConfig(const ConfigValue &root,
 
   reader.read("segmentationModelPath", config.segmentationModelPath);
   reader.read("embeddingModelPath", config.embeddingModelPath);
+  reader.read("languageModelPath", config.languageModelPath);
   reader.read("scanMode", config.scanMode);
 
   reader.read("segmentationThreshold", config.segmentationThreshold);

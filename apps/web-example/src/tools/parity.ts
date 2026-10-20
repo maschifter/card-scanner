@@ -13,17 +13,20 @@ import tgpu from 'typegpu';
 import {
   createOpfsCache,
   fromSafetensors,
-  initTie,
+  initRunntime,
+  loadYolo26Weights,
   tensor,
   tensor3d,
   toArray,
   type Value,
-} from '@tie/core';
-import { loadYolo26Weights, Yolo26Model } from '@tie/zoo/yolo26';
+  Yolo26Model,
+} from '../../../../packages/web-card-scanner/src/runntime.ts';
 import {
+  CardLanguageModel,
   CardRecognitionModel,
   ColorBarModel,
   l2Normalize,
+  languageProbs,
   SetSymbolRecognitionModel,
 } from '@cardnexus/web-card-scanner';
 import { reportPageErrors } from '../lib/pageErrors.ts';
@@ -69,7 +72,7 @@ async function main() {
       optionalFeatures: ['shader-f16', 'timestamp-query', 'subgroups'],
     },
   });
-  initTie(root);
+  initRunntime(root);
   const cache = await createOpfsCache('web-card-scanner').catch(
     () => undefined,
   );
@@ -134,6 +137,21 @@ async function main() {
       (x) => model.forward(x),
       (o) => o,
       'logits',
+    );
+  }
+  {
+    const model = new CardLanguageModel();
+    const url = '/models/CardLanguageModel/model.safetensors';
+    await model.loadStateDict(
+      await fromSafetensors(url, { cache, cacheId: url }),
+      { root },
+    );
+    await run(
+      'CardLanguageModel',
+      [3, 512, 256],
+      (x) => model.forward(x),
+      (o) => Float32Array.from(languageProbs(o).probs),
+      'card_probs',
     );
   }
   {

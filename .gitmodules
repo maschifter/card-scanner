@@ -1,0 +1,3 @@
+[submodule "vendor/runntime"]
+	path = vendor/runntime
+	url = https://github.com/software-mansion/runntime.git

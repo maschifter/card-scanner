@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLastMeasured, useScannerState } from './useScannerState';
 import { emptyScan, type ScanDiagnostics, type ScannedCard } from './types';
+import { LanguageTag } from './LanguageTag';
 import './styles.css';
 
 function CardPanel({ card, pending }: { card: ScannedCard; pending: boolean }) {
@@ -13,7 +14,10 @@ function CardPanel({ card, pending }: { card: ScannedCard; pending: boolean }) {
       <div>
         {/* The id is the fallback: an empty name would read as a scanner
             failure rather than a lookup one. */}
-        <div className="name">{card.name || card.cardId}</div>
+        <div className="name">
+          {card.name || card.cardId}
+          <LanguageTag card={card} />
+        </div>
         {meta ? <div className="meta">{meta}</div> : null}
         <div className="score">
           match {card.score.toFixed(3)}
@@ -88,6 +92,7 @@ export default function App({ port }: { port: number }) {
         {active ? (
           <div className="corner-card">
             {active.name || active.cardId}
+            <LanguageTag card={active} />
             <span className="corner-score"> {active.score.toFixed(3)}</span>
           </div>
         ) : null}
@@ -100,7 +105,7 @@ export default function App({ port }: { port: number }) {
           <div className="readout perf">
             yolo {perf.yoloMs.toFixed(1)} · prep {perf.preprocMs.toFixed(1)} ·
             embed {perf.embedMs.toFixed(1)} · db {perf.dbSearchMs.toFixed(1)} ·
-            total {perf.ms.toFixed(1)} ms
+            lang {perf.languageMs.toFixed(1)} · total {perf.ms.toFixed(1)} ms
           </div>
         ) : null}
       </div>

@@ -35,6 +35,11 @@ export interface NitroFabColor {
   similarity: number;
 }
 
+export interface NitroCardLanguageInfo {
+  code: string;
+  similarity: number;
+}
+
 export interface NitroDetectedCard {
   cardId: string | undefined;
   gameName: string | undefined;
@@ -51,6 +56,7 @@ export interface NitroDetectedCard {
   capturedImage: NitroCapturedImage | undefined;
   setSymbol: NitroSetSymbol | undefined;
   fabColor: NitroFabColor | undefined;
+  language: NitroCardLanguageInfo | undefined;
 }
 
 export interface NitroDetection {

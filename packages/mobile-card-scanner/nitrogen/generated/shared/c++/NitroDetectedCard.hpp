@@ -38,6 +38,8 @@ namespace margelo::nitro::cardscanner { struct NitroCapturedImage; }
 namespace margelo::nitro::cardscanner { struct NitroSetSymbol; }
 // Forward declaration of `NitroFabColor` to properly resolve imports.
 namespace margelo::nitro::cardscanner { struct NitroFabColor; }
+// Forward declaration of `NitroCardLanguageInfo` to properly resolve imports.
+namespace margelo::nitro::cardscanner { struct NitroCardLanguageInfo; }
 
 #include <string>
 #include <optional>
@@ -47,6 +49,7 @@ namespace margelo::nitro::cardscanner { struct NitroFabColor; }
 #include "NitroCapturedImage.hpp"
 #include "NitroSetSymbol.hpp"
 #include "NitroFabColor.hpp"
+#include "NitroCardLanguageInfo.hpp"
 
 namespace margelo::nitro::cardscanner {
 
@@ -66,10 +69,11 @@ namespace margelo::nitro::cardscanner {
     std::optional<NitroCapturedImage> capturedImage     SWIFT_PRIVATE;
     std::optional<NitroSetSymbol> setSymbol     SWIFT_PRIVATE;
     std::optional<NitroFabColor> fabColor     SWIFT_PRIVATE;
+    std::optional<NitroCardLanguageInfo> language     SWIFT_PRIVATE;
 
   public:
     NitroDetectedCard() = default;
-    explicit NitroDetectedCard(std::optional<std::string> cardId, std::optional<std::string> gameName, std::optional<std::string> predictedGameName, std::optional<double> predictedGameConfidence, std::optional<double> confidenceScore, NitroBoundingBox boundingBox, std::optional<std::vector<double>> quad, std::vector<NitroAlternativeMatch> alternativeCards, std::optional<NitroCapturedImage> capturedImage, std::optional<NitroSetSymbol> setSymbol, std::optional<NitroFabColor> fabColor): cardId(cardId), gameName(gameName), predictedGameName(predictedGameName), predictedGameConfidence(predictedGameConfidence), confidenceScore(confidenceScore), boundingBox(boundingBox), quad(quad), alternativeCards(alternativeCards), capturedImage(capturedImage), setSymbol(setSymbol), fabColor(fabColor) {}
+    explicit NitroDetectedCard(std::optional<std::string> cardId, std::optional<std::string> gameName, std::optional<std::string> predictedGameName, std::optional<double> predictedGameConfidence, std::optional<double> confidenceScore, NitroBoundingBox boundingBox, std::optional<std::vector<double>> quad, std::vector<NitroAlternativeMatch> alternativeCards, std::optional<NitroCapturedImage> capturedImage, std::optional<NitroSetSymbol> setSymbol, std::optional<NitroFabColor> fabColor, std::optional<NitroCardLanguageInfo> language): cardId(cardId), gameName(gameName), predictedGameName(predictedGameName), predictedGameConfidence(predictedGameConfidence), confidenceScore(confidenceScore), boundingBox(boundingBox), quad(quad), alternativeCards(alternativeCards), capturedImage(capturedImage), setSymbol(setSymbol), fabColor(fabColor), language(language) {}
 
   public:
     friend bool operator==(const NitroDetectedCard& lhs, const NitroDetectedCard& rhs) = default;
@@ -95,7 +99,8 @@ namespace margelo::nitro {
         JSIConverter<std::vector<margelo::nitro::cardscanner::NitroAlternativeMatch>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "alternativeCards"))),
         JSIConverter<std::optional<margelo::nitro::cardscanner::NitroCapturedImage>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "capturedImage"))),
         JSIConverter<std::optional<margelo::nitro::cardscanner::NitroSetSymbol>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "setSymbol"))),
-        JSIConverter<std::optional<margelo::nitro::cardscanner::NitroFabColor>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fabColor")))
+        JSIConverter<std::optional<margelo::nitro::cardscanner::NitroFabColor>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fabColor"))),
+        JSIConverter<std::optional<margelo::nitro::cardscanner::NitroCardLanguageInfo>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "language")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::cardscanner::NitroDetectedCard& arg) {
@@ -111,6 +116,7 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "capturedImage"), JSIConverter<std::optional<margelo::nitro::cardscanner::NitroCapturedImage>>::toJSI(runtime, arg.capturedImage));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "setSymbol"), JSIConverter<std::optional<margelo::nitro::cardscanner::NitroSetSymbol>>::toJSI(runtime, arg.setSymbol));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "fabColor"), JSIConverter<std::optional<margelo::nitro::cardscanner::NitroFabColor>>::toJSI(runtime, arg.fabColor));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "language"), JSIConverter<std::optional<margelo::nitro::cardscanner::NitroCardLanguageInfo>>::toJSI(runtime, arg.language));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -132,6 +138,7 @@ namespace margelo::nitro {
       if (!JSIConverter<std::optional<margelo::nitro::cardscanner::NitroCapturedImage>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "capturedImage")))) return false;
       if (!JSIConverter<std::optional<margelo::nitro::cardscanner::NitroSetSymbol>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "setSymbol")))) return false;
       if (!JSIConverter<std::optional<margelo::nitro::cardscanner::NitroFabColor>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fabColor")))) return false;
+      if (!JSIConverter<std::optional<margelo::nitro::cardscanner::NitroCardLanguageInfo>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "language")))) return false;
       return true;
     }
   };

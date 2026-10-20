@@ -3,16 +3,18 @@ import {
   bufferSource,
   createOpfsCache,
   fromSafetensors,
-  initTie,
+  initRunntime,
   type nn,
   parseSafetensorsHeader,
   type Value,
-} from '@tie/core';
+  Yolo26Model,
+} from '../runntime.ts';
 import type { TgpuRoot } from 'typegpu';
-import { Yolo26Model } from '@tie/zoo/yolo26';
 import {
   CARD_EMBED_SIZE,
   COLOR_BAR_SIZE,
+  LANGUAGE_INPUT_HEIGHT,
+  LANGUAGE_INPUT_WIDTH,
   NUM_GAME_CLASSES,
   SLOW_GPU_MS,
   SLOW_GPU_TEST_BUDGET_MS,
@@ -23,6 +25,7 @@ import type { GameClassEntry, ScannerOptions } from '../types.ts';
 import { CardRecognitionModel } from '../models/cardRecognition.ts';
 import { SetSymbolRecognitionModel } from '../models/setSymbolRecognition.ts';
 import { ColorBarModel } from '../models/colorBar.ts';
+import { CardLanguageModel } from '../models/cardLanguage.ts';
 import { Runner } from '../inference/runner.ts';
 
 export interface Runners {
@@ -31,6 +34,7 @@ export interface Runners {
   setSymbolDetection: Runner;
   setSymbolRecognition: Runner;
   colorBar: Runner;
+  language?: Runner;
 }
 
 type Progress = ScannerOptions['onProgress'];
@@ -56,15 +60,17 @@ export async function createDevice(
       optionalFeatures: ['shader-f16', 'timestamp-query', 'subgroups'],
     },
   });
-  initTie(root); // half() checks the default root for shader-f16
+  initRunntime(root); // half() checks the default root for shader-f16
   root.device.addEventListener('uncapturederror', (e) => {
     const message = (e as GPUUncapturedErrorEvent).error.message;
     console.error('WebGPU:', message);
     onGpuError?.(message);
   });
-  void root.device.lost.then((info) =>
-    onGpuError?.(`device lost (${info.reason}): ${info.message}`),
-  );
+  void root.device.lost.then((info) => {
+    // dispose() destroys the device on purpose
+    if (info.reason !== 'destroyed')
+      onGpuError?.(`device lost (${info.reason}): ${info.message}`);
+  });
   return root;
 }
 
@@ -77,6 +83,7 @@ export async function createRunners(
   onProgress: Progress,
   segmentationInputSize: number,
   slowGpuInputSize: number | null,
+  classifyLanguage: boolean,
 ): Promise<{ runners: Runners; loadTestMs: number | null }> {
   const cache = await createOpfsCache('web-card-scanner').catch(
     () => undefined,
@@ -138,6 +145,9 @@ export async function createRunners(
     'SetSymbolRecognitionModel',
   );
   const colorBar = await load(new ColorBarModel(), 'ColorBarModel');
+  const language =
+    classifyLanguage &&
+    (await load(new CardLanguageModel(), 'CardLanguageModel'));
 
   const segmentationAt = (size: number) =>
     new Runner(root, [3, size, size], 'scale255', (input: Value) => {
@@ -159,6 +169,14 @@ export async function createRunners(
     ),
     setSymbolRecognition: imagenetAt(SYMBOL_EMBED_SIZE, symbolRec),
     colorBar: imagenetAt(COLOR_BAR_SIZE, colorBar),
+    ...(language && {
+      language: new Runner(
+        root,
+        [3, LANGUAGE_INPUT_HEIGHT, LANGUAGE_INPUT_WIDTH],
+        'minusOneToOne',
+        (input) => [language.forward(input)],
+      ),
+    }),
   };
 
   const all = Object.values(runners);

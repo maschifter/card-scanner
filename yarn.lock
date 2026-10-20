@@ -1951,15 +1951,13 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@cardnexus/web-card-scanner@workspace:packages/web-card-scanner"
   dependencies:
-    "@tie/core": "npm:0.0.1"
-    "@tie/zoo": "npm:0.0.1"
     "@typescript-eslint/eslint-plugin": "npm:^7.18.0"
     "@typescript-eslint/parser": "npm:^7.18.0"
     "@webgpu/types": "npm:^0.1.60"
     eslint: "npm:^8.57.0"
     eslint-config-prettier: "npm:^9.1.0"
     prettier: "npm:^3.3.3"
-    typegpu: "npm:^0.11.9"
+    typegpu: "npm:^0.12.5"
     typescript: "npm:tsover@^5.9.8"
     vitest: "npm:^3.2.4"
   languageName: unknown
@@ -4116,31 +4114,6 @@ __metadata:
   dependencies:
     "@sinonjs/commons": "npm:^3.0.0"
   checksum: 10/78155c7bd866a85df85e22028e046b8d46cf3e840f72260954f5e3ed5bd97d66c595524305a6841ffb3f681a08f6e5cef572a2cce5442a8a232dc29fb409b83e
-  languageName: node
-  linkType: hard
-
-"@tie/core@file:./vendor/tie-core-0.0.1-a073696.tgz::locator=card-scanner-monorepo%40workspace%3A.":
-  version: 0.0.1
-  resolution: "@tie/core@file:./vendor/tie-core-0.0.1-a073696.tgz#./vendor/tie-core-0.0.1-a073696.tgz::hash=8973ef&locator=card-scanner-monorepo%40workspace%3A."
-  dependencies:
-    typegpu: "npm:^0.11.9"
-  checksum: 10/02bcf244c77a296b48853d68a11edadf9074880e13457043a991be54493570a51350f70872a714011a79ab09bd0efacd8d4286f53468439d09fd6698838d9fc6
-  languageName: node
-  linkType: hard
-
-"@tie/zoo@file:./vendor/tie-zoo-0.0.1-a073696.tgz::locator=card-scanner-monorepo%40workspace%3A.":
-  version: 0.0.1
-  resolution: "@tie/zoo@file:./vendor/tie-zoo-0.0.1-a073696.tgz#./vendor/tie-zoo-0.0.1-a073696.tgz::hash=c43dac&locator=card-scanner-monorepo%40workspace%3A."
-  dependencies:
-    "@tie/core": "npm:0.0.1"
-    js-tiktoken: "npm:^1.0.20"
-    typegpu: "npm:^0.11.9"
-  peerDependencies:
-    "@huggingface/transformers": ^4.2.0
-  peerDependenciesMeta:
-    "@huggingface/transformers":
-      optional: true
-  checksum: 10/7d4ed97254ab5497d4b262f6e9ee6cf48f2121ecec0a63d8f8ebf9be605770330684a0deaf2ae7704d07d1ec3da4e5a0db41c037a5a45d3dee0c4fbb131ad867
   languageName: node
   linkType: hard
 
@@ -8989,15 +8962,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"js-tiktoken@npm:^1.0.20":
-  version: 1.0.21
-  resolution: "js-tiktoken@npm:1.0.21"
-  dependencies:
-    base64-js: "npm:^1.5.1"
-  checksum: 10/9850a943649d4e6f0d77f9429df626149b546b15ccd47a4fbf027d99b475b70f90673de2904856d0cb3a80ccc751a0604786a007511e136c1dee9a2c4d8a5ae8
-  languageName: node
-  linkType: hard
-
 "js-tokens@npm:^3.0.0 || ^4.0.0, js-tokens@npm:^4.0.0":
   version: 4.0.0
   resolution: "js-tokens@npm:4.0.0"
@@ -13204,19 +13168,27 @@ __metadata:
   languageName: node
   linkType: hard
 
-"tinyest-for-wgsl@npm:~0.3.2":
-  version: 0.3.3
-  resolution: "tinyest-for-wgsl@npm:0.3.3"
+"tinyest-for-wgsl@npm:~0.4.2":
+  version: 0.4.2
+  resolution: "tinyest-for-wgsl@npm:0.4.2"
   dependencies:
-    tinyest: "npm:~0.3.1"
-  checksum: 10/5130b3f06120d68b99755e0da9da2432cbc9dc8d0be1dedd8757bc4d87a2ef4773b5731b2722d1f344c5e3933845e41309316201efce807de72e6e9b231cde58
+    tinyest: "npm:~0.3.4"
+  peerDependencies:
+    "@babel/types": ^7.29.0
+    acorn: ^8.14.1
+  peerDependenciesMeta:
+    "@babel/types":
+      optional: true
+    acorn:
+      optional: true
+  checksum: 10/1e928f200c70809eb5200767564d50eb5c05038e96615825f116a44f898c72da55cb7325e47b71f5721e2d050ad159e0f6cde81ef7214d61f8b2908357fd14e3
   languageName: node
   linkType: hard
 
-"tinyest@npm:~0.3.1, tinyest@npm:~0.3.2":
-  version: 0.3.3
-  resolution: "tinyest@npm:0.3.3"
-  checksum: 10/eb0687f68c6b22dcfdc1cdf9727d7e4624e1305a355ca1b20a44e6bd58e598e98f8824983784425310cd0c4024dee3ef69cc1a6a5e4824cc80327a4e9f6b8fd6
+"tinyest@npm:~0.3.4":
+  version: 0.3.4
+  resolution: "tinyest@npm:0.3.4"
+  checksum: 10/eaaec0f6139245c9584a91a322a26c6522d4280db3d289ff52752b75773faf4c9eb92994737db3cce0198d0dce21868e0134d6e7e91577786de8333473d35c54
   languageName: node
   linkType: hard
 
@@ -13459,16 +13431,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"typegpu@npm:^0.11.9":
-  version: 0.11.9
-  resolution: "typegpu@npm:0.11.9"
+"typegpu@npm:^0.12.5":
+  version: 0.12.7
+  resolution: "typegpu@npm:0.12.7"
   dependencies:
-    tinyest: "npm:~0.3.2"
+    tinyest: "npm:~0.3.4"
     tsover-runtime: "npm:^0.0.7"
     typed-binary: "npm:^4.3.3"
   bin:
     typegpu: ./bin.mjs
-  checksum: 10/0e4c36abae388a21c42738ed24dabdd8e9e6e50150d26fbe30b144ac3c0885fb8f8e2bc91e0d19ad3dbea57fe5072556af8064bcc4611f7cbe3b173cad0bb1ca
+  checksum: 10/95cf17a3b6ce6ae4db0787edc4e50a8b4bbb0430501e59febaeabda2d6365ff217a2cf52a09dad83ed5e3308290ac040a9a75e526c68cebc5593c0f70627282c
   languageName: node
   linkType: hard
 
@@ -13623,9 +13595,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"unplugin-typegpu@npm:^0.11.6":
-  version: 0.11.6
-  resolution: "unplugin-typegpu@npm:0.11.6"
+"unplugin-typegpu@npm:^0.12.3":
+  version: 0.12.5
+  resolution: "unplugin-typegpu@npm:0.12.5"
   dependencies:
     "@babel/parser": "npm:^7.29.0"
     "@babel/traverse": "npm:^7.29.0"
@@ -13635,12 +13607,12 @@ __metadata:
     magic-string: "npm:^0.30.21"
     pathe: "npm:^2.0.3"
     picomatch: "npm:^4.0.4"
-    tinyest: "npm:~0.3.1"
-    tinyest-for-wgsl: "npm:~0.3.2"
+    tinyest: "npm:~0.3.4"
+    tinyest-for-wgsl: "npm:~0.4.2"
     unplugin: "npm:^3.0.0"
   peerDependencies:
-    typegpu: ^0.11.9
-  checksum: 10/9eaf9d2a716e640375f2a6af0ac0ca6461a46c47b5e954aa417009926caa119ef6b5c27445ba290a9752f9648f2d261fac46d1b4d9d3dfb2d7fc5cdaefc98019
+    typegpu: ^0.12.7
+  checksum: 10/f7dfe83b93e3292c601106c9f64ba6fd28d99bd1d4867f6c0d8a816d4ae78e5712ed83150676cec75cd29959d474bffa27a8d3e2015984345187c333ef931b60
   languageName: node
   linkType: hard
 
@@ -13995,8 +13967,6 @@ __metadata:
   resolution: "web-example@workspace:apps/web-example"
   dependencies:
     "@cardnexus/web-card-scanner": "workspace:*"
-    "@tie/core": "npm:0.0.1"
-    "@tie/zoo": "npm:0.0.1"
     "@types/react": "npm:^19.2.0"
     "@types/react-dom": "npm:^19.2.0"
     "@typescript-eslint/eslint-plugin": "npm:^7.18.0"
@@ -14010,9 +13980,9 @@ __metadata:
     prettier: "npm:^3.3.3"
     react: "npm:19.2.0"
     react-dom: "npm:19.2.0"
-    typegpu: "npm:^0.11.9"
+    typegpu: "npm:^0.12.5"
     typescript: "npm:tsover@^5.9.8"
-    unplugin-typegpu: "npm:^0.11.6"
+    unplugin-typegpu: "npm:^0.12.3"
     vite: "npm:^6.0.0"
   languageName: unknown
   linkType: soft

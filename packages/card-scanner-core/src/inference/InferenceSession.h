@@ -21,7 +21,7 @@ struct Tensor {
  * @class InferenceSession
  * @brief A loaded model that maps one float NCHW input to N float outputs.
  *
- * Deliberately the smallest surface the five models actually use - no dtypes,
+ * Deliberately the smallest surface the models actually use - no dtypes,
  * no named inputs, no metadata queries. Preprocessing and postprocessing stay
  * in the model classes as plain OpenCV/STL, so a backend only has to move
  * floats.

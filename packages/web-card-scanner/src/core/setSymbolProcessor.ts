@@ -1,4 +1,4 @@
-import { decodeDetections } from '@tie/zoo/yolo26';
+import { decodeDetections } from '../runntime.ts';
 import {
   SYMBOL_CROP_PADDING,
   SYMBOL_EMBED_SIZE,

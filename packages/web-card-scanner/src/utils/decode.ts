@@ -1,10 +1,10 @@
-/** Seg decode adapted from @tie/zoo/yolo26 pipeline.ts, extended with the
+/** Seg decode adapted from TIE's zoo/yolo26 pipeline.ts, extended with the
  *  full per-cell class-score vector — the native SearchStrategy walks the
  *  sorted class confidences (not just the argmax) to pick candidate games,
  *  so the zoo's Detection (top class only) is not enough here. YOLO26 is
  *  end-to-end (one-to-one head): threshold + sort, no NMS. */
 
-import type { ProtoData, RawLevel } from '@tie/zoo/yolo26';
+import type { ProtoData, RawLevel } from '../runntime.ts';
 import type { Output } from '../inference/runner.ts';
 import {
   CONTAINED_MIN_AREA_FRAC,

@@ -11,6 +11,10 @@ export const NUM_GAME_CLASSES = 17;
 export const CARD_EMBED_SIZE = 224;
 export const SYMBOL_EMBED_SIZE = 96;
 export const COLOR_BAR_SIZE = 100;
+export const LANGUAGE_INPUT_WIDTH = 256;
+export const LANGUAGE_INPUT_HEIGHT = 512;
+/** The language model pools its answer over this many rows, those most on text. */
+export const LANGUAGE_TOP_ROWS = 6;
 /** Letterbox pad gray, 0–255 (ultralytics 114). */
 export const LETTERBOX_PAD = 114;
 export const IMAGENET_MEAN = [0.485, 0.456, 0.406] as const;
@@ -22,9 +26,16 @@ export const SLOW_GPU_INPUT_SIZE = 288;
 export const SLOW_GPU_MS = 40;
 export const SLOW_GPU_TEST_BUDGET_MS = 1000;
 
+// --- Readback ---
+/** How often a pending readback makes Firefox poll the device. */
+export const FIREFOX_POLL_MS = 1;
+
 // --- Frame capture ---
 /** Videos and images are downscaled to this width; results use that space. */
 export const FRAME_MAX_WIDTH = 1280;
+export const DEFAULT_MAX_FRAME_RATE = 30;
+/** Native kScanWaitMarginMs: a video frame earlier than this drops. */
+export const SCAN_WAIT_MARGIN_MS = 20;
 
 // --- Dewarp geometry (Constants.h DEWARP_HEIGHT / ASPECT_RATIO) ---
 export const DEWARP_HEIGHT = 640;
@@ -53,6 +64,11 @@ export const SYMBOL_CROP_PADDING = 0.1;
 export const DOTS_REGION_RATIO = 0.2;
 /** Reject a low-confidence colour read (card_nexus FAB_COLOUR_MIN_CONF). */
 export const FAB_COLOR_MIN_CONF = 0.7;
+
+// --- Print language (CardLanguageModel.cpp language_model) ---
+/** Below this the card is unreadable. */
+export const LANGUAGE_MIN_CONF = 0.44;
+export const LANGUAGE_MIN_TRADITIONAL = 0.5;
 
 // --- Quad extraction (Constants.h constants::yolo) ---
 /** approxPolyDP epsilon ladder as fractions of the hull perimeter, tried in

@@ -92,6 +92,13 @@ NitroDetectedCard toNitroDetectedCard(const ProcessedCard &card) {
     nitroCard.fabColor = std::move(fabColor);
   }
 
+  if (!card.language.isEmpty()) {
+    NitroCardLanguageInfo language;
+    language.code = card.language.code;
+    language.similarity = card.language.similarity;
+    nitroCard.language = std::move(language);
+  }
+
   return nitroCard;
 }
 

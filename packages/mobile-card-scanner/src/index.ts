@@ -7,6 +7,7 @@ import type {
   NitroAsyncScanResult,
   NitroBoundingBox,
   NitroCapturedImage,
+  NitroCardLanguageInfo,
   NitroDetectedCard,
   NitroDetection,
   NitroFabColor,
@@ -28,6 +29,7 @@ export type ScanMode = 'single' | 'multiple' | 'auto';
 export interface ScannerConfig {
   segmentationModelPath: string;
   embeddingModelPath: string;
+  languageModelPath?: string;
   scanMode: ScanMode;
   segmentationThreshold: number; // YOLO confidence threshold (default: 0.7)
   iouThreshold: number; // NMS IOU threshold (default: 0.7)
@@ -111,6 +113,7 @@ export type BoundingBox = NitroBoundingBox;
 export type CapturedImage = NitroCapturedImage;
 export type SetSymbol = NitroSetSymbol;
 export type FabColor = NitroFabColor;
+export type CardLanguageInfo = NitroCardLanguageInfo;
 export type AlternativeMatch = NitroAlternativeMatch;
 export interface DetectedCard
   extends Optionalize<
@@ -121,6 +124,7 @@ export interface DetectedCard
       | 'alternativeCards'
       | 'setSymbol'
       | 'fabColor'
+      | 'language'
     >
   > {
   boundingBox: BoundingBox;
@@ -128,6 +132,7 @@ export interface DetectedCard
   alternativeCards: AlternativeMatch[];
   setSymbol?: SetSymbol;
   fabColor?: FabColor;
+  language?: CardLanguageInfo;
 }
 
 export interface Detection extends Optionalize<Omit<NitroDetection, 'cards'>> {
@@ -218,6 +223,11 @@ export interface BenchmarkRecord {
   fabColorRan: boolean;
   fabColorPreprocMs: number;
   fabColorClassifyMs: number;
+
+  // Language classifier, on every matched card of any game.
+  languageRan: boolean;
+  languagePreprocMs: number;
+  languageClassifyMs: number;
 
   // Total time for the entire scan, including any overheads
   totalMs: number;

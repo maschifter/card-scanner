@@ -6,6 +6,7 @@
   "cacheDir": "assets/cache",
   "segmentationModelPath": "CardSegmentationModel.onnx",
   "embeddingModelPath": "CardRecognitionModel.onnx",
+  "languageModelPath": "CardLanguageModel.onnx",
   "scanMode": "single",
   "segmentationThreshold": 0.6,
   "iouThreshold": 0.7,

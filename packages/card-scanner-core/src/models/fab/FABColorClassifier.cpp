@@ -34,8 +34,8 @@ FABColorClassifier::classifyColor(const cv::Mat &dotsRegion) {
                cv::Size(fab_color::INPUT_SIZE, fab_color::INPUT_SIZE));
 
     // Preprocess image using shared ImageNet normalization
-    std::vector<float> inputData = utils::ImageNetNormalization::normalizeImage(
-        resized, fab_color::INPUT_SIZE);
+    std::vector<float> inputData =
+        utils::ImageNetNormalization::normalizeImage(resized);
 
     // Run inference
     // Input shape: [batch=1, channels=3, height=100, width=100]

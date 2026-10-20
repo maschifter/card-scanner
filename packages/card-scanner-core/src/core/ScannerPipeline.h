@@ -124,6 +124,16 @@ private:
                         const ScannerContext &ctx);
 
   /**
+   * @brief Stage 5: Detect the print language
+   *
+   * @param cardImage Cropped card image
+   * @param ctx Config and the language model
+   * @return CardLanguageInfo (empty if no model or the language was not read)
+   */
+  static CardLanguageInfo detectLanguage(const cv::Mat &cardImage,
+                                         const ScannerContext &ctx);
+
+  /**
    * @brief Process a single detection through the pipeline
    *
    * @param frameImage Original frame

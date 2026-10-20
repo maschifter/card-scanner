@@ -11,8 +11,9 @@ import {
   type F32Buffer,
   type KernelTiming,
   type Value,
-} from '@tie/core';
+} from '../runntime.ts';
 import type { TgpuRoot } from 'typegpu';
+import { FIREFOX_POLL_MS } from '../constants.ts';
 import {
   GpuFrameInput,
   type Placement,
@@ -24,6 +25,14 @@ import { paddedRowBytes, unpadRows } from './gpuFrame.ts';
 export interface Output {
   data: Float32Array;
   dims: readonly number[];
+}
+
+/** Firefox settles a readback only when it polls the device: on its 100 ms
+ *  timer or on a submit (bug 1870699), so empty submits make it poll now. */
+function settled<T>(device: GPUDevice, readback: Promise<T>): Promise<T> {
+  if (!navigator.userAgent.includes('Firefox')) return readback;
+  const poll = setInterval(() => device.queue.submit([]), FIREFOX_POLL_MS);
+  return readback.finally(() => clearInterval(poll));
 }
 
 export class Runner {
@@ -48,7 +57,13 @@ export class Runner {
     this.size = dims[1];
     const buf = uploadF32(root, new Float32Array(dims[0] * dims[1] * dims[2]));
     this.input = materialized(tensor3d(...dims), buf);
-    this.frameInput = new GpuFrameInput(root, dims[1], mode, root.unwrap(buf));
+    this.frameInput = new GpuFrameInput(
+      root,
+      dims[2],
+      dims[1],
+      mode,
+      root.unwrap(buf),
+    );
   }
 
   private dispatch(image: ImageData | GPUTexture, placement?: Placement) {
@@ -70,8 +85,11 @@ export class Runner {
     placement?: Placement,
   ): Promise<Output[]> {
     const targets = this.dispatch(image, placement);
-    const data = await this.exec.readbackMany!(
-      targets.map((t) => ({ buffer: t.buffer, shape: t.shape })),
+    const data = await settled(
+      this.root.device,
+      this.exec.readbackMany!(
+        targets.map((t) => ({ buffer: t.buffer, shape: t.shape })),
+      ),
     );
     return data.map((d, i) => ({
       data: d,
@@ -115,7 +133,7 @@ export class Runner {
     );
     device.queue.submit([encoder.finish()]);
 
-    await staging.mapAsync(GPUMapMode.READ, 0, total);
+    await settled(device, staging.mapAsync(GPUMapMode.READ, 0, total));
     const mapped = staging.getMappedRange(0, total);
     let at = 0;
     const outputs = spans.map((s, i) => {

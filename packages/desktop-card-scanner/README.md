@@ -110,11 +110,8 @@ CARD_SCANNER_EP=cpu ./build/server/card-scanner-server config.json
 
 The shipped models are fp16, which is what lets CoreML run them on the Neural
 Engine; that needs ONNX Runtime 1.24.4 or newer, pinned in `CMakeLists.txt`.
-On an idle M2 Pro, Release, over a 19-game 92-image sweep, a scan takes 3.5 ms
-end to end against 8.3 ms with the fp32 set, and the segmentation model alone
-runs in 0.9 ms on the ANE against 16 ms on the CPU EP. All five models go to
-CoreML; `SetSymbolRecognitionModel` is the one it makes slower (about 3 ms
-against 1 ms on CPU), but it only runs for MTG.
+On an idle M2 Pro, Release, the segmentation model runs in 0.9 ms on the ANE
+against 16 ms on the CPU EP. All six models go to CoreML.
 
 Benchmark on a quiet machine with `CARD_SCANNER_EP` held fixed and
 compare the p50: the ANE queues behind other ML clients, OBS included, and the

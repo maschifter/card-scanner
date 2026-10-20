@@ -157,6 +157,7 @@ private:
   static std::shared_ptr<cardscanner::SetSymbolYoloModel> setSymbolYoloModel_;
   static std::shared_ptr<cardscanner::SetSymbolEmbedder> setSymbolEmbedder_;
   static std::shared_ptr<cardscanner::FABColorClassifier> fabColorClassifier_;
+  static std::shared_ptr<cardscanner::CardLanguageModel> languageModel_;
   static std::mutex modelMutex_;
   /// Shared by scans, exclusive for model and store swaps; taken before
   /// modelMutex_, never after.

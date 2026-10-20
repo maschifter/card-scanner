@@ -1,5 +1,6 @@
 import { useLastMeasured, useScannerState } from './useScannerState';
 import { emptyScan, type ScannedCard } from './types';
+import { LanguageTag } from './LanguageTag';
 import './dock.css';
 
 /**
@@ -38,7 +39,10 @@ export default function Dock({ port }: { port: number }) {
           <>
             {active.imageUrl ? <img className="art" src={active.imageUrl} alt="" /> : null}
             <div className="grow">
-              <div className="name">{active.name || active.cardId}</div>
+              <div className="name">
+                {active.name || active.cardId}
+                <LanguageTag card={active} />
+              </div>
               <div className="meta">
                 {[active.set, active.game].filter(Boolean).join(' · ')}
               </div>
@@ -88,7 +92,7 @@ export default function Dock({ port }: { port: number }) {
           <span>
             yolo {perf.yoloMs.toFixed(1)} · prep {perf.preprocMs.toFixed(1)} ·
             embed {perf.embedMs.toFixed(1)} · db {perf.dbSearchMs.toFixed(1)} ·
-            total {perf.ms.toFixed(1)} ms
+            lang {perf.languageMs.toFixed(1)} · total {perf.ms.toFixed(1)} ms
           </span>
         </div>
       ) : null}
@@ -103,6 +107,7 @@ export default function Dock({ port }: { port: number }) {
           >
             {card.imageUrl ? <img src={card.imageUrl} alt="" /> : <span className="blank" />}
             <span className="entry-name">{card.name || card.cardId}</span>
+            <LanguageTag card={card} />
           </button>
         ))}
       </div>

@@ -7,11 +7,11 @@ directory per model under --out:
 - CardSegmentationModel, SetSymbolDetectionModel: the ultralytics state dict
   with training-only tensors stripped (one2many towers, semseg aux head,
   num_batches_tracked) and 4D conv weights cast to f16. Loads into
-  @tie/zoo/yolo26, which folds BN at load time.
-- CardRecognitionModel, SetSymbolRecognitionModel, ColorBarModel: weights
-  lifted from the ONNX graph, where BatchNorm is already folded into conv
-  weights. ColorBarModel's 1D BatchNorms are folded forward into the next
-  Linear here. Conv weights f16, everything else f32.
+  TIE's zoo/yolo26, which folds BN at load time.
+- CardRecognitionModel, SetSymbolRecognitionModel, ColorBarModel,
+  CardLanguageModel: weights lifted from the ONNX graph, where BatchNorm is
+  already folded into conv weights. ColorBarModel's 1D BatchNorms are folded
+  forward into the next Linear here. Conv weights f16, everything else f32.
 
 Also writes deterministic parity fixtures (input.bin/output.bin f32 +
 manifest.json) per model by running the ONNX export, so the browser ports
@@ -40,6 +40,7 @@ ONNX_MODELS = {
     "CardRecognitionModel": (3, 224, 224),
     "SetSymbolRecognitionModel": (3, 96, 96),
     "ColorBarModel": (3, 100, 100),
+    "CardLanguageModel": (3, 512, 256),
 }
 YOLO_STRIP = ("model.23.cv2.", "model.23.cv3.", "model.23.cv4.", "model.23.proto.semseg.")
 
@@ -81,7 +82,7 @@ def export_onnx_model(src: Path, out_dir: Path) -> None:
             b = w @ s + b
             w = w * a[None, :]
         name = n.input[1].removesuffix(".weight")
-        tensors[f"{name}.weight"] = w.astype(np.float16) if w.ndim == 4 else w
+        tensors[f"{name}.weight"] = w.astype(np.float16) if n.op_type == "Conv" else w
         tensors[f"{name}.bias"] = b
     if pending_bn:
         raise RuntimeError(f"{src.name}: unconsumed BatchNormalization folds {list(pending_bn)}")

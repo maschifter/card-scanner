@@ -17,6 +17,7 @@ import type { Runners } from './setup.ts';
 import { extractTopGames } from './searchStrategy.ts';
 import { matchSetSymbol } from './setSymbolProcessor.ts';
 import { classifyFabColor } from './fabColorProcessor.ts';
+import { classifyLanguage } from './languageProcessor.ts';
 
 export interface Found {
   det: CardDetection;
@@ -127,6 +128,11 @@ export class CardProcessor {
             classifyFabColor(dewarp, this.runners.colorBar),
           )
         : null;
+    const classifier = this.runners.language;
+    const language =
+      classifier && matches.length
+        ? await timed('stages', () => classifyLanguage(dewarp, classifier))
+        : null;
 
     return {
       box,
@@ -139,6 +145,7 @@ export class CardProcessor {
       predictedGame: matches[0]?.gameName ?? candidateGames[0] ?? null,
       setSymbol,
       fabColor,
+      language,
     };
   }
 

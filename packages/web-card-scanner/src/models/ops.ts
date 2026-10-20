@@ -1,24 +1,17 @@
 /** Activations and shape helpers composed from TIE's own ops.
  *
- *  TIE's conv epilogue fuses SiLU only, so the MobileNet activations are
- *  built here from `clamp` and the scalar ops, which pass an HWC4-stored
- *  Value straight through (they touch no neighbouring element). The channel
- *  lanes HWC4 pads to a multiple of 4 hold 0, and both ReLU(0) and
- *  x·HardSigmoid(x) at x = 0 are 0, so the padding invariant survives.
- *  HardSigmoid alone maps 0 to 0.5, which is why it is only ever applied to
- *  a squeeze-excite gate whose product with a 0-padded map is 0 again. */
+ *  TIE refuses ops that fill HWC4 padding lanes, so each step maps 0 to 0. */
 
 import {
   add,
+  avgPool2d,
   clamp,
-  mean,
   mul,
   reshape,
   toChw,
-  toHwc4,
   upsample2d,
   type Value,
-} from '@tie/core';
+} from '../runntime.ts';
 
 /** [C, H, W] of a feature map. */
 export function dims3(x: Value): [number, number, number] {
@@ -34,25 +27,20 @@ export function relu(x: Value): Value {
   return clamp(x, 0, Infinity);
 }
 
-/** clamp(x/6 + 1/2, 0, 1) — torch.nn.Hardsigmoid. */
-export function hardsigmoid(x: Value): Value {
-  return clamp(add(mul(x, 1 / 6), 0.5), 0, 1);
+/** y · torch.nn.Hardsigmoid(x). */
+export function timesHardsigmoid(y: Value, x: Value): Value {
+  return add(mul(y, clamp(mul(x, 1 / 6), -0.5, 0.5)), mul(y, 0.5));
 }
 
 /** x · hardsigmoid(x) — torch.nn.Hardswish. */
 export function hardswish(x: Value): Value {
-  return mul(x, hardsigmoid(x));
+  return timesHardsigmoid(x, x);
 }
 
-/** Global average pool: HWC4 [C,H,W] → HWC4 [C,1,1], ready for the 1×1
- *  convs of a head or a squeeze-excite gate. TIE has no pooling reduction of
- *  its own, so the whole map goes row-major for the mean (in f32, so a
- *  thousand-pixel reduction does not accumulate in half precision) and the
- *  [C,1] result returns to the layout. */
+/** Global average pool of a square map: HWC4 [C,H,H] → HWC4 [C,1,1]. */
 export function globalAvgPool(x: Value): Value {
-  const [c, h, w] = dims3(x);
-  const flat = reshape(toChw(x, 'f32'), [c, h * w]);
-  return toHwc4(reshape(mean(flat), [c, 1, 1]));
+  const [, h] = dims3(x);
+  return avgPool2d(x, { kernelSize: h });
 }
 
 /** Broadcast an HWC4 [C,1,1] gate up to [C,size,size] so it can multiply a

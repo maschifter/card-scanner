@@ -22,7 +22,7 @@ const prepareAsset = async (module: any, fileName: string) => {
 
 const loadScanner = async () => {
   // Parallelize downloads to speed up boot time
-  const [yoloPath, embedPath, setYoloPath, setEmbedPath, fabPath] =
+  const [yoloPath, embedPath, setYoloPath, setEmbedPath, fabPath, langPath] =
     await Promise.all([
       prepareAsset(
         Platform.OS === 'ios'
@@ -42,11 +42,18 @@ const loadScanner = async () => {
         'set_embed.pte',
       ),
       prepareAsset(require('../assets/fab/ColorBarModel.pte'), 'fab.pte'),
+      prepareAsset(
+        Platform.OS === 'ios'
+          ? require('../assets/CardLanguageModel.coreml.pte')
+          : require('../assets/CardLanguageModel.xnnpack.pte'),
+        'language.pte',
+      ),
     ]);
 
   const result = await initializeScanner({
     segmentationModelPath: yoloPath,
     embeddingModelPath: embedPath,
+    languageModelPath: langPath,
     scanMode: 'auto',
     segmentationThreshold: 0.6,
     iouThreshold: 0.7,

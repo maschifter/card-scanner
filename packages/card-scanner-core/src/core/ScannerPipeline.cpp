@@ -1,6 +1,7 @@
 #include "ScannerPipeline.h"
 #include "../Constants.h"
 #include "../benchmark/BenchmarkCollector.h"
+#include "../models/CardLanguageModel.h"
 #include "../utils/ImageUtils.h"
 #include "../utils/QuadGeometry.h"
 #include "CardSelection.h"
@@ -372,6 +373,19 @@ FABColorInfo ScannerPipeline::detectFABColorVariant(
       fabConfig.minDotsRegionSize);
 }
 
+CardLanguageInfo ScannerPipeline::detectLanguage(const cv::Mat &cardImage,
+                                                 const ScannerContext &ctx) {
+  if (!ctx.language) {
+    return CardLanguageInfo(); // Return empty if no language model
+  }
+  try {
+    return ctx.language->classify(cardImage);
+  } catch (const std::exception &e) {
+    // The language is optional: keep the match when its model fails
+    return CardLanguageInfo();
+  }
+}
+
 // Stage 4: search the card, and on a miss search it upside down. A sideways
 // quad dewarps 180 degrees off half the time, so it tries the cached flip
 // first. Leaves processingImage and card.croppedImage in the orientation that
@@ -421,7 +435,7 @@ recognizeInEitherOrientation(ProcessedCard &card, cv::Mat &processingImage,
     setCachedSidewaysFlip(flipped);
   }
   // Keep the raw crop consistent with the resolved orientation - the set
-  // symbol and FAB color stages read it.
+  // symbol, FAB color and language stages read it.
   if (flipped) {
     cv::rotate(card.croppedImage, card.croppedImage, cv::ROTATE_180);
   }
@@ -529,6 +543,8 @@ ScannerPipeline::processDetection(const cv::Mat &frameImage,
     card.setSymbol = detectSetSymbol(card.croppedImage, card.matches, ctx);
     // FAB: Detect color variant (with disambiguation threshold)
     card.fabColor = detectFABColorVariant(card.croppedImage, card.matches, ctx);
+    // Any game: Detect print language
+    card.language = detectLanguage(card.croppedImage, ctx);
   }
 
   return card;

@@ -71,6 +71,11 @@ struct BenchmarkRecord {
   double fabColorPreprocMs = 0.0;
   double fabColorClassifyMs = 0.0;
 
+  // Language classifier, on every matched card of any game.
+  bool languageRan = false;
+  double languagePreprocMs = 0.0;
+  double languageClassifyMs = 0.0;
+
   double totalMs = 0.0; // whole processFrame call
 
   // The match as the scanner would report it; blank/0 when nothing met confidenceThreshold.

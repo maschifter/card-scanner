@@ -93,7 +93,7 @@ void testMissingModelThrows() {
         std::string(TEST_FIXTURE_DIR) + "/does-not-exist.onnx");
   } catch (const std::exception &e) {
     threw = true;
-    // Five models load at init, so the message has to name the path.
+    // Several models load at init, so the message has to name the path.
     check(std::string(e.what()).find("does-not-exist.onnx") != std::string::npos,
           "load failure names the offending path");
   }

@@ -18,6 +18,10 @@ json cardToJson(const CardSearchResult &card, ProductClient &products) {
               {"game", card.gameName},
               {"score", card.score},
               {"detections", card.detections}};
+  if (!card.language.isEmpty()) {
+    out["language"] = {{"code", card.language.code},
+                       {"similarity", card.language.similarity}};
+  }
   // Absent until the lookup thread resolves it; the overlay shows the id.
   if (auto product = products.lookup(card.cardId)) {
     out["name"] = product->name;
@@ -68,7 +72,8 @@ std::string stateMessage(ScannerService &service, ProductClient &products) {
                     {"yoloMs", diagnostics.yoloMs},
                     {"preprocMs", diagnostics.preprocMs},
                     {"embedMs", diagnostics.embedMs},
-                    {"dbSearchMs", diagnostics.dbSearchMs}}}};
+                    {"dbSearchMs", diagnostics.dbSearchMs},
+                    {"languageMs", diagnostics.languageMs}}}};
 
   if (session.candidate) {
     payload["candidate"] = cardToJson(*session.candidate, products);

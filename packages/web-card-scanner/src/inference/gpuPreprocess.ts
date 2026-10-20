@@ -8,7 +8,7 @@
 import type { TgpuRoot } from 'typegpu';
 import { IMAGENET_MEAN, IMAGENET_STD, LETTERBOX_PAD } from '../constants.ts';
 
-export type PreprocessMode = 'scale255' | 'imagenet';
+export type PreprocessMode = 'scale255' | 'imagenet' | 'minusOneToOne';
 
 export interface Rect {
   x: number;
@@ -24,8 +24,8 @@ export interface Placement {
   dst: Rect;
 }
 
-export function cropPlacement(src: Rect, size: number): Placement {
-  return { src, dst: { x: 0, y: 0, w: size, h: size } };
+export function cropPlacement(src: Rect, w: number, h = w): Placement {
+  return { src, dst: { x: 0, y: 0, w, h } };
 }
 
 export interface Letterbox {
@@ -57,13 +57,12 @@ export function letterboxPlacement(
   };
 }
 
-/** Pipelines are per (device, size, mode) — size and mode are baked into the
- *  shader source so the loop bounds constant-fold. */
 const pipelineCache = new WeakMap<GPUDevice, Map<string, GPUComputePipeline>>();
 
 function pipelineFor(
   device: GPUDevice,
-  size: number,
+  width: number,
+  height: number,
   mode: PreprocessMode,
 ): GPUComputePipeline {
   let bySpec = pipelineCache.get(device);
@@ -71,14 +70,15 @@ function pipelineFor(
     bySpec = new Map();
     pipelineCache.set(device, bySpec);
   }
-  const key = `${size}:${mode}`;
+  const key = `${width}x${height}:${mode}`;
   let pipeline = bySpec.get(key);
   if (pipeline) return pipeline;
-  const hw = size * size;
-  const normalize =
-    mode === 'imagenet'
-      ? `v = (v - vec3f(${IMAGENET_MEAN.join(', ')})) / vec3f(${IMAGENET_STD.join(', ')});`
-      : ``;
+  const hw = width * height;
+  const normalize = {
+    scale255: ``,
+    imagenet: `v = (v - vec3f(${IMAGENET_MEAN.join(', ')})) / vec3f(${IMAGENET_STD.join(', ')});`,
+    minusOneToOne: `v = v * 2.0 - 1.0;`,
+  }[mode];
   const module = device.createShaderModule({
     code: /* wgsl */ `
       struct Map {
@@ -95,8 +95,8 @@ function pipelineFor(
       fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         let i = gid.x;
         if (i >= ${hw}u) { return; }
-        let px = f32(i % ${size}u) + 0.5;
-        let py = f32(i / ${size}u) + 0.5;
+        let px = f32(i % ${width}u) + 0.5;
+        let py = f32(i / ${width}u) + 0.5;
         var v = vec3f(${LETTERBOX_PAD / 255});
         let inside = px >= map.dst.x && px < map.dst.x + map.dst.z
           && py >= map.dst.y && py < map.dst.y + map.dst.w;
@@ -140,12 +140,13 @@ export class GpuFrameInput {
 
   constructor(
     root: TgpuRoot,
-    private readonly size: number,
+    private readonly width: number,
+    private readonly height: number,
     mode: PreprocessMode,
     private readonly dst: GPUBuffer,
   ) {
     this.device = root.device;
-    this.pipeline = pipelineFor(this.device, size, mode);
+    this.pipeline = pipelineFor(this.device, width, height, mode);
     this.sampler = this.device.createSampler({
       magFilter: 'linear',
       minFilter: 'linear',
@@ -191,7 +192,7 @@ export class GpuFrameInput {
   write(image: ImageData | GPUTexture, placement?: Placement): void {
     const { width, height } = image;
     const whole = { x: 0, y: 0, w: width, h: height };
-    const p = placement ?? cropPlacement(whole, this.size);
+    const p = placement ?? cropPlacement(whole, this.width, this.height);
 
     const queue = this.device.queue;
     let texture: GPUTexture;
@@ -210,7 +211,7 @@ export class GpuFrameInput {
     const pass = encoder.beginComputePass();
     pass.setPipeline(this.pipeline);
     pass.setBindGroup(0, this.bindingsFor(texture));
-    pass.dispatchWorkgroups(Math.ceil((this.size * this.size) / 64));
+    pass.dispatchWorkgroups(Math.ceil((this.width * this.height) / 64));
     pass.end();
     queue.submit([encoder.finish()]);
   }

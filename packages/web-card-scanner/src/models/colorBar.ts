@@ -5,7 +5,7 @@
  *  Sequential indices (1, 5, 9). Input [3,100,100] ImageNet-normalized;
  *  output [1,3] logits in bundle order [blue, red, yellow]. */
 
-import { maxPool2d, nn, toHwc4, type Value } from '@tie/core';
+import { maxPool2d, nn, toHwc4, type Value } from '../runntime.ts';
 import { conv2d, type Conv } from './layers.ts';
 import { globalAvgPool, relu, toRow } from './ops.ts';
 
@@ -17,14 +17,14 @@ export const COLOR_BAR_LABELS = ['blue', 'red', 'yellow'] as const;
 /** Fields are named after the torch Sequential indices so checkpoint keys
  *  (`features.0.weight`, ...) resolve without a key map. */
 class Features extends Module {
-  readonly 0 = conv2d({ in: 3, out: 16, k: 3 });
-  readonly 3 = conv2d({ in: 16, out: 16, k: 3 });
-  readonly 7 = conv2d({ in: 16, out: 32, k: 3 });
-  readonly 10 = conv2d({ in: 32, out: 32, k: 3 });
-  readonly 14 = conv2d({ in: 32, out: 48, k: 3 });
-  readonly 17 = conv2d({ in: 48, out: 48, k: 3 });
-  readonly 21 = conv2d({ in: 48, out: 64, k: 3 });
-  readonly 24 = conv2d({ in: 64, out: 64, k: 3 });
+  readonly 0 = conv2d({ in: 3, out: 16, k: 3, activation: 'relu' });
+  readonly 3 = conv2d({ in: 16, out: 16, k: 3, activation: 'relu' });
+  readonly 7 = conv2d({ in: 16, out: 32, k: 3, activation: 'relu' });
+  readonly 10 = conv2d({ in: 32, out: 32, k: 3, activation: 'relu' });
+  readonly 14 = conv2d({ in: 32, out: 48, k: 3, activation: 'relu' });
+  readonly 17 = conv2d({ in: 48, out: 48, k: 3, activation: 'relu' });
+  readonly 21 = conv2d({ in: 48, out: 64, k: 3, activation: 'relu' });
+  readonly 24 = conv2d({ in: 64, out: 64, k: 3, activation: 'relu' });
 
   forward(x: Value): Value {
     const stages: [Conv, Conv][] = [
@@ -35,7 +35,7 @@ class Features extends Module {
     ];
     let y = toHwc4(x);
     stages.forEach(([a, b], i) => {
-      y = relu(b.forward(relu(a.forward(y))));
+      y = b.forward(a.forward(y));
       const last = i === stages.length - 1;
       if (!last) y = maxPool2d(y, { kernelSize: 2, stride: 2, padding: 0 });
     });

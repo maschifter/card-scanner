@@ -15,6 +15,7 @@ committed through Git LFS (install it as the
 ```sh
 git lfs install
 git lfs pull --include "apps/web-example/**"   # or plain `git lfs pull` for every app
+git submodule update --init
 yarn
 ```
 

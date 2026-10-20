@@ -22,6 +22,12 @@ export interface FabColor {
   score: number;
 }
 
+export interface CardLanguageInfo {
+  /** "de", "en", ..., "zhs", "zht". */
+  code: string;
+  score: number;
+}
+
 /** The backend boundary: embeddings go out, matches come back. The server
  *  implements the pooled search + accept gate + filter-to-best-game logic. */
 export interface SearchClient {
@@ -44,6 +50,8 @@ export interface ScannedCard {
   predictedGame: string | null;
   setSymbol: SetSymbolMatch | null;
   fabColor: FabColor | null;
+  /** Print language of a matched card; null when unreadable. */
+  language: CardLanguageInfo | null;
 }
 
 /** Video/image (downscaled to FRAME_MAX_WIDTH) or ImageData as is. */
@@ -79,11 +87,15 @@ export interface ScannerOptions {
   search: SearchClient;
   /** Default 'multiple'. */
   scanMode?: ScanMode;
+  /** Scans per second at most, 0 = unthrottled. Default 30. */
+  maxFrameRate?: number;
   /** Default true. */
   useSidewaysFlipCache?: boolean;
   /** Reuse a backend answer while the same card stays in view instead of
    *  searching every frame (default true; see cachedSearchClient). */
   reuseSearchResults?: boolean;
+  /** Read the print language of matched cards. Default true. */
+  classifyLanguage?: boolean;
   segmentationThreshold?: number;
   minGameConfidence?: number;
   disambiguationThreshold?: number;

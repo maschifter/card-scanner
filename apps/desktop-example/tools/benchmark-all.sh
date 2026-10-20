@@ -104,6 +104,7 @@ jq -r '[.[] | select(.isWarmup | not)] |
   "  preproc \([.[].preprocMs] | add / length * 100 | round / 100)" +
   "  embed \([.[].embedMs] | add / length * 10 | round / 10)" +
   "  dbSearch \([.[].dbSearchMs] | add / length * 10 | round / 10)" +
+  "  language \([.[] | .languagePreprocMs + .languageClassifyMs] | add / length * 10 | round / 10)" +
   "  total \([.[].totalMs] | add / length * 10 | round / 10)"' "$OUT"
 
 jq -r '[.[] | select(.isWarmup | not)] | group_by(.outcome) |

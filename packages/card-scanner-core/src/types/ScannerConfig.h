@@ -68,6 +68,7 @@ struct ScannerConfig {
 
   std::string segmentationModelPath;
   std::string embeddingModelPath;
+  std::string languageModelPath;
 
   // Game class mapping (required). A class maps to several databases when the
   // model merges games it cannot distinguish; all of them get searched.

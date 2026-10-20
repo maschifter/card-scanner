@@ -4,11 +4,13 @@
 import type { TgpuRoot } from 'typegpu';
 import {
   DEFAULT_DISAMBIGUATION_MARGIN,
+  DEFAULT_MAX_FRAME_RATE,
   DEFAULT_MIN_GAME_CONFIDENCE,
   DEFAULT_SEGMENTATION_THRESHOLD,
   DEFAULT_SYMBOL_DETECTION_THRESHOLD,
   MASK_BOX_PADDING_PX,
   NUM_GAME_CLASSES,
+  SCAN_WAIT_MARGIN_MS,
   SLOW_GPU_INPUT_SIZE,
   YOLO_INPUT_SIZE,
   YOLO_STRIDES,
@@ -49,12 +51,14 @@ export class WebCardScanner {
   /** See ScannerOptions.scanMode; changing it takes effect next frame. */
   scanMode: ScanMode;
   private readonly sticky = new StickyTracker();
+  private mlWindowOpensAt = 0;
 
   private constructor(
     private readonly root: TgpuRoot,
     private readonly runners: Runners,
     private readonly cards: CardProcessor,
     private readonly segmentationThreshold: number,
+    private readonly maxFrameRate: number,
     scanMode: ScanMode,
     private readonly frames: GpuFrame,
     /** The fastest load-test run that decided the input size, else null. */
@@ -74,8 +78,10 @@ export class WebCardScanner {
       disambiguationThreshold: DEFAULT_DISAMBIGUATION_MARGIN,
       setSymbolDetectionThreshold: DEFAULT_SYMBOL_DETECTION_THRESHOLD,
       scanMode: 'multiple' as ScanMode,
+      maxFrameRate: DEFAULT_MAX_FRAME_RATE,
       useSidewaysFlipCache: true,
       reuseSearchResults: true,
+      classifyLanguage: true,
       segmentationInputSize: YOLO_INPUT_SIZE,
       slowGpuInputSize: SLOW_GPU_INPUT_SIZE,
       ...options,
@@ -97,6 +103,7 @@ export class WebCardScanner {
       opts.onProgress,
       opts.segmentationInputSize,
       opts.slowGpuInputSize,
+      opts.classifyLanguage,
     );
 
     const cards = new CardProcessor(
@@ -110,14 +117,23 @@ export class WebCardScanner {
       runners,
       cards,
       opts.segmentationThreshold,
+      opts.maxFrameRate,
       opts.scanMode,
       new GpuFrame(root.device),
       loadTestMs,
     );
   }
 
-  async scan(source: FrameSource): Promise<ScanResult> {
+  /** Null when the throttle dropped a video frame. */
+  async scan(source: FrameSource): Promise<ScanResult | null> {
+    const wait = this.mlWindowOpensAt - performance.now();
+    if (wait > SCAN_WAIT_MARGIN_MS && source instanceof HTMLVideoElement)
+      return null;
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     const t0 = performance.now();
+    if (this.maxFrameRate > 0) {
+      this.mlWindowOpensAt = t0 + 1000 / this.maxFrameRate;
+    }
     const frame = this.frames.upload(source);
     if (!frame) throw new Error('scan: the source has no pixels yet');
     const tCapture = performance.now();
@@ -173,8 +189,9 @@ export class WebCardScanner {
   }
 
   /** Null without 'timestamp-query' or before the model has run. */
-  profile(model: ProfiledModel = 'segmentation') {
-    return profileRunner(this.root, this.runners[model]);
+  async profile(model: ProfiledModel = 'segmentation') {
+    const runner = this.runners[model];
+    return runner ? profileRunner(this.root, runner) : null;
   }
 
   /** Destroys the GPU device; the scanner is unusable afterwards. */

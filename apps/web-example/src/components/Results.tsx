@@ -27,7 +27,11 @@ function Thumb({
   );
 }
 
-function Tags({ card }: { card: Pick<CardView, 'setSymbol' | 'fabColor'> }) {
+function Tags({
+  card,
+}: {
+  card: Pick<CardView, 'setSymbol' | 'fabColor' | 'language'>;
+}) {
   return (
     <>
       {card.setSymbol && (
@@ -38,6 +42,11 @@ function Tags({ card }: { card: Pick<CardView, 'setSymbol' | 'fabColor'> }) {
       {card.fabColor && (
         <span className={`tag tag-${card.fabColor.color}`}>
           pitch {card.fabColor.color} · {pct(card.fabColor.score)}
+        </span>
+      )}
+      {card.language && (
+        <span className="tag">
+          language {card.language.code} · {pct(card.language.score)}
         </span>
       )}
     </>

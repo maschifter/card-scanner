@@ -70,6 +70,8 @@ struct ProcessedCard {
   SetSymbolInfo setSymbol; // MTG: set symbol detection
   FABColorInfo fabColor;   // FAB: color variant detection
 
+  CardLanguageInfo language;
+
   ProcessedCard()
       : detectionConfidence(0.0f), imageWidth(0), imageHeight(0),
         imageFileSize(0), predictedGameConfidence(0.0) {}

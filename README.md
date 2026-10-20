@@ -32,7 +32,8 @@ runtimes without either one leaking into the other.
 
 ## Mobile
 
-Supported platforms are iOS 15.1 and later, and Android 10 (API 29) and later.
+Supported platforms are iOS 17 and later (the CoreML models need it), and
+Android 10 (API 29) and later.
 
 ### Prerequisites
 

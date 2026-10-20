@@ -127,6 +127,7 @@ LoadedConfig loadConfigFile(const std::filesystem::path &configPath) {
   };
   resolve(config.segmentationModelPath);
   resolve(config.embeddingModelPath);
+  resolve(config.languageModelPath);
   for (auto &[game, gameConfig] : config.gameSpecificConfig) {
     resolve(gameConfig.embeddingModelPath);
     resolve(gameConfig.setSymbolDetectionModelPath);

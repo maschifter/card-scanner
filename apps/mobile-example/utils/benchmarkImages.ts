@@ -46,9 +46,27 @@ export const BENCHMARK_IMAGES: BenchmarkImageAsset[] = [
   },
   {
     game: 'cyberpunk',
-    // V - Streetkid (Female) (132)
-    cardIds: ['69d0b5667ae64521f41aa5f1'],
+    // Memory Relapse (B100)
+    cardIds: ['6aa11f9395f11c2c71c26486', '6aa11f8fae8d7a19bae1512b'],
     module: require('../assets/games_images/cyberpunk/card_2.jpg'),
+  },
+  {
+    game: 'cyberpunk',
+    // Panam Palmer - Strength Through Family (B170)
+    cardIds: ['6aa11f94303d3a7a6ad26133'],
+    module: require('../assets/games_images/cyberpunk/card_3.jpg'),
+  },
+  {
+    game: 'cyberpunk',
+    // Judy Alvarez - Braindance Maestro (B157)
+    cardIds: ['6aa11f936a1ba7dc2710aa0f'],
+    module: require('../assets/games_images/cyberpunk/card_4.jpg'),
+  },
+  {
+    game: 'cyberpunk',
+    // Synapse Burnout (B102)
+    cardIds: ['6aa11f94d31ec85e9622bb65', '6aa11f90bcd8093c7ffba2cb'],
+    module: require('../assets/games_images/cyberpunk/card_5.jpg'),
   },
   // --- dbs-fusion ---
   {

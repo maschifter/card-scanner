@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createReadStream, readFileSync, statSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import type { Connect, Plugin } from 'vite';
@@ -5,7 +6,7 @@ import type { Connect, Plugin } from 'vite';
 const MOBILE_EXAMPLE = join(import.meta.dirname, '../../mobile-example');
 const PHOTOS_DIR = join(MOBILE_EXAMPLE, 'assets/games_images');
 const PHOTO_LIST = join(MOBILE_EXAMPLE, 'utils/benchmarkImages.ts');
-const ROOT_PACKAGE = join(import.meta.dirname, '../../../package.json');
+const ENGINE = join(import.meta.dirname, '../../../vendor/runntime');
 
 function readPhotoList() {
   const src = readFileSync(PHOTO_LIST, 'utf8').replace(/\/\/.*$/gm, '');
@@ -23,7 +24,9 @@ function readPhotoList() {
 
 function addBenchmarkRoutes(middlewares: Connect.Server) {
   middlewares.use('/bench/manifest.json', (_req, res) => {
-    const engine = JSON.parse(readFileSync(ROOT_PACKAGE, 'utf8')).resolutions;
+    const engine = execFileSync('git', ['-C', ENGINE, 'rev-parse', 'HEAD'], {
+      encoding: 'utf8',
+    }).trim();
     res.setHeader('content-type', 'application/json');
     res.end(
       JSON.stringify({

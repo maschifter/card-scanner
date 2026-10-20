@@ -59,6 +59,7 @@ struct Diagnostics {
   double preprocMs = 0.0;
   double embedMs = 0.0;
   double dbSearchMs = 0.0;
+  double languageMs = 0.0;
 };
 
 /**

@@ -10,6 +10,7 @@ class YoloSegmentationModel;
 class SetSymbolYoloModel;
 class SetSymbolEmbedder;
 class FABColorClassifier;
+class CardLanguageModel;
 
 namespace core {
 
@@ -24,6 +25,7 @@ struct ScannerContext {
   std::shared_ptr<SetSymbolYoloModel> setSymbolYolo;
   std::shared_ptr<SetSymbolEmbedder> setSymbolEmbedder;
   std::shared_ptr<FABColorClassifier> fabColor;
+  std::shared_ptr<CardLanguageModel> language;
   /// Per-game embedders; games absent here use `embedding`.
   GameEmbedders gameEmbedders;
 };

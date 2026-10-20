@@ -36,6 +36,7 @@ const PROFILED: ProfiledModel[] = [
   'setSymbolDetection',
   'setSymbolRecognition',
   'colorBar',
+  'language',
 ];
 
 const STAGES = [
@@ -79,7 +80,7 @@ interface BenchImage {
 
 interface Manifest {
   source: string;
-  engine: Record<string, string>;
+  engine: string;
   images: BenchImage[];
 }
 
@@ -178,7 +179,7 @@ async function measure(
     let outcome: Outcome = 'noDetection';
     let correctRuns = 0;
     for (let r = 0; r < WARMUP + RUNS; r++) {
-      const { cards, timings } = await scanner.scan(img);
+      const { cards, timings } = (await scanner.scan(img))!;
       if (r < WARMUP) continue;
       outcome = classify(cards, image);
       if (outcome === 'correct') correctRuns++;
@@ -235,6 +236,7 @@ async function run() {
     search: httpSearchClient('/api'),
     // No state carried across photos, and every searchMs is a real search.
     scanMode: 'multiple',
+    maxFrameRate: 0,
     useSidewaysFlipCache: false,
     reuseSearchResults: false,
     // One size for the whole run: ?input= or the library's default.

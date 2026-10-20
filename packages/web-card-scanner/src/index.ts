@@ -6,6 +6,7 @@ export { captureSize, sourceSize } from './utils/frame.ts';
 export { FRAME_MAX_WIDTH } from './constants.ts';
 export type {
   Box,
+  CardLanguageInfo,
   CardMatch,
   FabColor,
   FrameSource,
@@ -26,3 +27,5 @@ export { l2Normalize } from './utils/vector.ts';
 export { CardRecognitionModel } from './models/cardRecognition.ts';
 export { SetSymbolRecognitionModel } from './models/setSymbolRecognition.ts';
 export { ColorBarModel } from './models/colorBar.ts';
+export { CardLanguageModel } from './models/cardLanguage.ts';
+export { languageProbs } from './core/languageProcessor.ts';

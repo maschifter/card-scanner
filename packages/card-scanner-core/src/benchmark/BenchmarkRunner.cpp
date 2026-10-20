@@ -53,6 +53,10 @@ std::string progressRow(const BenchmarkRecord &r) {
     row << "  fab_color(prep " << std::setw(6) << r.fabColorPreprocMs
         << " classify " << std::setw(6) << r.fabColorClassifyMs << ")";
   }
+  if (r.languageRan) {
+    row << "  language(prep " << std::setw(6) << r.languagePreprocMs
+        << " classify " << std::setw(6) << r.languageClassifyMs << ")";
+  }
 
   row << " | dets " << r.detectionCount << " (conf " << std::setprecision(3)
       << r.yoloConfidence << ") games " << r.gamesSearched;
@@ -149,6 +153,10 @@ std::string jsonRecord(const BenchmarkRecord &r) {
   obj << "\"fabColorRan\":" << (r.fabColorRan ? "true" : "false") << ','
       << "\"fabColorPreprocMs\":" << r.fabColorPreprocMs << ','
       << "\"fabColorClassifyMs\":" << r.fabColorClassifyMs << ',';
+
+  obj << "\"languageRan\":" << (r.languageRan ? "true" : "false") << ','
+      << "\"languagePreprocMs\":" << r.languagePreprocMs << ','
+      << "\"languageClassifyMs\":" << r.languageClassifyMs << ',';
 
   obj << "\"totalMs\":" << r.totalMs << ','
       << "\"topMatchCardId\":" << jsonString(r.topMatchCardId) << ','
@@ -291,6 +299,13 @@ BenchmarkRunner::run(const std::vector<BenchmarkImageInput> &images,
           BenchmarkCollector::getBenchmarkedMs(Stage::FabColorPreproc);
       record.fabColorClassifyMs =
           BenchmarkCollector::getBenchmarkedMs(Stage::FabColorClassify);
+
+      record.languageRan =
+          BenchmarkCollector::getBenchmarkedRan(Stage::LanguageClassify);
+      record.languagePreprocMs =
+          BenchmarkCollector::getBenchmarkedMs(Stage::LanguagePreproc);
+      record.languageClassifyMs =
+          BenchmarkCollector::getBenchmarkedMs(Stage::LanguageClassify);
 
       record.totalMs = scanResult.processingTimeMs;
 
