@@ -110,6 +110,18 @@ std::string ScannerConfig::validate() const {
       return "gameClassMapping[" + std::to_string(i) + "] names no database";
     }
   }
+  if (!languageModelPath.empty()) {
+    if (languageClassNames.empty()) {
+      return "languageClassNames must not be empty";
+    }
+    for (auto it = languageClassNames.begin(); it != languageClassNames.end();
+         ++it) {
+      if (std::find(it + 1, languageClassNames.end(), *it) !=
+          languageClassNames.end()) {
+        return "languageClassNames lists '" + *it + "' twice";
+      }
+    }
+  }
 
   // Searches key gameSpecificConfig by mapping names; other entries never apply.
   for (const auto &entry : gameSpecificConfig) {
@@ -152,6 +164,10 @@ std::string ScannerConfig::validate() const {
         !error.empty()) {
       return error;
     }
+    if (gameConfig.hasColorDetection() &&
+        gameConfig.colorDetectionClassNames.empty()) {
+      return prefix + "colorDetection.classNames must not be empty";
+    }
   }
 
   return {};
@@ -179,6 +195,12 @@ public:
       target = expect<std::string>(key, value, "string");
     } else if constexpr (std::is_same_v<T, bool>) {
       target = expect<bool>(key, value, "boolean");
+    } else if constexpr (std::is_same_v<T, std::vector<std::string>>) {
+      target.clear();
+      for (const auto &entry :
+           expect<ConfigValue::Array>(key, value, "array of strings")) {
+        target.push_back(expect<std::string>(key, entry, "array of strings"));
+      }
     } else {
       target = static_cast<T>(expect<double>(key, value, "number"));
     }
@@ -306,6 +328,7 @@ ScannerConfig::GameConfig parseGameConfig(const ConfigValue &object,
       section.isObject()) {
     ObjectReader color(section, prefix + "colorDetection.", unknownKeys);
     color.read("modelPath", game.colorDetectionModelPath);
+    color.read("classNames", game.colorDetectionClassNames);
     color.read("dotsRegionRatio", game.dotsRegionRatio);
     color.read("minDotsRegionSize", game.minDotsRegionSize);
     color.reportUnknown();
@@ -336,6 +359,7 @@ parseScannerConfig(const ConfigValue &root,
   reader.read("segmentationModelPath", config.segmentationModelPath);
   reader.read("embeddingModelPath", config.embeddingModelPath);
   reader.read("languageModelPath", config.languageModelPath);
+  reader.read("languageClassNames", config.languageClassNames);
   reader.read("scanMode", config.scanMode);
 
   reader.read("segmentationThreshold", config.segmentationThreshold);

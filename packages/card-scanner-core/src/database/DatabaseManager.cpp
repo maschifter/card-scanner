@@ -189,7 +189,12 @@ bool DatabaseManager::swapDatabaseFile(const std::string &gameName,
       fs::rename(target, backup);
     }
     try {
-      fs::rename(source, target);
+      // A read-only source (an iOS Release asset in the app bundle) is copied
+      std::error_code ec;
+      fs::rename(source, target, ec);
+      if (ec) {
+        fs::copy_file(source, target);
+      }
       const std::string storeDir = target.parent_path().string();
       if (isSetSymbols) {
         setSymbolStore_ = std::make_shared<ObjectBoxDB>(storeDir);

@@ -79,13 +79,22 @@ yarn expo run:ios       # or: yarn expo run:android
 
 To start the development server on its own, run `yarn expo start`.
 
+The app bundles the models and the databases the CDN manifest serves: Metro
+runs `tools/manifest.mjs`, which downloads them into
+`apps/mobile-example/manifest-assets/`. A model the manifest has no usable
+version of keeps its repo copy; the tool prints which came from where. To keep
+the repo copies, set `USE_MANIFEST=0` for either command, for example
+`USE_MANIFEST=0 yarn expo run:ios`.
+
 ## Desktop
 
 The desktop build is an OBS Studio plugin: point a camera at a card and OBS
 names it on your stream.
 
 The models and the databases come from Git LFS, so run `git lfs pull` first if
-you have not already.
+you have not already; the build then takes the CDN manifest's unless
+`--no-manifest` (see the
+[OBS plugin README](apps/desktop-example/README.md#configuration)).
 
 ```sh
 cd apps/desktop-example && node tools/release.mjs

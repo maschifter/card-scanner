@@ -7,6 +7,8 @@ import {
   listDatabases,
   type DatabaseInfo,
 } from '@cardnexus/card-scanner';
+import { fromManifest } from './fromManifest';
+import fromManifestDatabases from '../assets/from-manifest-databases';
 
 // Game database configurations
 export const GAME_DATABASES = [
@@ -29,6 +31,7 @@ export const GAME_DATABASES = [
   { name: 'swu', asset: require('../assets/swu.mdb') },
   { name: 'chrono-core', asset: require('../assets/chrono-core.mdb') },
   { name: 'palworld', asset: require('../assets/palworld.mdb') },
+  ...fromManifestDatabases,
 ];
 
 // Set symbol database (for MTG)
@@ -39,18 +42,21 @@ const SET_SYMBOL_DATABASE = {
 
 // Bump whenever the bundled .mdb files change. An installed database is
 // otherwise kept forever, so a card-recognition model swap would leave old
-// embeddings in place and every similarity score would collapse.
-const DB_BUNDLE_VERSION = '0.0.11';
+// embeddings in place and every similarity score would collapse. Databases
+// from the CDN manifest carry their own version.
+const DB_BUNDLE_VERSION = fromManifest.dbBundleVersion ?? '0.0.11';
 const DB_VERSION_MARKER = `${FileSystem.documentDirectory}db-bundle-version.txt`;
 
-async function bundledDatabasesChanged(): Promise<boolean> {
+async function staleDatabases(): Promise<string[]> {
+  const all = GAME_DATABASES.map((game) => game.name);
   try {
     const info = await FileSystem.getInfoAsync(DB_VERSION_MARKER);
-    if (!info.exists) return true;
+    if (!info.exists) return all;
     const seen = await FileSystem.readAsStringAsync(DB_VERSION_MARKER);
-    return seen.trim() !== DB_BUNDLE_VERSION;
+    const [version, ...failed] = seen.trim().split('\n');
+    return version === DB_BUNDLE_VERSION ? failed : all;
   } catch {
-    return true;
+    return all;
   }
 }
 
@@ -147,12 +153,7 @@ export async function loadAllDatabases(): Promise<GameDatabaseStatus[]> {
   console.log('Loading all game databases...');
 
   const results: GameDatabaseStatus[] = [];
-  const forceReload = await bundledDatabasesChanged();
-  if (forceReload) {
-    console.log(
-      `Bundled databases changed (${DB_BUNDLE_VERSION}); replacing installed ones`,
-    );
-  }
+  const stale = await staleDatabases();
 
   // Load set symbol database first (for MTG)
   try {
@@ -168,7 +169,7 @@ export async function loadAllDatabases(): Promise<GameDatabaseStatus[]> {
       // Check if already loaded
       const stats = await checkDatabaseStatus(game.name);
 
-      if (stats.isLoaded && !forceReload) {
+      if (stats.isLoaded && !stale.includes(game.name)) {
         console.log(
           `${game.name} database already loaded with ${stats.cardCount} cards`,
         );
@@ -211,9 +212,13 @@ export async function loadAllDatabases(): Promise<GameDatabaseStatus[]> {
     `Database loading complete: ${successCount}/${totalCount} games loaded`,
   );
 
-  if (forceReload) {
+  if (stale.length > 0) {
+    const failed = results.filter((r) => r.error).map((r) => r.gameName);
     try {
-      await FileSystem.writeAsStringAsync(DB_VERSION_MARKER, DB_BUNDLE_VERSION);
+      await FileSystem.writeAsStringAsync(
+        DB_VERSION_MARKER,
+        [DB_BUNDLE_VERSION, ...failed].join('\n'),
+      );
     } catch (error) {
       console.error('Failed to record database bundle version:', error);
     }

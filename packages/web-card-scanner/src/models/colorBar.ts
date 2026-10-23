@@ -46,7 +46,7 @@ class Features extends Module {
 class Classifier extends Module {
   readonly 1 = new Linear(64, 64);
   readonly 5 = new Linear(64, 32);
-  readonly 9 = new Linear(32, 3);
+  readonly 9 = new Linear(32, COLOR_BAR_LABELS.length);
 
   forward(x: Value): Value {
     let y = relu(this[1].forward(x));

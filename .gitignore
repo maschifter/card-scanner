@@ -120,6 +120,9 @@ CMakeUserPresets.json
 
 apps/mobile-example/assets/reference_check/
 
+# Models and databases a build downloaded from the CDN manifest
+apps/mobile-example/manifest-assets/
+
 # Scratch notes, not part of the build
 .scratch/
 

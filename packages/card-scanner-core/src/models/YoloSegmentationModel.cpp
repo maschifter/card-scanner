@@ -24,6 +24,28 @@ YoloSegmentationModel::YoloSegmentationModel(
   }
 
   session_ = inference::loadSession(modelPath);
+
+  // The mapping's entry count is the decode stride, so it has to equal the
+  // model's class count exactly. Same count in a different order still passes.
+  const auto predsShape = session_->outputShape(0);
+  if (predsShape.size() < 2) {
+    throw std::runtime_error(
+        "Prediction tensor has " + std::to_string(predsShape.size()) +
+        " dimensions, expected at least 2 ([.., 4 + classes + 32, anchors])");
+  }
+  const int64_t channels = predsShape[predsShape.size() - 2];
+  const int64_t expectedChannels = yolo::BOX_FEATURES +
+                                   static_cast<int64_t>(classNames_.size()) +
+                                   yolo::MASK_COEFFS;
+  if (channels != expectedChannels) {
+    throw std::runtime_error(
+        "Segmentation model emits " + std::to_string(channels) +
+        " channels per anchor, gameClassMapping expects " +
+        std::to_string(expectedChannels) + " (4 box + " +
+        std::to_string(classNames_.size()) +
+        " classes + 32 mask coeffs). The mapping's entry count disagrees "
+        "with the model's class count.");
+  }
 }
 
 std::vector<float>
@@ -356,27 +378,6 @@ SegmentationResult YoloSegmentationModel::segment(const cv::Mat &image,
     throw std::runtime_error("Segmentation model returned " +
                              std::to_string(outputs.size()) +
                              " outputs, expected at least 2");
-  }
-  // The mapping's entry count is the decode stride, so it has to equal the
-  // model's class count exactly. Same count in a different order still passes.
-  const auto &predsShape = outputs.front().shape;
-  if (predsShape.size() < 2) {
-    throw std::runtime_error(
-        "Prediction tensor has " + std::to_string(predsShape.size()) +
-        " dimensions, expected at least 2 ([.., 4 + classes + 32, anchors])");
-  }
-  const int64_t channels = predsShape[predsShape.size() - 2];
-  const int64_t expectedChannels = yolo::BOX_FEATURES +
-                                   static_cast<int64_t>(classNames_.size()) +
-                                   yolo::MASK_COEFFS;
-  if (channels != expectedChannels) {
-    throw std::runtime_error(
-        "Segmentation model emits " + std::to_string(channels) +
-        " channels per anchor, gameClassMapping expects " +
-        std::to_string(expectedChannels) + " (4 box + " +
-        std::to_string(classNames_.size()) +
-        " classes + 32 mask coeffs). The mapping's entry count disagrees "
-        "with the model's class count.");
   }
   const std::span<const float> preds = outputs.front().data;
   const auto &protosOutput = outputs.back();

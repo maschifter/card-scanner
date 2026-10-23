@@ -14,7 +14,8 @@ const USAGE = `usage: node tools/export.mjs [--out <zip>] [release.mjs options]
 Builds exactly like release.mjs, but instead of installing into OBS assembles
 the bundle in build-obs/export, verifies it there, and zips it together with
 INSTALL.txt to ~/Desktop/obs-card-scanner-<version>-<commit>-<platform>.zip.
-The name also marks a non-Release build type or benchmark timers.
+The name also marks a non-Release build type, benchmark timers, or the repo's
+models and databases instead of the CDN manifest's (-repo).
 
   --out <zip>            write the archive here instead of the Desktop
 `;
@@ -54,7 +55,8 @@ function zipName(opts) {
     readFileSync(path.join(REPO_DIR, 'packages', 'desktop-card-scanner', 'package.json'), 'utf8'));
   const commit = versionOf('git', ['-C', REPO_DIR, 'describe', '--always', '--dirty'], /(\S+)/) ?? 'unknown';
   const variant = (opts.config === 'Release' ? '' : `-${opts.config.toLowerCase()}`)
-    + (opts.benchmark ? '-benchmark' : '');
+    + (opts.benchmark ? '-benchmark' : '')
+    + (opts.useManifest ? '' : '-repo');
   return `obs-card-scanner-${version}-${commit}-${PLATFORM}${variant}.zip`;
 }
 

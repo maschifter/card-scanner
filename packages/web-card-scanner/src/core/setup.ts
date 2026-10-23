@@ -46,7 +46,17 @@ export async function fetchGameClassMapping(
     `${base}/CardSegmentationModel/gameClassMapping.json`,
   );
   if (!res.ok) throw new Error(`gameClassMapping.json: ${res.status}`);
-  return (await res.json()) as GameClassEntry[];
+  const mapping = (await res.json()) as GameClassEntry[];
+  // The segmentation model scores NUM_GAME_CLASSES classes; one unmapped is never searched
+  if (
+    mapping.length !== NUM_GAME_CLASSES ||
+    mapping.some((entry, i) => entry.labelIndex !== i)
+  ) {
+    throw new Error(
+      `gameClassMapping.json must map the segmentation model's classes 0..${NUM_GAME_CLASSES - 1} in order, got ${mapping.length} entries`,
+    );
+  }
+  return mapping;
 }
 
 /** Every model runs its conv stack hwc4+f16, so the device needs shader-f16

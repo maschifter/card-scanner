@@ -30,6 +30,7 @@ export interface ScannerConfig {
   segmentationModelPath: string;
   embeddingModelPath: string;
   languageModelPath?: string;
+  languageClassNames?: string[]; // Language model's class names in class order (default: the repo model's); "zh" splits into "zhs"/"zht"
   scanMode: ScanMode;
   segmentationThreshold: number; // YOLO confidence threshold (default: 0.7)
   iouThreshold: number; // NMS IOU threshold (default: 0.7)
@@ -73,6 +74,7 @@ export interface ScannerConfig {
       // FAB-specific: Color variant detection configuration
       colorDetection?: {
         modelPath: string;
+        classNames?: string[]; // Color model's class names in class order (default: the repo model's)
         dotsRegionRatio?: number; // Ratio of card size to extract for dots region (default: 0.20)
         minDotsRegionSize?: number; // Minimum region size in pixels (default: 50)
       };

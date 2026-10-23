@@ -382,6 +382,8 @@ CardLanguageInfo ScannerPipeline::detectLanguage(const cv::Mat &cardImage,
     return ctx.language->classify(cardImage);
   } catch (const std::exception &e) {
     // The language is optional: keep the match when its model fails
+    log(LOG_LEVEL::Error, "[CardScanner]",
+        "language detection failed:", e.what());
     return CardLanguageInfo();
   }
 }

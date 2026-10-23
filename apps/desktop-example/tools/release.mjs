@@ -2,7 +2,9 @@
 // The OBS plugin from a clean checkout to an installed bundle: overlay, CMake
 // configure and build, tests, install, then a check that the bundle starts.
 import { spawnSync } from 'node:child_process';
-import { closeSync, existsSync, openSync, readFileSync, readSync, rmSync } from 'node:fs';
+import {
+  closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readSync, rmSync, writeFileSync,
+} from 'node:fs';
 import { availableParallelism, homedir, platform } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +19,7 @@ a missing one is reported with the install command for this platform.
   --config <Release|RelWithDebInfo|Debug>  build type (default Release)
   --benchmark            compile core's stage timers in
   --benchmark-verbose    the timers plus the per-iteration log rows
+  --no-manifest          keep the repo's models and databases instead of the CDN manifest's
   --build-dir <dir>      default: build-obs beside this app
   --obs-version <v>      OBS to take headers from; not newer than the OBS installed
   --obs-install-dir <d>  Windows: where obs.dll lives, when not the default
@@ -91,6 +94,7 @@ function parseArgs(argv) {
     config: 'Release',
     benchmark: false,
     benchmarkVerbose: false,
+    useManifest: true,
     buildDir: path.join(APP_DIR, 'build-obs'),
     pluginDest: OBS_PLUGIN_DIR,
     obsVersion: null,
@@ -118,6 +122,7 @@ function parseArgs(argv) {
       case '--config': opts.config = takeValue(arg); break;
       case '--benchmark': opts.benchmark = true; break;
       case '--benchmark-verbose': opts.benchmark = true; opts.benchmarkVerbose = true; break;
+      case '--no-manifest': opts.useManifest = false; break;
       case '--build-dir': opts.buildDir = path.resolve(takeValue(arg)); break;
       case '--obs-version': opts.obsVersion = takeValue(arg); break;
       case '--obs-install-dir': opts.obsInstallDir = takeValue(arg); break;
@@ -282,6 +287,25 @@ function runTests(opts) {
 // Assembles module, server, libraries, assets and overlay into opts.pluginDest.
 function assembleBundle(opts) {
   run('cmake', ['--build', opts.buildDir, '--config', opts.config, '--target', 'install-obs-plugin']);
+  if (opts.useManifest) takeFromManifest(opts);
+}
+
+// Overlays the manifest's files on the bundle and merges their class names into its config.json.
+function takeFromManifest(opts) {
+  const fetched = path.join(opts.buildDir, 'manifest');
+  run(process.execPath, [path.join(REPO_DIR, 'tools', 'manifest.mjs'), 'desktop', fetched]);
+  const { files, dbBundleVersion, colorDetection, ...keys } =
+    JSON.parse(readFileSync(path.join(fetched, 'from-manifest.json'), 'utf8'));
+  const resources = path.dirname(serverIn(opts.pluginDest));
+  for (const file of files) {
+    const target = path.join(resources, file);
+    mkdirSync(path.dirname(target), { recursive: true });
+    copyFileSync(path.join(fetched, file), target);
+  }
+  const configPath = path.join(resources, 'config.json');
+  const config = { ...JSON.parse(readFileSync(configPath, 'utf8')), ...keys };
+  Object.assign(config.gameSpecificConfig.fab.colorDetection, colorDetection);
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 }
 
 function installIntoObs(opts) {

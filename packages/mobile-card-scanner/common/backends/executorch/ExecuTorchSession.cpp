@@ -73,6 +73,23 @@ public:
     return outputs;
   }
 
+  std::vector<int64_t> outputShape(size_t index) const override {
+    const auto method = module_->method_meta("forward");
+    if (!method.ok()) {
+      throw std::runtime_error(
+          "Reading the forward method failed: Error " +
+          std::to_string(static_cast<int>(method.error())));
+    }
+    const auto output = method->output_tensor_meta(index);
+    if (!output.ok()) {
+      throw std::runtime_error(
+          "Reading output " + std::to_string(index) + " failed: Error " +
+          std::to_string(static_cast<int>(output.error())));
+    }
+    const auto sizes = output->sizes();
+    return std::vector<int64_t>(sizes.begin(), sizes.end());
+  }
+
 private:
   std::unique_ptr<Module> module_;
 };

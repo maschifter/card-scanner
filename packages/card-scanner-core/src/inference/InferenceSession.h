@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -38,7 +39,30 @@ public:
    */
   virtual std::vector<Tensor> run(const float *input,
                                   const std::vector<int64_t> &shape) = 0;
+
+  /// Static dims of output @p index, known after load.
+  virtual std::vector<int64_t> outputShape(size_t index) const = 0;
 };
+
+/**
+ * @brief Checks at load that output 0 scores one class per configured name,
+ * so a mismatched config fails once instead of mislabelling every scan.
+ * @param model Model name for the message, e.g. "Color model".
+ * @param namesKey Config key the names come from.
+ * @throws std::runtime_error if the counts differ.
+ */
+inline void checkClassCount(const InferenceSession &session,
+                            const std::vector<std::string> &names,
+                            const std::string &model,
+                            const std::string &namesKey) {
+  const auto shape = session.outputShape(0);
+  const int64_t classes = shape.empty() ? 0 : shape.back();
+  if (classes != static_cast<int64_t>(names.size())) {
+    throw std::runtime_error(model + " scores " + std::to_string(classes) +
+                             " classes, " + namesKey + " lists " +
+                             std::to_string(names.size()));
+  }
+}
 
 /**
  * @brief Loads a model file. Declared here, defined by whichever backend is

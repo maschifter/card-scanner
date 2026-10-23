@@ -4,6 +4,7 @@
 #include "../../inference/InferenceSession.h"
 #include <opencv2/opencv.hpp>
 #include <string>
+#include <vector>
 
 namespace cardscanner {
 
@@ -25,9 +26,12 @@ public:
    * @brief Construct FAB color classifier from ExecuTorch .pte file
    *
    * @param modelPath Path to the .pte model file (supports file:// URIs)
-   * @throws std::runtime_error if model loading fails
+   * @param classNames Color names in class order
+   * @throws std::runtime_error if model loading fails or its class count
+   * differs from classNames
    */
-  explicit FABColorClassifier(const std::string &modelPath);
+  explicit FABColorClassifier(const std::string &modelPath,
+                              const std::vector<std::string> &classNames);
 
   /**
    * @brief Classify color variant from 3-dots region
@@ -39,6 +43,7 @@ public:
 
 private:
   std::unique_ptr<inference::InferenceSession> session_;
+  std::vector<std::string> classNames_;
 };
 
 } // namespace cardscanner

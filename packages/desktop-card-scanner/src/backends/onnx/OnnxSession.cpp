@@ -172,6 +172,10 @@ public:
     return result;
   }
 
+  std::vector<int64_t> outputShape(size_t index) const override {
+    return session_.GetOutputTypeInfo(index).GetTensorTypeAndShapeInfo().GetShape();
+  }
+
 private:
   /// ORT hands back allocator-owned names; copied once so the char pointers
   /// Run() wants stay valid for the session's lifetime.

@@ -151,8 +151,8 @@ and its **entry count decodes the model's prediction tensor**. It must be
 contiguous from `0`, and it must match the class order the model was exported
 with.
 
-The loader enforces contiguity and rejects empty entries, and the first scan
-checks the entry count against the model: the prediction tensor carries
+The loader enforces contiguity and rejects empty entries, and loading the model
+checks the entry count against it: the prediction tensor carries
 `4 + numClasses + 32` channels per anchor, and a count that disagrees fails
 with an error naming both numbers. The order is not checked. A map with the
 right count in the wrong order raises nothing; it misroutes every database

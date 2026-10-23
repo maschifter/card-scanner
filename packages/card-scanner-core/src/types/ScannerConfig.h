@@ -69,6 +69,9 @@ struct ScannerConfig {
   std::string segmentationModelPath;
   std::string embeddingModelPath;
   std::string languageModelPath;
+  // In the model's class order
+  std::vector<std::string> languageClassNames = {"de", "en", "es", "fr", "it",
+                                                 "ja", "ko", "pt", "ru", "zh"};
 
   // Game class mapping (required). A class maps to several databases when the
   // model merges games it cannot distinguish; all of them get searched.
@@ -92,6 +95,9 @@ struct ScannerConfig {
 
     // FAB-specific: Color variant detection
     std::string colorDetectionModelPath;
+    // In the model's class order
+    std::vector<std::string> colorDetectionClassNames = {"blue", "red",
+                                                         "yellow"};
     double dotsRegionRatio = 0.20;
     int minDotsRegionSize = 50;
 

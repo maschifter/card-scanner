@@ -3,7 +3,6 @@
 #include "../benchmark/BenchmarkCollector.h"
 #include "../utils/ImageNetNormalization.h"
 #include <algorithm>
-#include <array>
 
 namespace cardscanner {
 
@@ -12,13 +11,14 @@ constexpr int INPUT_WIDTH = 256;
 constexpr int INPUT_HEIGHT = 512;
 constexpr float MIN_CONFIDENCE = 0.44f;
 constexpr float MIN_TRADITIONAL = 0.5f;
-// The model's class_names, in output order
-constexpr std::array<const char *, 10> CODES = {"de", "en", "es", "fr", "it",
-                                                "ja", "ko", "pt", "ru", "zh"};
 } // namespace language_model
 
-CardLanguageModel::CardLanguageModel(const std::string &modelPath) {
+CardLanguageModel::CardLanguageModel(const std::string &modelPath,
+                                     const std::vector<std::string> &classNames)
+    : classNames_(classNames) {
   session_ = inference::loadSession(modelPath);
+  inference::checkClassCount(*session_, classNames_, "Language model",
+                             "languageClassNames");
 }
 
 CardLanguageInfo CardLanguageModel::classify(const cv::Mat &card) {
@@ -46,7 +46,7 @@ CardLanguageInfo CardLanguageModel::classify(const cv::Mat &card) {
   if (top == probs.end() || *top < language_model::MIN_CONFIDENCE) {
     return {};
   }
-  std::string code = language_model::CODES.at(top - probs.begin());
+  std::string code = classNames_.at(top - probs.begin());
   if (code == "zh") {
     const float traditional = outputs.at(1).data.at(0);
     code = traditional >= language_model::MIN_TRADITIONAL ? "zht" : "zhs";

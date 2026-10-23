@@ -449,6 +449,7 @@ interface ScannerConfig {
   // Optional: Features
   captureImage?: boolean; // Save cropped images
   languageModelPath?: string; // Print-language classifier; unset = no `language` on cards
+  languageClassNames?: string[]; // Its class names in class order (default: the repo model's); "zh" splits into "zhs"/"zht"
   disambiguationThreshold?: number; // Min score diff for game-specific detection (default: 0.02)
   minGameConfidence?: number; // Min YOLO class confidence for a game's DB to be searched (default: 0.1)
 
@@ -490,6 +491,7 @@ interface ScannerConfig {
       // FAB-specific: Color variant detection
       colorDetection?: {
         modelPath: string;
+        classNames?: string[]; // Its class names in class order (default: the repo model's)
         dotsRegionRatio?: number; // Region ratio (default: 0.20)
         minDotsRegionSize?: number; // Min region pixels (default: 50)
       };

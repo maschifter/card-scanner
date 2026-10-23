@@ -10,15 +10,14 @@ namespace cardscanner {
 // FAB color classifier constants
 namespace fab_color {
 constexpr int INPUT_SIZE = 100; // Model input size (100x100)
-constexpr int NUM_CLASSES = 3;  // Blue, Red, Yellow
-
-// Class label mapping: index -> color name
-// Model output: [blue_logit, red_logit, yellow_logit]
-constexpr const char *CLASS_LABELS[NUM_CLASSES] = {"blue", "red", "yellow"};
 } // namespace fab_color
 
-FABColorClassifier::FABColorClassifier(const std::string &modelPath) {
+FABColorClassifier::FABColorClassifier(
+    const std::string &modelPath, const std::vector<std::string> &classNames)
+    : classNames_(classNames) {
   session_ = inference::loadSession(modelPath);
+  inference::checkClassCount(*session_, classNames_, "Color model",
+                             "colorDetection.classNames");
 }
 
 cardscanner::FABColorInfo
@@ -43,28 +42,25 @@ FABColorClassifier::classifyColor(const cv::Mat &dotsRegion) {
         inputData.data(), {1, constants::model::RGB_CHANNELS,
                            fab_color::INPUT_SIZE, fab_color::INPUT_SIZE});
     const auto &output = outputs.at(0).data;
-    if (output.size() < fab_color::NUM_CLASSES) {
-      throw std::runtime_error("Color model returned " +
-                               std::to_string(output.size()) + " logits");
-    }
+    const int numClasses = static_cast<int>(classNames_.size());
     const float *outputData = output.data();
 
     // Apply softmax to get probabilities
-    std::vector<float> logits(fab_color::NUM_CLASSES);
-    for (int i = 0; i < fab_color::NUM_CLASSES; i++) {
+    std::vector<float> logits(numClasses);
+    for (int i = 0; i < numClasses; i++) {
       logits[i] = outputData[i];
     }
 
     // Softmax: find max for numerical stability
     float maxLogit = *std::max_element(logits.begin(), logits.end());
 
-    std::vector<float> probs(fab_color::NUM_CLASSES);
+    std::vector<float> probs(numClasses);
     float sumExp = 0.0f;
-    for (int i = 0; i < fab_color::NUM_CLASSES; i++) {
+    for (int i = 0; i < numClasses; i++) {
       probs[i] = std::exp(logits[i] - maxLogit);
       sumExp += probs[i];
     }
-    for (int i = 0; i < fab_color::NUM_CLASSES; i++) {
+    for (int i = 0; i < numClasses; i++) {
       probs[i] /= sumExp;
     }
 
@@ -73,15 +69,10 @@ FABColorClassifier::classifyColor(const cv::Mat &dotsRegion) {
                                  std::max_element(probs.begin(), probs.end()));
     float confidence = probs[maxIndex];
 
-    // Map index to color with bounds checking
-    std::string detectedColor = "unknown";
-    if (maxIndex >= 0 && maxIndex < fab_color::NUM_CLASSES) {
-      detectedColor = fab_color::CLASS_LABELS[maxIndex];
-
-      // Debug logging (similar to SetSymbolProcessor pattern)
-      log(LOG_LEVEL::Debug, "[CardScanner]", "detected color:", detectedColor,
-          "confidence:", confidence);
-    }
+    const std::string &detectedColor = classNames_.at(maxIndex);
+    // Debug logging (similar to SetSymbolProcessor pattern)
+    log(LOG_LEVEL::Debug, "[CardScanner]", "detected color:", detectedColor,
+        "confidence:", confidence);
 
     return cardscanner::FABColorInfo(detectedColor, confidence);
 

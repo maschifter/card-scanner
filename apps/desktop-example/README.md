@@ -104,8 +104,8 @@ node tools/export.mjs
 The same build, but assembled in `build-obs/export`, verified there, and
 zipped with an `INSTALL.txt` to
 `~/Desktop/obs-card-scanner-<version>-<commit>-<platform>.zip`. A non-Release
-build or benchmark timers are marked in the name; `--out <zip>` writes it
-elsewhere and the release options apply. The bundle is not signed, so a copy
+build, benchmark timers, or models from the CDN manifest (`-m`) are marked in the
+name; `--out <zip>` writes it elsewhere and the release options apply. The bundle is not signed, so a copy
 downloaded through a browser needs the `xattr` line the notes give.
 
 ## Use it
@@ -276,6 +276,13 @@ assets/
 
 To swap in your own, keep that layout. LMDB's `lock.mdb` and the `cache/`
 directory are runtime state and stay out of Git.
+
+`node tools/release.mjs` replaces them in the bundle with the models and the
+databases the CDN manifest serves; `--no-manifest` keeps the repo's. `tools/manifest.mjs` at the
+repository root downloads them into `build-obs/manifest`, checks each against
+its sha256, and the script copies them over the bundle's and merges their class
+names into its `config.json`. A model the manifest has no usable
+version of keeps its repo copy; the tool prints which came from where.
 
 `gameClassMapping` maps the segmentation model's class ids to the databases
 each one searches. Its entry count decodes the model's prediction tensor, so it

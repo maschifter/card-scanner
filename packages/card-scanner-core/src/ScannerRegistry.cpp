@@ -169,7 +169,7 @@ void ScannerRegistry::initializeModels() {
 
     if (!config_.languageModelPath.empty()) {
       languageModel_ = std::make_shared<cardscanner::CardLanguageModel>(
-          config_.languageModelPath);
+          config_.languageModelPath, config_.languageClassNames);
     }
 
     // Load game-specific configurations
@@ -208,7 +208,8 @@ void ScannerRegistry::initializeModels() {
       // FAB-specific: Color detection
       if (gameName == "fab" && gameConfig.hasColorDetection()) {
         fabColorClassifier_ = std::make_shared<cardscanner::FABColorClassifier>(
-            gameConfig.colorDetectionModelPath);
+            gameConfig.colorDetectionModelPath,
+            gameConfig.colorDetectionClassNames);
       }
     }
   } catch (...) {

@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { Asset } from 'expo-asset';
 import { cacheDirectory, copyAsync } from 'expo-file-system/legacy';
 import { initializeScanner, releaseScanner } from '@cardnexus/card-scanner';
+import { fromManifest } from '../utils/fromManifest';
 
 // One model load shared by every screen.
 let scannerLoad: Promise<void> | null = null;
@@ -54,6 +55,7 @@ const loadScanner = async () => {
     segmentationModelPath: yoloPath,
     embeddingModelPath: embedPath,
     languageModelPath: langPath,
+    languageClassNames: fromManifest.languageClassNames,
     scanMode: 'auto',
     segmentationThreshold: 0.6,
     iouThreshold: 0.7,
@@ -65,8 +67,8 @@ const loadScanner = async () => {
     blurThreshold: 0,
     lowLightThreshold: 65,
     lowLightGamma: 2.0,
-    maxFrameRate: 30,
-    gameClassMapping: {
+    maxFrameRate: 15,
+    gameClassMapping: fromManifest.gameClassMapping ?? {
       0: ['fab'],
       1: ['lorcana'],
       2: ['mtg'],
@@ -99,7 +101,7 @@ const loadScanner = async () => {
       fab: {
         // Optional: Could add FAB-specific embedding model here
         // embeddingModelPath: fabEmbedPath,
-        colorDetection: { modelPath: fabPath },
+        colorDetection: { modelPath: fabPath, ...fromManifest.colorDetection },
       },
     },
   });
