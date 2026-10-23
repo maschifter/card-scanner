@@ -294,7 +294,7 @@ function assembleBundle(opts) {
 function takeFromManifest(opts) {
   const fetched = path.join(opts.buildDir, 'manifest');
   run(process.execPath, [path.join(REPO_DIR, 'tools', 'manifest.mjs'), 'desktop', fetched]);
-  const { files, dbBundleVersion, colorDetection, ...keys } =
+  const { files, dbBundleVersion, colorDetection, setCodeReading, ...keys } =
     JSON.parse(readFileSync(path.join(fetched, 'from-manifest.json'), 'utf8'));
   const resources = path.dirname(serverIn(opts.pluginDest));
   for (const file of files) {
@@ -305,6 +305,14 @@ function takeFromManifest(opts) {
   const configPath = path.join(resources, 'config.json');
   const config = { ...JSON.parse(readFileSync(configPath, 'utf8')), ...keys };
   Object.assign(config.gameSpecificConfig.fab.colorDetection, colorDetection);
+  // The Yu-Gi-Oh! databases read the printed set code; config may name only routed games
+  const routed = Object.values(config.gameClassMapping).flat();
+  for (const game of ['ygo', 'ygo-ocg'].filter((name) => routed.includes(name))) {
+    // Merged like colorDetection, so overrides in config.json survive
+    const entry = (config.gameSpecificConfig[game] ??= {});
+    entry.disambiguationThreshold ??= 0.05;
+    entry.setCodeReading = { modelPath: 'SetCodeReader.onnx', ...entry.setCodeReading, ...setCodeReading };
+  }
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 }
 

@@ -16,6 +16,8 @@ import {
   LANGUAGE_INPUT_HEIGHT,
   LANGUAGE_INPUT_WIDTH,
   NUM_GAME_CLASSES,
+  SET_CODE_INPUT_HEIGHT,
+  SET_CODE_INPUT_WIDTH,
   SLOW_GPU_MS,
   SLOW_GPU_TEST_BUDGET_MS,
   SYMBOL_EMBED_SIZE,
@@ -26,6 +28,7 @@ import { CardRecognitionModel } from '../models/cardRecognition.ts';
 import { SetSymbolRecognitionModel } from '../models/setSymbolRecognition.ts';
 import { ColorBarModel } from '../models/colorBar.ts';
 import { CardLanguageModel } from '../models/cardLanguage.ts';
+import { SetCodeReaderModel } from '../models/setCodeReader.ts';
 import { Runner } from '../inference/runner.ts';
 
 export interface Runners {
@@ -35,6 +38,7 @@ export interface Runners {
   setSymbolRecognition?: Runner;
   colorBar?: Runner;
   language?: Runner;
+  setCodeReader?: Runner;
 }
 
 type Progress = ScannerOptions['onProgress'];
@@ -95,6 +99,7 @@ export async function createRunners(
   matchSetSymbol: boolean,
   classifyFabColor: boolean,
   classifyLanguage: boolean,
+  readSetCode: boolean,
 ): Promise<{ runners: Runners; loadTestMs: number | null }> {
   const cache = await createOpfsCache('web-card-scanner').catch(
     () => undefined,
@@ -144,6 +149,7 @@ export async function createRunners(
   const symbolRec = matchSetSymbol && new SetSymbolRecognitionModel();
   const colorBar = classifyFabColor && new ColorBarModel();
   const language = classifyLanguage && new CardLanguageModel();
+  const setCodeReader = readSetCode && new SetCodeReaderModel();
   const models = Object.entries({
     CardSegmentationModel: seg,
     SetSymbolDetectionModel: symbolDet,
@@ -151,6 +157,7 @@ export async function createRunners(
     SetSymbolRecognitionModel: symbolRec,
     ColorBarModel: colorBar,
     CardLanguageModel: language,
+    SetCodeReader: setCodeReader,
   }).flatMap(([dir, model]) => (model ? [{ dir, model }] : []));
   for (const [i, { dir, model }] of models.entries()) {
     onProgress?.('models', i, models.length);
@@ -188,6 +195,14 @@ export async function createRunners(
         [3, LANGUAGE_INPUT_HEIGHT, LANGUAGE_INPUT_WIDTH],
         'minusOneToOne',
         (input) => [language.forward(input)],
+      ),
+    }),
+    ...(setCodeReader && {
+      setCodeReader: new Runner(
+        root,
+        [1, SET_CODE_INPUT_HEIGHT, SET_CODE_INPUT_WIDTH],
+        null,
+        (input) => [setCodeReader.forward(input)],
       ),
     }),
   };

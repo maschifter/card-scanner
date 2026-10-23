@@ -38,36 +38,48 @@ function settled<T>(device: GPUDevice, readback: Promise<T>): Promise<T> {
 export class Runner {
   private readonly exec: ReturnType<typeof gpuExecutor>;
   private readonly input: Value;
-  private readonly frameInput: GpuFrameInput;
+  private readonly inputBuffer: GPUBuffer;
+  /** Null for a runner fed prepared floats through runInput(). */
+  private readonly frameInput: GpuFrameInput | null;
   private captured?: {
     replay: () => void;
     targets: Value[];
     profileReplay: () => Promise<KernelTiming[] | undefined>;
   };
-  readonly size: number;
   private staging?: GPUBuffer;
+
+  /** The input height; the square size for a frame-fed model. */
+  get size(): number {
+    return this.dims[1];
+  }
 
   constructor(
     private readonly root: TgpuRoot,
-    dims: [number, number, number],
-    mode: PreprocessMode,
+    private readonly dims: [number, number, number],
+    mode: PreprocessMode | null,
     private readonly build: (input: Value) => Value[],
   ) {
     this.exec = gpuExecutor(root);
-    this.size = dims[1];
     const buf = uploadF32(root, new Float32Array(dims[0] * dims[1] * dims[2]));
     this.input = materialized(tensor3d(...dims), buf);
-    this.frameInput = new GpuFrameInput(
-      root,
-      dims[2],
-      dims[1],
-      mode,
-      root.unwrap(buf),
-    );
+    this.inputBuffer = root.unwrap(buf);
+    this.frameInput =
+      mode === null
+        ? null
+        : new GpuFrameInput(root, dims[2], dims[1], mode, this.inputBuffer);
   }
 
   private dispatch(image: ImageData | GPUTexture, placement?: Placement) {
+    if (!this.frameInput) {
+      throw new Error(
+        'Runner: this model takes prepared input; call runInput()',
+      );
+    }
     this.frameInput.write(image, placement);
+    return this.replay();
+  }
+
+  private replay() {
     if (this.captured) {
       this.captured.replay();
     } else {
@@ -84,7 +96,16 @@ export class Runner {
     image: ImageData | GPUTexture,
     placement?: Placement,
   ): Promise<Output[]> {
-    const targets = this.dispatch(image, placement);
+    return this.read(this.dispatch(image, placement));
+  }
+
+  /** Runs on floats already laid out as the model's [C,H,W] input. */
+  async runInput(data: Float32Array<ArrayBuffer>): Promise<Output[]> {
+    this.root.device.queue.writeBuffer(this.inputBuffer, 0, data);
+    return this.read(this.replay());
+  }
+
+  private async read(targets: Value[]): Promise<Output[]> {
     const data = await settled(
       this.root.device,
       this.exec.readbackMany!(
@@ -151,7 +172,13 @@ export class Runner {
    *  thread; at load it stays out of the camera loop, where a model that
    *  first runs on the first detection would stall the page. */
   async warmUp(): Promise<void> {
-    if (!this.captured) await this.run(new ImageData(this.size, this.size));
+    if (this.captured) return;
+    if (this.frameInput) {
+      await this.run(new ImageData(this.size, this.size));
+    } else {
+      const [c, h, w] = this.dims;
+      await this.runInput(new Float32Array(c * h * w));
+    }
   }
 
   async profile(): Promise<KernelTiming[] | undefined> {

@@ -13,6 +13,8 @@ export const SYMBOL_EMBED_SIZE = 96;
 export const COLOR_BAR_SIZE = 100;
 export const LANGUAGE_INPUT_WIDTH = 256;
 export const LANGUAGE_INPUT_HEIGHT = 512;
+export const SET_CODE_INPUT_WIDTH = 256;
+export const SET_CODE_INPUT_HEIGHT = 96;
 /** The language model pools its answer over this many rows, those most on text. */
 export const LANGUAGE_TOP_ROWS = 6;
 /** Letterbox pad gray, 0–255 (ultralytics 114). */
@@ -69,6 +71,36 @@ export const FAB_COLOR_MIN_CONF = 0.7;
 /** Below this the card is unreadable. */
 export const LANGUAGE_MIN_CONF = 0.44;
 export const LANGUAGE_MIN_TRADITIONAL = 0.5;
+
+// --- Printed set code (core/SetCodeProcessor.cpp) ---
+/** The databases whose printings the set-code reader tells apart, the
+ *  Yu-Gi-Oh! class's gameSlugs. */
+export const SET_CODE_GAMES: readonly string[] = ['ygo', 'ygo-ocg'];
+/** Where each layout prints the code, as fractions of the 640 px card, and
+ *  the step of 64 a code's last character reaches at least: regular codes are
+ *  right-aligned, and a Link code seen through the regular box ends by step
+ *  44. */
+export const SET_CODE_BOXES = {
+  regular: { x: 0.668, y: 0.689, w: 0.269, h: 0.092, minLastStep: 45 },
+  link: { x: 0.61, y: 0.673, w: 0.267, h: 0.099, minLastStep: 0 },
+  pendulum: { x: 0.036, y: 0.889, w: 0.267, h: 0.078, minLastStep: 0 },
+} as const;
+/** The code's center sits this far (fraction of card height) above the text
+ *  box's top border. */
+export const SET_CODE_ABOVE_TEXT_BOX = 0.0211;
+/** The band that holds the text box's top border, the share of the card
+ *  width an edge must run straight, and the row coverage a line needs. */
+export const TEXT_BOX_BAND_TOP = 0.58;
+export const TEXT_BOX_BAND_BOTTOM = 0.86;
+export const TEXT_BOX_LINE_KERNEL = 0.3;
+export const TEXT_BOX_LINE_COVERAGE = 0.2;
+/** A double border reads as two lines about 1% apart; the code sits above
+ *  the upper one. */
+export const TEXT_BOX_DOUBLE_BORDER = 0.015;
+/** In its own box a code starts at step 6+ and ends by step 58 of 64; a read
+ *  outside these steps is a code the box clipped. */
+export const SET_CODE_FIRST_CLEAR_STEP = 5;
+export const SET_CODE_LAST_CLEAR_STEP = 61;
 
 // --- Quad extraction (Constants.h constants::yolo) ---
 /** approxPolyDP epsilon ladder as fractions of the hull perimeter, tried in

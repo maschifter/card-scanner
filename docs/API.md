@@ -22,6 +22,8 @@ Complete API reference for `@cardnexus/card-scanner`. For Web, see [`@cardnexus/
     - [getDatabaseInfo](#getdatabaseinfo)
     - [swapDatabase](#swapdatabase)
     - [deleteDatabase](#deletedatabase)
+  - [Set-Code Picking](#set-code-picking)
+    - [pickPrinting](#pickprinting)
   - [Type Definitions](#type-definitions)
     - [ScannerConfig](#scannerconfig)
     - [Detection](#detection)
@@ -33,6 +35,7 @@ Complete API reference for `@cardnexus/card-scanner`. For Web, see [`@cardnexus/
     - [SetSymbolInfo](#setsymbolinfo)
     - [FABColorInfo](#fabcolorinfo)
     - [CardLanguageInfo](#cardlanguageinfo)
+    - [SetCodeInfo](#setcodeinfo)
     - [DatabaseInfo](#databaseinfo)
     - [InitializationResult](#initializationresult)
     - [SwapResult](#swapresult)
@@ -422,6 +425,91 @@ if (result.success) {
 
 ---
 
+## Set-Code Picking
+
+### pickPrinting
+
+Picks a card's printing from its printed set-code read. It scores every
+printed form of each candidate against the read's `probs` with the CTC
+forward algorithm, so it tolerates a misread character (`CHJM` for `CHIM`)
+where comparing `text` would not. The catalog lists codes without the
+language infix the card prints (`YGLD-A22` for `YGLD-ENA22`); `pickPrinting`
+adds the infixes itself. Pure TypeScript, with no native call.
+
+```typescript
+function pickPrinting(
+  read: SetCodeDistribution, // a SetCodeInfo (DetectedCard.printedSetCode)
+  candidates: readonly string[],
+  options?: PickPrintingOptions,
+): PrintingPick;
+
+// The fields of a SetCodeInfo that the scoring uses
+interface SetCodeDistribution {
+  probs: ArrayLike<number>; // Row-major [steps x classes] probabilities
+  steps: number;
+  classes: number;
+  classNames: readonly string[]; // What each class reads as: the CTC blank first
+}
+
+interface PickPrintingOptions {
+  minMargin?: number; // Lead in nats over every different code (default: 6)
+  minSupport?: number; // How far below the read's best path the pick may score (default: -12)
+}
+
+interface PrintingPick {
+  pick: string | null; // The chosen print number; null when the read cannot settle it
+  sharedBy: string[]; // Candidates printing the pick's code (editions, reprints)
+  margin: number; // Lead in nats over the best different code; Infinity when all share one
+  support: number; // Best candidate's log-probability minus the best single path's
+  ranking: PrintingCandidate[]; // Most likely first
+}
+
+interface PrintingCandidate {
+  printNumber: string; // Catalog print number, e.g. "BROL-062"
+  printed: string; // The printed form that scored best, e.g. "BROL-EN062"
+  share: number; // Share of probability among all candidates, 0-1
+}
+```
+
+**Parameters:**
+
+- `read` - The card's `printedSetCode`; scoring uses its `probs`, `steps`,
+  `classes` and `classNames`
+- `candidates` - Print numbers of the matched card's printings, from your
+  catalog (any case)
+- `options` - Thresholds for a pick
+
+**Returns:**
+
+- `PrintingPick` - The pick and the evidence behind it
+
+**Example:**
+
+```typescript
+import { pickPrinting } from '@cardnexus/card-scanner';
+
+if (card.printedSetCode) {
+  const { pick, sharedBy } = pickPrinting(card.printedSetCode, [
+    'YGLD-A22',
+    'LCYW-022',
+  ]);
+  // pick null: look at the next frame. sharedBy: printings such as 1st
+  // Edition and Unlimited that the code alone cannot tell apart.
+}
+```
+
+**Notes:**
+
+- Picks only when the best candidate leads every candidate with a different
+  code by `minMargin` and the read backs it to within `minSupport`; with the
+  defaults it made no wrong pick on the reader's validation set
+- Uses the class names the read carries, so a manifest model with different
+  labels needs no change here
+
+**Implementation:** [`packages/mobile-card-scanner/src/setCodePicking.ts`](../packages/mobile-card-scanner/src/setCodePicking.ts)
+
+---
+
 ## Type Definitions
 
 ### ScannerConfig
@@ -480,6 +568,9 @@ interface ScannerConfig {
       // Optional: Override the default confidence threshold for this game
       confidenceThreshold?: number;
 
+      // Optional: Override disambiguationThreshold for this game
+      disambiguationThreshold?: number;
+
       // MTG-specific: Set symbol detection
       setSymbolDetection?: {
         detectionModelPath: string;
@@ -494,6 +585,13 @@ interface ScannerConfig {
         classNames?: string[]; // Its class names in class order (default: the repo model's)
         dotsRegionRatio?: number; // Region ratio (default: 0.20)
         minDotsRegionSize?: number; // Min region pixels (default: 50)
+      };
+
+      // Printed set-code reading (Yu-Gi-Oh!). Give it to every database
+      // whose printings it should tell apart.
+      setCodeReading?: {
+        modelPath: string; // SetCodeReader.pte
+        classNames?: string[]; // "blank" (the CTC blank), then one character each, in class order (default: the repo model's)
       };
     }
   >;
@@ -574,6 +672,7 @@ interface DetectedCard {
   setSymbol?: SetSymbolInfo; // MTG: set symbol detection
   fabColor?: FABColorInfo; // FAB: color variant detection
   language?: CardLanguageInfo; // Any game: print language of a matched card
+  printedSetCode?: SetCodeInfo; // Printed set code, where configured
 }
 ```
 
@@ -659,6 +758,29 @@ interface CardLanguageInfo {
   similarity: number; // Model confidence [0.0, 1.0]
 }
 ```
+
+---
+
+### SetCodeInfo
+
+A printed set-code read (Yu-Gi-Oh!: `YGLD-ENA22`). The scanner reads it when
+the top match's game has `setCodeReading` and the top two matches are within
+the game's `disambiguationThreshold`; it does not re-rank the matches.
+
+```typescript
+interface SetCodeInfo {
+  text: string; // Greedy read, e.g. "YGLD-ENA22"
+  confidence: number; // Geometric mean of the per-step best probability
+  layout: string; // Search box: "regular", "anchored", "link" or "pendulum"
+  region: number[]; // [x, y, width, height] as fractions of the card
+  probs: number[]; // Row-major [steps x classes] probabilities
+  steps: number; // Time steps the model reads, 64
+  classes: number; // Classes in setCodeReading.classNames order: the CTC blank, then one character each
+  classNames: string[]; // What each class reads as: the CTC blank first, then one character each
+}
+```
+
+To pick the printing from the read, use [`pickPrinting`](#pickprinting).
 
 ---
 

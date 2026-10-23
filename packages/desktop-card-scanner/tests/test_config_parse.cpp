@@ -4,6 +4,7 @@
 // Builds ConfigValue trees by hand, so it covers what the mobile JSI converter
 // produces as much as what the desktop JSON converter does.
 
+#include <config/ScannerConfigLoader.h>
 #include <types/ScannerConfig.h>
 
 #include <cstdio>
@@ -84,11 +85,93 @@ void testReadsEveryType() {
 
   const auto &mtg = config.gameSpecificConfig.at("mtg");
   check(mtg.confidenceThreshold == 0.7f, "optional game field set");
+  check(config.confidenceThresholdFor("mtg") == 0.7f,
+        "game confidenceThreshold override");
+  check(config.confidenceThresholdFor("fab") == config.confidenceThreshold,
+        "game without a confidenceThreshold override uses the scanner-wide one");
   check(mtg.setSymbolImageSize == 320, "nested section field");
   const auto &fab = config.gameSpecificConfig.at("fab");
   check(!fab.confidenceThreshold.has_value(), "optional game field absent");
   check(fab.colorDetectionModelPath == "c.onnx", "second nested section");
   check(parsed.unknownKeys.empty(), "every key was read");
+}
+
+void testSetCodeReading() {
+  const auto parsed = parseScannerConfig(object({
+      {"disambiguationThreshold", {0.02}},
+      {"gameSpecificConfig",
+       object({{"//ygo", text("a comment, not a game")},
+               {"ygo-tcg",
+                object({{"disambiguationThreshold", {0.05}},
+                        {"setCodeReading",
+                         object({{"modelPath", text("SetCodeReader.onnx")}})}})},
+               {"mtg", object({})}})},
+  }));
+  const auto &config = parsed.config;
+  const auto &ygo = config.gameSpecificConfig.at("ygo-tcg");
+  check(ygo.hasSetCodeReading(), "set-code reading configured");
+  check(ygo.setCodeModelPath == "SetCodeReader.onnx", "set-code model path");
+  check(config.disambiguationThresholdFor("ygo-tcg") == 0.05f,
+        "game disambiguationThreshold override");
+  check(config.disambiguationThresholdFor("mtg") == 0.02f,
+        "game without an override uses the scanner-wide threshold");
+  check(config.disambiguationThresholdFor("lorcana") == 0.02f,
+        "game without a config uses the scanner-wide threshold");
+  check(!config.gameSpecificConfig.at("mtg").hasSetCodeReading(),
+        "set-code reading absent");
+  check(!config.gameSpecificConfig.count("//ygo"),
+        "a // key in gameSpecificConfig is a comment");
+  check(parsed.unknownKeys.empty(), "every set-code key was read");
+}
+
+/// setCodeReading.classNames parses, defaults to the repo model's, and must
+/// start with the CTC blank and list single, distinct characters after it.
+void testSetCodeClassNames() {
+  using cardscanner::ScannerConfig;
+  ScannerConfig config;
+  config.segmentationModelPath = "seg.onnx";
+  config.embeddingModelPath = "embed.onnx";
+  config.gameClassMapping = {{0, {"ygo"}}};
+  auto &ygo = config.gameSpecificConfig["ygo"];
+  ygo.setCodeModelPath = "SetCodeReader.onnx";
+  check(ygo.setCodeClassNames.size() == 38 &&
+            ygo.setCodeClassNames.front() == "blank",
+        "set-code class names default to the repo model's");
+  check(config.validate().empty(),
+        "the default set-code class names are valid: " + config.validate());
+  ygo.setCodeClassNames = {};
+  check(!config.validate().empty(), "set-code class names must not be empty");
+
+  ygo.setCodeClassNames = {"-", "0"};
+  check(!config.validate().empty(), "set-code class names need the blank first");
+  ygo.setCodeClassNames = {"blank", "AB"};
+  check(!config.validate().empty(),
+        "set-code class names after the blank are one character");
+  ygo.setCodeClassNames = {"blank", "A", "A"};
+  check(!config.validate().empty(), "set-code class names are distinct");
+
+  const auto parsed = parseScannerConfig(object(
+      {{"gameSpecificConfig",
+        object({{"ygo",
+                 object({{"setCodeReading",
+                          object({{"modelPath", text("m.onnx")},
+                                  {"classNames",
+                                   {ConfigValue::Array{text("blank"),
+                                                       text("A")}}}})}})}})}}));
+  check(parsed.config.gameSpecificConfig.at("ygo").setCodeClassNames ==
+            std::vector<std::string>{"blank", "A"},
+        "set-code class names parse");
+}
+
+/// The desktop example ships its config; it must load and validate.
+void testExampleConfigLoads() {
+  try {
+    const auto loaded = cardscanner::desktop::loadConfigFile(EXAMPLE_CONFIG);
+    const std::string error = loaded.scanner.validate();
+    check(error.empty(), "example config validates: " + error);
+  } catch (const std::exception &e) {
+    check(false, std::string("example config loads: ") + e.what());
+  }
 }
 
 void testReportsUnknownKeys() {
@@ -142,6 +225,9 @@ void testWrongTypesThrow() {
 int main() {
   testMissingKeysKeepDefaults();
   testReadsEveryType();
+  testSetCodeReading();
+  testSetCodeClassNames();
+  testExampleConfigLoads();
   testReportsUnknownKeys();
   testWrongTypesThrow();
 

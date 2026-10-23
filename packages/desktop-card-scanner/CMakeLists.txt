@@ -358,8 +358,18 @@ if(BUILD_TESTING)
 
   add_executable(test_config_parse tests/test_config_parse.cpp)
   target_link_libraries(test_config_parse PRIVATE cardscanner_desktop)
+  target_compile_definitions(test_config_parse PRIVATE
+      EXAMPLE_CONFIG="${CMAKE_CURRENT_SOURCE_DIR}/../../apps/desktop-example/config.json")
   cardscanner_copy_runtime_dlls(test_config_parse)
   add_test(NAME config_parse COMMAND test_config_parse)
+
+  add_executable(test_set_code_reader tests/test_set_code_reader.cpp)
+  target_link_libraries(test_set_code_reader PRIVATE cardscanner_desktop)
+  target_compile_definitions(test_set_code_reader PRIVATE
+      TEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests"
+      SET_CODE_MODEL="${CMAKE_CURRENT_SOURCE_DIR}/../../apps/desktop-example/assets/models/SetCodeReader.onnx")
+  cardscanner_copy_runtime_dlls(test_set_code_reader)
+  add_test(NAME set_code_reader COMMAND test_set_code_reader)
 endif()
 
 # Compares two card databases by content. A tool rather than a test, since it

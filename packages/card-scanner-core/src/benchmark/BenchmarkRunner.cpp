@@ -57,6 +57,13 @@ std::string progressRow(const BenchmarkRecord &r) {
     row << "  language(prep " << std::setw(6) << r.languagePreprocMs
         << " classify " << std::setw(6) << r.languageClassifyMs << ")";
   }
+  if (r.setCodeRan) {
+    row << "  set_code(card " << std::setw(5) << r.setCodeCardPrepMs
+        << " line " << std::setw(5) << r.setCodeLineFinderMs << " prep "
+        << std::setw(5) << r.setCodePreprocMs << " fwd " << std::setw(6)
+        << r.setCodeForwardMs << " post " << std::setw(5) << r.setCodePostMs
+        << " x" << r.setCodeReads << " " << r.setCodeText << ")";
+  }
 
   row << " | dets " << r.detectionCount << " (conf " << std::setprecision(3)
       << r.yoloConfidence << ") games " << r.gamesSearched;
@@ -157,6 +164,15 @@ std::string jsonRecord(const BenchmarkRecord &r) {
   obj << "\"languageRan\":" << (r.languageRan ? "true" : "false") << ','
       << "\"languagePreprocMs\":" << r.languagePreprocMs << ','
       << "\"languageClassifyMs\":" << r.languageClassifyMs << ',';
+
+  obj << "\"setCodeRan\":" << (r.setCodeRan ? "true" : "false") << ','
+      << "\"setCodeCardPrepMs\":" << r.setCodeCardPrepMs << ','
+      << "\"setCodeLineFinderMs\":" << r.setCodeLineFinderMs << ','
+      << "\"setCodePreprocMs\":" << r.setCodePreprocMs << ','
+      << "\"setCodeForwardMs\":" << r.setCodeForwardMs << ','
+      << "\"setCodePostMs\":" << r.setCodePostMs << ','
+      << "\"setCodeReads\":" << r.setCodeReads << ','
+      << "\"setCodeText\":" << jsonString(r.setCodeText) << ',';
 
   obj << "\"totalMs\":" << r.totalMs << ','
       << "\"topMatchCardId\":" << jsonString(r.topMatchCardId) << ','
@@ -306,6 +322,23 @@ BenchmarkRunner::run(const std::vector<BenchmarkImageInput> &images,
           BenchmarkCollector::getBenchmarkedMs(Stage::LanguagePreproc);
       record.languageClassifyMs =
           BenchmarkCollector::getBenchmarkedMs(Stage::LanguageClassify);
+
+      record.setCodeRan =
+          BenchmarkCollector::getBenchmarkedRan(Stage::SetCodeForward);
+      record.setCodeCardPrepMs =
+          BenchmarkCollector::getBenchmarkedMs(Stage::SetCodeCardPrep);
+      record.setCodeLineFinderMs =
+          BenchmarkCollector::getBenchmarkedMs(Stage::SetCodeLineFinder);
+      record.setCodePreprocMs =
+          BenchmarkCollector::getBenchmarkedMs(Stage::SetCodePreproc);
+      record.setCodeForwardMs =
+          BenchmarkCollector::getBenchmarkedMs(Stage::SetCodeForward);
+      record.setCodePostMs =
+          BenchmarkCollector::getBenchmarkedMs(Stage::SetCodePost);
+      record.setCodeReads = static_cast<int>(
+          BenchmarkCollector::getBenchmarkedValue(Metric::SetCodeReads));
+      record.setCodeText =
+          BenchmarkCollector::getBenchmarkedLabel(Label::SetCodeText);
 
       record.totalMs = scanResult.processingTimeMs;
 

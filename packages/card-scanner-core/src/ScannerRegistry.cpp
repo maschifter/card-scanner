@@ -9,6 +9,7 @@
 #include "models/fab/FABColorClassifier.h"
 #include "models/mtg/SetSymbolEmbedder.h"
 #include "models/mtg/SetSymbolYoloModel.h"
+#include "models/ygo/SetCodeReader.h"
 #include "utils/ImageUtils.h"
 #include <Log.h>
 #include <chrono>
@@ -32,6 +33,8 @@ std::shared_ptr<cardscanner::FABColorClassifier>
     ScannerRegistry::fabColorClassifier_ = nullptr;
 std::shared_ptr<cardscanner::CardLanguageModel>
     ScannerRegistry::languageModel_ = nullptr;
+std::map<std::string, std::shared_ptr<cardscanner::SetCodeReader>>
+    ScannerRegistry::setCodeReaders_;
 std::mutex ScannerRegistry::modelMutex_;
 std::shared_timed_mutex ScannerRegistry::pipelineMutex_;
 std::atomic<bool> ScannerRegistry::benchmarkRunning_{false};
@@ -128,6 +131,7 @@ void ScannerRegistry::resetModelsLocked() {
   setSymbolEmbedder_.reset();
   fabColorClassifier_.reset();
   languageModel_.reset();
+  setCodeReaders_.clear();
 
   try {
     cardscanner::DatabaseManager::getInstance().closeSetSymbolStore();
@@ -211,6 +215,25 @@ void ScannerRegistry::initializeModels() {
             gameConfig.colorDetectionModelPath,
             gameConfig.colorDetectionClassNames);
       }
+
+      // Printed set-code reading; games naming one model and class list
+      // share a reader
+      if (gameConfig.hasSetCodeReading()) {
+        std::shared_ptr<cardscanner::SetCodeReader> reader;
+        for (const auto &[otherGame, otherReader] : setCodeReaders_) {
+          const auto &other = config_.gameSpecificConfig.at(otherGame);
+          if (other.setCodeModelPath == gameConfig.setCodeModelPath &&
+              other.setCodeClassNames == gameConfig.setCodeClassNames) {
+            reader = otherReader;
+            break;
+          }
+        }
+        setCodeReaders_[gameName] =
+            reader ? reader
+                   : std::make_shared<cardscanner::SetCodeReader>(
+                         gameConfig.setCodeModelPath,
+                         gameConfig.setCodeClassNames);
+      }
     }
   } catch (...) {
     resetModelsLocked();
@@ -246,7 +269,8 @@ core::ScannerContext ScannerRegistry::getScannerContext() {
           setSymbolEmbedder_,
           fabColorClassifier_,
           languageModel_,
-          gameEmbeddingModels_};
+          gameEmbeddingModels_,
+          setCodeReaders_};
 }
 
 std::optional<ScanResult> ScannerRegistry::scan(const cv::Mat &rgb,

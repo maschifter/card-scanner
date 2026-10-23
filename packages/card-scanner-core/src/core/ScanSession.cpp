@@ -1,4 +1,5 @@
 #include "ScanSession.h"
+#include "SetCodeProcessor.h"
 
 #include <algorithm>
 
@@ -200,6 +201,14 @@ bool ScanSession::onScanResult(const ScanResult &result) {
   }
   if (!best->language.isEmpty()) {
     candidate_->language = best->language;
+  }
+  // A blurry frame still runs the reader and reads little or nothing, so a
+  // new read replaces the kept one only when it is better.
+  if (!best->printedSetCode.isEmpty() &&
+      (candidate_->printedSetCode.isEmpty() ||
+       SetCodeProcessor::isBetter(best->printedSetCode.read,
+                                  candidate_->printedSetCode.read))) {
+    candidate_->printedSetCode = best->printedSetCode;
   }
 
   if (candidate_->detections < requiredDetectionsLocked()) {

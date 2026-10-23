@@ -11,6 +11,7 @@ import type {
   NitroDetectedCard,
   NitroDetection,
   NitroFabColor,
+  NitroSetCodeInfo,
   NitroSetSymbol,
 } from './CardScanner.nitro';
 
@@ -62,6 +63,10 @@ export interface ScannerConfig {
       // Optional: Override the default confidence threshold for this game
       confidenceThreshold?: number;
 
+      // Optional: Override disambiguationThreshold for this game, the score
+      // gap under which the top two matches trigger the game's extra model
+      disambiguationThreshold?: number;
+
       // MTG-specific: Set symbol detection configuration
       setSymbolDetection?: {
         detectionModelPath: string;
@@ -77,6 +82,12 @@ export interface ScannerConfig {
         classNames?: string[]; // Color model's class names in class order (default: the repo model's)
         dotsRegionRatio?: number; // Ratio of card size to extract for dots region (default: 0.20)
         minDotsRegionSize?: number; // Minimum region size in pixels (default: 50)
+      };
+
+      // Printed set-code reading (Yu-Gi-Oh!), for printings of one artwork
+      setCodeReading?: {
+        modelPath: string;
+        classNames?: string[]; // Reader's class names in class order: "blank" (the CTC blank), then one character each (default: the repo model's)
       };
     }
   >;
@@ -116,6 +127,7 @@ export type CapturedImage = NitroCapturedImage;
 export type SetSymbol = NitroSetSymbol;
 export type FabColor = NitroFabColor;
 export type CardLanguageInfo = NitroCardLanguageInfo;
+export type SetCodeInfo = NitroSetCodeInfo;
 export type AlternativeMatch = NitroAlternativeMatch;
 export interface DetectedCard
   extends Optionalize<
@@ -127,6 +139,7 @@ export interface DetectedCard
       | 'setSymbol'
       | 'fabColor'
       | 'language'
+      | 'printedSetCode'
     >
   > {
   boundingBox: BoundingBox;
@@ -135,6 +148,7 @@ export interface DetectedCard
   setSymbol?: SetSymbol;
   fabColor?: FabColor;
   language?: CardLanguageInfo;
+  printedSetCode?: SetCodeInfo;
 }
 
 export interface Detection extends Optionalize<Omit<NitroDetection, 'cards'>> {
@@ -146,6 +160,18 @@ export interface AsyncScanResult
   extends Optionalize<Omit<NitroAsyncScanResult, 'detection'>> {
   detection: Detection;
 }
+
+// ============================================================================
+// Set-Code Picking
+// ============================================================================
+
+export {
+  pickPrinting,
+  type PickPrintingOptions,
+  type PrintingCandidate,
+  type PrintingPick,
+  type SetCodeDistribution,
+} from './setCodePicking';
 
 // ============================================================================
 // Database Types
@@ -230,6 +256,17 @@ export interface BenchmarkRecord {
   languageRan: boolean;
   languagePreprocMs: number;
   languageClassifyMs: number;
+
+  // Printed set-code reader, per card: summed over every search box tried.
+  setCodeRan: boolean;
+  setCodeCardPrepMs: number;
+  setCodeLineFinderMs: number;
+  setCodePreprocMs: number;
+  setCodeForwardMs: number;
+  setCodePostMs: number;
+  setCodeReads: number;
+  /** The kept read; in parentheses when it is not code-shaped. */
+  setCodeText: string;
 
   // Total time for the entire scan, including any overheads
   totalMs: number;

@@ -17,6 +17,9 @@ export type {
   ScanResult,
   ScanTimings,
   SearchClient,
+  SetCodeLayout,
+  SetCodeInfo,
   SetSymbolMatch,
 } from './types.ts';
+export { SET_CODE_ALPHABET } from './models/setCodeReader.ts';
 export { iou } from './utils/box.ts';

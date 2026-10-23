@@ -84,6 +84,9 @@ struct ScannerConfig {
 
     // Optional: Override the scanner-wide card recognition confidence threshold.
     std::optional<float> confidenceThreshold;
+    // Optional: Override the scanner-wide disambiguationThreshold, the score
+    // gap under which the top two matches count as one card in two printings.
+    std::optional<float> disambiguationThreshold;
 
     // MTG-specific: Set symbol detection
     std::string setSymbolDetectionModelPath;
@@ -101,22 +104,52 @@ struct ScannerConfig {
     double dotsRegionRatio = 0.20;
     int minDotsRegionSize = 50;
 
+    // Printed set-code reading (Yu-Gi-Oh!: YGLD-ENA22)
+    std::string setCodeModelPath;
+    // In the model's class order: the CTC blank, then one character each
+    std::vector<std::string> setCodeClassNames = {
+        "blank", "-", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A",
+        "B",     "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N",
+        "O",     "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"};
+
     // Check if any fields are configured
     bool hasEmbedding() const { return !embeddingModelPath.empty(); }
     bool hasSetSymbolDetection() const {
       return !setSymbolDetectionModelPath.empty() || !setSymbolEmbedderModelPath.empty();
     }
     bool hasColorDetection() const { return !colorDetectionModelPath.empty(); }
+    bool hasSetCodeReading() const { return !setCodeModelPath.empty(); }
   };
 
   // Map of game name to game-specific configuration
   std::map<std::string, GameConfig> gameSpecificConfig;
+
+  /// The game's confidenceThreshold override, else the scanner-wide one.
+  float confidenceThresholdFor(const std::string &game) const {
+    return forGame(game, &GameConfig::confidenceThreshold, confidenceThreshold);
+  }
+  /// The game's disambiguationThreshold override, else the scanner-wide one.
+  float disambiguationThresholdFor(const std::string &game) const {
+    return forGame(game, &GameConfig::disambiguationThreshold,
+                   disambiguationThreshold);
+  }
 
   /// Empty means valid, else the first violation. Callers add their own prefix.
   std::string validate() const;
 
   /// True for "single", "multiple" and "auto".
   static bool isScanMode(const std::string &mode);
+
+private:
+  /// A game's override of a scanner-wide value, else the value.
+  float forGame(const std::string &game,
+                std::optional<float> GameConfig::*override,
+                float fallback) const {
+    const auto it = gameSpecificConfig.find(game);
+    return it != gameSpecificConfig.end() && it->second.*override
+               ? *(it->second.*override)
+               : fallback;
+  }
 };
 
 

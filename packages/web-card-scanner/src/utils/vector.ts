@@ -7,14 +7,26 @@ export function l2Normalize(v: Float32Array): Float32Array {
   return v;
 }
 
+/** Softmax over one row of logits, shifted by the max for stability. */
+export function softmax(logits: ArrayLike<number>): Float32Array {
+  let max = -Infinity;
+  for (let i = 0; i < logits.length; i++) max = Math.max(max, logits[i]);
+  const out = new Float32Array(logits.length);
+  let sum = 0;
+  for (let i = 0; i < logits.length; i++) {
+    out[i] = Math.exp(logits[i] - max);
+    sum += out[i];
+  }
+  for (let i = 0; i < out.length; i++) out[i] /= sum;
+  return out;
+}
+
 export function softmaxTop(logits: Float32Array): {
   index: number;
   probability: number;
 } {
-  const max = Math.max(...logits);
-  const exps = [...logits].map((v) => Math.exp(v - max));
-  const sum = exps.reduce((a, b) => a + b, 0);
+  const probs = softmax(logits);
   let best = 0;
-  for (let i = 1; i < exps.length; i++) if (exps[i] > exps[best]) best = i;
-  return { index: best, probability: exps[best] / sum };
+  for (let i = 1; i < probs.length; i++) if (probs[i] > probs[best]) best = i;
+  return { index: best, probability: probs[best] };
 }

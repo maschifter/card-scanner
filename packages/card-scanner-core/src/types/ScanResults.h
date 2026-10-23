@@ -69,6 +69,8 @@ struct ProcessedCard {
   // Game-specific metadata
   SetSymbolInfo setSymbol; // MTG: set symbol detection
   FABColorInfo fabColor;   // FAB: color variant detection
+  // Printed set code, for games configured to read it
+  SetCodeInfo printedSetCode;
 
   CardLanguageInfo language;
 

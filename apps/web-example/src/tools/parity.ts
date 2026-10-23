@@ -25,8 +25,15 @@ import { languageProbs } from '../../../../packages/web-card-scanner/src/core/la
 import { CardLanguageModel } from '../../../../packages/web-card-scanner/src/models/cardLanguage.ts';
 import { CardRecognitionModel } from '../../../../packages/web-card-scanner/src/models/cardRecognition.ts';
 import { ColorBarModel } from '../../../../packages/web-card-scanner/src/models/colorBar.ts';
+import {
+  normalizeSetCodeCrop,
+  SetCodeReaderModel,
+} from '../../../../packages/web-card-scanner/src/models/setCodeReader.ts';
 import { SetSymbolRecognitionModel } from '../../../../packages/web-card-scanner/src/models/setSymbolRecognition.ts';
-import { l2Normalize } from '../../../../packages/web-card-scanner/src/utils/vector.ts';
+import {
+  l2Normalize,
+  softmax,
+} from '../../../../packages/web-card-scanner/src/utils/vector.ts';
 import { reportPageErrors } from '../lib/pageErrors.ts';
 
 const logEl = document.getElementById('log')!;
@@ -83,11 +90,13 @@ async function main() {
     transform: (out: Float32Array) => Float32Array = (o) => o,
     outputName = 'embedding',
     tolerance = 2e-2,
+    prepare: (input: Float32Array) => Float32Array = (i) => i,
+    expectedTransform: (out: Float32Array) => Float32Array = (o) => o,
   ) => {
     logEl.textContent = `running ${name}…`;
-    const input = await fetchF32(`/models/${name}/fixture/input.bin`);
-    const expected = await fetchF32(
-      `/models/${name}/fixture/output.${outputName}.bin`,
+    const input = prepare(await fetchF32(`/models/${name}/fixture/input.bin`));
+    const expected = expectedTransform(
+      await fetchF32(`/models/${name}/fixture/output.${outputName}.bin`),
     );
     const x = tensor(input, tensor3d(...dims));
     const got = transform(await toArray(forward(x)));
@@ -150,6 +159,34 @@ async function main() {
       (x) => model.forward(x),
       (o) => Float32Array.from(languageProbs(o).probs),
       'card_probs',
+    );
+  }
+  {
+    // The port takes the crop already normalized and returns logits; the
+    // ONNX normalizes itself and returns log-probabilities. Compare
+    // probabilities, which is what the scanner reports.
+    const softmaxRows = (logits: Float32Array, classes = 38) => {
+      const out = new Float32Array(logits.length);
+      for (let t = 0; t < logits.length; t += classes) {
+        out.set(softmax(logits.subarray(t, t + classes)), t);
+      }
+      return out;
+    };
+    const model = new SetCodeReaderModel();
+    const url = '/models/SetCodeReader/model.safetensors';
+    await model.loadStateDict(
+      await fromSafetensors(url, { cache, cacheId: url }),
+      { root },
+    );
+    await run(
+      'SetCodeReader',
+      [1, 96, 256],
+      (x) => model.forward(x),
+      (o) => softmaxRows(o),
+      'log_probs',
+      2e-2,
+      (input) => normalizeSetCodeCrop(input),
+      (o) => o.map(Math.exp),
     );
   }
   {

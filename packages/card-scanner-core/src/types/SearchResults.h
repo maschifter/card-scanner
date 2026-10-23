@@ -1,5 +1,6 @@
 #pragma once
 
+#include <opencv2/core.hpp>
 #include <string>
 #include <vector>
 
@@ -10,6 +11,48 @@ struct CardLanguageInfo {
   float similarity = 0.0f;
 
   bool isEmpty() const { return code.empty(); }
+};
+
+/**
+ * @struct CtcRead
+ * @brief A greedy CTC read: the text and the per-step distribution behind it,
+ * so a caller can score known candidates against it instead of trusting the
+ * text.
+ */
+struct CtcRead {
+  std::string text;
+  /// Row-major [steps x classes] probabilities; class 0 is the CTC blank.
+  std::vector<float> probs;
+  int steps = 0;
+  int classes = 0;
+  /// What each class reads as, in class order: the CTC blank first.
+  std::vector<std::string> classNames;
+  /// The first and last step whose best class is not the blank; -1 when the
+  /// read is empty.
+  int firstStep = -1;
+  int lastStep = -1;
+  /// Geometric mean of the per-step best probability, 0-1.
+  float confidence = 0.f;
+};
+
+/**
+ * @struct SetCodeInfo
+ * @brief A printed set code (Yu-Gi-Oh!: YGLD-ENA22), unlike the MTG set in
+ * SetSymbolInfo, which comes from the symbol. Empty when the reader did not
+ * run.
+ *
+ * Classes are in setCodeReading.classNames order: the CTC blank, then one
+ * character each.
+ */
+struct SetCodeInfo {
+  CtcRead read;
+  /// The search box that gave the read: "regular", "anchored", "link" or
+  /// "pendulum".
+  std::string layout;
+  /// The search box, as fractions of the card.
+  cv::Rect2f region;
+
+  bool isEmpty() const { return read.steps == 0; }
 };
 
 /**
@@ -26,6 +69,8 @@ struct CardSearchResult {
   /// Consecutive detections of this card; only ScanSession counts them.
   int detections = 0;
   CardLanguageInfo language;
+  /// The printed set code; only ScanSession carries it to the candidate.
+  SetCodeInfo printedSetCode;
 };
 
 /// The top two matches score within `margin` of each other, so the top pick

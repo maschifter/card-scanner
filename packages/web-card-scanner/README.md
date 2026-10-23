@@ -27,10 +27,10 @@ const result = await scanner.scan(videoElement);
 Each `ScannedCard` gives you the detection box and quad in frame pixels
 (`frameWidth` × `frameHeight`), the dewarped
 card image, the L2-normalized embedding, the candidate games, the backend
-matches, the set-symbol or pitch-colour result when the disambiguation
-stage ran, and the print language of a matched card. Use `ScanTimings` to
-see where the frame's time went. For a complete client, see
-`apps/web-example`: `scanner.ts` creates the scanner and
+matches, the set-symbol, pitch-colour or printed set code (`printedSetCode`)
+result when the disambiguation stage ran, and the print language of a matched
+card. Use `ScanTimings` to see where the frame's time went. For a complete
+client, see `apps/web-example`: `scanner.ts` creates the scanner and
 `hooks/useScanLoop.ts` drives the scan loop.
 
 You need:
@@ -70,18 +70,25 @@ Concurrent frames on a new card share one in-flight request.
 - CardLanguageModel: a ruNNtime nn port of the deployed ONNX graph, exported and
   checked the same way. Its tail, a vote of the rows most on text, runs on
   the CPU.
+- SetCodeReader (Yu-Gi-Oh! set codes): a ruNNtime port of the conv-only CTC
+  reader, rebuilt from its PyTorch weights by
+  `apps/web-example/tools/export-set-code-reader.py` and checked the same
+  way. ruNNtime pools square windows only, so the height-only pools and the
+  final row max are composed from column slices.
 
-Set `matchSetSymbol`, `classifyFabColor` or `classifyLanguage` to `false` to
-leave out the two set-symbol models, ColorBarModel or CardLanguageModel.
+Set `matchSetSymbol`, `classifyFabColor`, `classifyLanguage` or `readSetCode`
+to `false` to leave out the two set-symbol models, ColorBarModel,
+CardLanguageModel or SetCodeReader.
 
 Conv stacks run HWC4 f16 end to end. A model enters the layout with `toHwc4`
-at the stem, and only the Linear heads see an f32 row. A ReLU right after a
-conv is fused into the conv kernel. `models/ops.ts` composes the other ReLUs
-and HardSwish from `clamp` and ops that map 0 to 0, which ruNNtime requires on HWC4
-storage: the zero-padded channel lanes must stay zero. CardLanguageModel's row
-pooling goes row-major for the mean and returns to the layout. A squeeze-excite
-gate broadcasts back over the map with a nearest-neighbour `upsample2d`, which
-for a one-pixel map is a copy.
+at the stem, and only the heads see f32: a Linear row, or SetCodeReader's
+time-major Conv1d. A ReLU right after a conv is fused into the conv kernel.
+`models/ops.ts` composes the other ReLUs, HardSwish and `maximum` from `clamp`
+and ops that map 0 to 0, which ruNNtime requires on HWC4 storage: the
+zero-padded channel lanes must stay zero. CardLanguageModel's row pooling goes
+row-major for the mean and returns to the layout, and so do SetCodeReader's
+height-only pools. A squeeze-excite gate broadcasts back over the map with a
+nearest-neighbour `upsample2d`, which for a one-pixel map is a copy.
 
 The submodule is pinned to a commit of upstream `main` and stays unmodified.
 To move it, check out the new commit in `vendor/runntime`, check
@@ -94,16 +101,32 @@ After pulling such a commit, run `git submodule update`. Keep `typegpu` on
 `WebCardScanner.scan` runs: letterbox 384² (288 when the load test is slower
 than 40 ms, see `slowGpuInputSize` and `scanner.loadTestMs`) → segmentation →
 per detection: mask → quad (hull + approxPolyDP ladder, minAreaRect fallback)
-→ perspective dewarp 403×640 → squash 224² → embedding → `SearchClient` → MTG
-set-symbol or FaB colour-bar stage under the disambiguation gate, with the
-sideways 180° retry → print language of a matched card. As on native, the
-`maxFrameRate` throttle (default 30 scans/s) first drops a video frame that
-comes too early (`scan` resolves to null), else waits out the gap, outside
-`ScanTimings`.
+→ perspective dewarp 403×640 → squash 224² → embedding → `SearchClient`, with
+the sideways 180° retry of a missed card → MTG set-symbol, FaB colour-bar or
+Yu-Gi-Oh! set-code stage under the disambiguation gate → print language of a
+matched card. As on native, the `maxFrameRate` throttle (default 30 scans/s)
+first drops a video frame that comes too early (`scan` resolves to null),
+else waits out the gap, outside `ScanTimings`.
+
+The set-code stage reads the code off the dewarped card on the CPU side: it
+cuts each layout's search box, resizes it to 256×96 gray bit-exact with
+OpenCV, normalizes it, and runs the model, stopping at the first code-shaped
+read the box did not clip. The regular box misses on a card printed a few
+percent too high or low, so the second try re-centers it on the text box's
+top border, found with a Sobel and morphology pass on the band where that
+border sits.
+
+The result, `ScannedCard.printedSetCode`, matches the native read: `text`,
+`confidence`, `layout`, `region` (`[x, y, width, height]` as fractions of the
+card), and `probs` (`Float32Array`, `steps` × `classes`) with `classNames`,
+the CTC blank first. Score candidate printings against `probs` rather than
+trusting `text`. `SET_CODE_ALPHABET` exports the alphabet after the blank.
 
 Model inputs are preprocessed on the GPU (`inference/gpuPreprocess.ts`): one
 compute dispatch samples the source through a placement (letterbox, crop, or
-squash) into normalized CHW in the model's input buffer.
+squash) into normalized CHW in the model's input buffer. SetCodeReader is the
+exception: its gray, per-crop-normalized input is made on the CPU from the
+dewarped pixels and written with `Runner.runInput()`.
 
 The frame stays on the GPU (`inference/gpuFrame.ts`). A video frame is copied
 straight into a texture and downscaled there (Firefox cannot copy a video, so

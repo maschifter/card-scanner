@@ -9,16 +9,10 @@ import { LANGUAGE_CODES } from '../models/cardLanguage.ts';
 import type { CardLanguageInfo } from '../types.ts';
 import type { Runner } from '../inference/runner.ts';
 import { argMax } from '../utils/array.ts';
+import { softmax } from '../utils/vector.ts';
 
-// TODO: Deduplication possible, requires change in softmaxTop (vector.ts) and decode.ts
+// TODO: Deduplication possible, the same sigmoid lives in utils/decode.ts
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
-
-function softmax(logits: readonly number[]): number[] {
-  const max = Math.max(...logits);
-  const exps = logits.map((v) => Math.exp(v - max));
-  const sum = exps.reduce((a, b) => a + b, 0);
-  return exps.map((v) => v / sum);
-}
 
 /** The graph's tail: the row answers of the LANGUAGE_TOP_ROWS rows most on
  *  text, averaged by how much they are. `logits` is [channel][row]. */

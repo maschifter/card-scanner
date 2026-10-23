@@ -5,6 +5,15 @@ import { cacheDirectory, copyAsync } from 'expo-file-system/legacy';
 import { initializeScanner, releaseScanner } from '@cardnexus/card-scanner';
 import { fromManifest } from '../utils/fromManifest';
 
+// The Yu-Gi-Oh! databases read the printed set code, configured only when the
+// manifest's detector routes them: gameSpecificConfig may name only routed
+// games, and the repo's fallback mapping has no Yu-Gi-Oh! class.
+const SET_CODE_GAMES = ['ygo', 'ygo-ocg'].filter((game) =>
+  Object.values(fromManifest.gameClassMapping ?? {})
+    .flat()
+    .includes(game),
+);
+
 // One model load shared by every screen.
 let scannerLoad: Promise<void> | null = null;
 let scannerLoaded = false;
@@ -50,6 +59,12 @@ const loadScanner = async () => {
         'language.pte',
       ),
     ]);
+  const setCodePath = SET_CODE_GAMES.length
+    ? await prepareAsset(
+        require('../assets/ygo/SetCodeReader.pte'),
+        'set_code.pte',
+      )
+    : '';
 
   const result = await initializeScanner({
     segmentationModelPath: yoloPath,
@@ -103,6 +118,18 @@ const loadScanner = async () => {
         // embeddingModelPath: fabEmbedPath,
         colorDetection: { modelPath: fabPath, ...fromManifest.colorDetection },
       },
+      ...Object.fromEntries(
+        SET_CODE_GAMES.map((game) => [
+          game,
+          {
+            disambiguationThreshold: 0.05,
+            setCodeReading: {
+              modelPath: setCodePath,
+              ...fromManifest.setCodeReading,
+            },
+          },
+        ]),
+      ),
     },
   });
 

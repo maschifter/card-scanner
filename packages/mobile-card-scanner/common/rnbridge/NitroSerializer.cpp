@@ -99,6 +99,15 @@ NitroDetectedCard toNitroDetectedCard(const ProcessedCard &card) {
     nitroCard.language = std::move(language);
   }
 
+  if (!card.printedSetCode.isEmpty()) {
+    const auto &[read, layout, region] = card.printedSetCode;
+    nitroCard.printedSetCode = NitroSetCodeInfo(
+        read.text, read.confidence, layout,
+        std::vector<double>{region.x, region.y, region.width, region.height},
+        std::vector<double>(read.probs.begin(), read.probs.end()), read.steps,
+        read.classes, read.classNames);
+  }
+
   return nitroCard;
 }
 

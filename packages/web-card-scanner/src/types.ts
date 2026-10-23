@@ -28,6 +28,32 @@ export interface CardLanguageInfo {
   score: number;
 }
 
+/** The search box a set-code read came from; 'anchored' is the regular box
+ *  re-centered on the text box's top border. */
+export type SetCodeLayout = 'regular' | 'anchored' | 'link' | 'pendulum';
+
+/** A printed set code (Yu-Gi-Oh!: YGLD-ENA22), read when the top matches
+ *  are ambiguous. Unlike SetSymbolMatch.setCode, it comes from the printed
+ *  text. Native's JS shape, except that `layout` is a union and `probs` a
+ *  Float32Array here. */
+export interface SetCodeInfo {
+  /** Greedy read: the first code-shaped one, else the best. */
+  text: string;
+  /** Geometric mean of the per-step best probability, 0-1. */
+  confidence: number;
+  layout: SetCodeLayout;
+  /** The search box, [x, y, width, height] as fractions of the card. */
+  region: number[];
+  /** Per-step probabilities, row-major [steps x classes], class 0 = CTC
+   *  blank: score a card's printings against it. */
+  probs: Float32Array;
+  steps: number;
+  classes: number;
+  /** What each class reads as, in class order: the CTC blank first, then
+   *  one character each. */
+  classNames: readonly string[];
+}
+
 /** The backend boundary: embeddings go out, matches come back. The server
  *  implements the pooled search + accept gate + filter-to-best-game logic. */
 export interface SearchClient {
@@ -52,6 +78,7 @@ export interface ScannedCard {
   fabColor: FabColor | null;
   /** Print language of a matched card; null when unreadable. */
   language: CardLanguageInfo | null;
+  printedSetCode: SetCodeInfo | null;
 }
 
 /** Video/image (downscaled to FRAME_MAX_WIDTH) or ImageData as is. */
@@ -103,6 +130,9 @@ export interface ScannerOptions {
   classifyFabColor?: boolean;
   /** Read the print language of matched cards. Default true. */
   classifyLanguage?: boolean;
+  /** Read the printed set code when a Yu-Gi-Oh! top match nearly ties.
+   *  Default true. */
+  readSetCode?: boolean;
   segmentationThreshold?: number;
   minGameConfidence?: number;
   disambiguationThreshold?: number;

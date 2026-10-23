@@ -19,6 +19,7 @@ const MODEL_FILES = {
     set_symbols_embedder: { pte: 'mtg/SetSymbolRecognitionModel.pte' },
     fab_classifier: { pte: 'fab/ColorBarModel.pte' },
     language_classifier: { coreml: 'CardLanguageModel.coreml.pte', 'pte-int8': 'CardLanguageModel.xnnpack.pte' },
+    set_code_reader: { pte: 'ygo/SetCodeReader.pte' },
   },
   desktop: {
     classifier: { onnx: 'assets/models/CardSegmentationModel.onnx' },
@@ -27,6 +28,7 @@ const MODEL_FILES = {
     set_symbols_embedder: { onnx: 'assets/models/SetSymbolRecognitionModel.onnx' },
     fab_classifier: { onnx: 'assets/models/ColorBarModel.onnx' },
     language_classifier: { onnx: 'assets/models/CardLanguageModel.onnx' },
+    set_code_reader: { onnx: 'assets/models/SetCodeReader.onnx' },
   },
 };
 
@@ -108,6 +110,8 @@ function classNames(role, labels, registry) {
       return Array.isArray(labels) ? { languageClassNames: labels } : null;
     case 'fab_classifier':
       return Array.isArray(labels) ? { colorDetection: { classNames: labels } } : null;
+    case 'set_code_reader':
+      return Array.isArray(labels) ? { setCodeReading: { classNames: labels } } : null;
     default:
       return {};
   }
@@ -118,6 +122,7 @@ const CLASS_COUNT = {
   classifier: (shape) => shape.at(-2) - 36,
   language_classifier: (shape) => shape.at(-1),
   fab_classifier: (shape) => shape.at(-1),
+  set_code_reader: (shape) => shape.at(-1),
 };
 
 function checkClassCount(role, { files, labels }, dir) {

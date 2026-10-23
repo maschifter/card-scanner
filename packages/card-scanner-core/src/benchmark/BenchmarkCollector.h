@@ -36,6 +36,14 @@ enum class Stage : uint8_t {
   LanguagePreproc,
   LanguageClassify,
 
+  // Printed set code: card scaling, the text-box line finder, and per read:
+  // crop and resize, model, decode.
+  SetCodeCardPrep,
+  SetCodeLineFinder,
+  SetCodePreproc,
+  SetCodeForward,
+  SetCodePost,
+
   _Count,
 };
 
@@ -48,6 +56,7 @@ enum class Metric : uint8_t {
   DetectionCount,
   GamesSearched,
   RawTopScore,
+  SetCodeReads, ///< Search boxes the set-code reader tried on the card
   _Count,
 };
 
@@ -58,6 +67,7 @@ enum class Metric : uint8_t {
 enum class Label : uint8_t {
   YoloPredictedGames,
   RawTopCardId,
+  SetCodeText, ///< What the set-code reader kept, e.g. "BROL-EN062"
   _Count,
 };
 

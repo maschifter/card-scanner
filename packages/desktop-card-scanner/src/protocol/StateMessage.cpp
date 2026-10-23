@@ -22,6 +22,19 @@ json cardToJson(const CardSearchResult &card, ProductClient &products) {
     out["language"] = {{"code", card.language.code},
                        {"similarity", card.language.similarity}};
   }
+  if (!card.printedSetCode.isEmpty()) {
+    // The whole read, so a client can score candidate printings against it
+    const auto &[read, layout, region] = card.printedSetCode;
+    out["printedSetCode"] = {
+        {"text", read.text},
+        {"confidence", read.confidence},
+        {"layout", layout},
+        {"region", {region.x, region.y, region.width, region.height}},
+        {"probs", read.probs},
+        {"steps", read.steps},
+        {"classes", read.classes},
+        {"classNames", read.classNames}};
+  }
   // Absent until the lookup thread resolves it; the overlay shows the id.
   if (auto product = products.lookup(card.cardId)) {
     out["name"] = product->name;

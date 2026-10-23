@@ -125,6 +125,11 @@ The scanner processes camera frames through a **5-stage pipeline**:
 │                                                              │
 │  5C. Print Language (if languageModelPath is set)           │
 │      └─> Classify the print language of the whole card      │
+│                                                              │
+│  5D. Set Code Reading (if configured + ambiguous)           │
+│      ├─> Check if top 2 matches are close                   │
+│      ├─> Try the regular, anchored, Link, Pendulum boxes    │
+│      └─> Keep the first unclipped code-shaped read          │
 └──────────┬───────────────────────────────────────────────────┘
            │
            ▼
@@ -547,7 +552,10 @@ if (cardMatches.size() >= 2) {
 }
 ```
 
-**Disambiguation Threshold:** Default 0.02 (2% score difference)
+**Disambiguation Threshold:** Default 0.02 (2% score difference). A game
+can override it with `gameSpecificConfig.<game>.disambiguationThreshold`;
+every Stage 5 step reads the top match's game's value through
+`ScannerConfig::disambiguationThresholdFor`.
 
 #### Processing Steps
 
@@ -650,6 +658,58 @@ Runs on every matched card of any game when `languageModelPath` is set.
 
 ---
 
+### 5D. Set Code Reading
+
+**Source:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp) → [`SetCodeProcessor.cpp`](../packages/card-scanner-core/src/core/SetCodeProcessor.cpp)
+
+Reads the printed set code (Yu-Gi-Oh!: `YGLD-ENA22`) that tells apart
+printings of the same artwork. The result, `card.printedSetCode`, carries the
+greedy text and the per-step probabilities; the stage leaves the match order
+as it is.
+
+#### Conditions
+
+**Source:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp) (`detectSetCode`) → [`SetCodeProcessor.cpp`](../packages/card-scanner-core/src/core/SetCodeProcessor.cpp) (`processSetCode`)
+
+```cpp
+// ScannerPipeline::detectSetCode
+// 1. The top match's game has gameSpecificConfig.<game>.setCodeReading, so
+//    the registry loaded a reader for it. Games naming one model share it.
+auto reader = ctx.setCodeReaders.find(cardMatches[0].gameName);
+if (reader == ctx.setCodeReaders.end()) return empty;
+
+// SetCodeProcessor::processSetCode, given the game's own threshold
+// 2. Disambiguation needed (two matches or more)
+if (!isAmbiguous(cardMatches, disambiguationThreshold)) return empty;
+```
+
+#### Processing Steps
+
+**Source:** [`SetCodeProcessor.cpp`](../packages/card-scanner-core/src/core/SetCodeProcessor.cpp)
+
+1. Scale the card to `card::DEWARP_HEIGHT` (640 px), the height the search
+   box fractions assume.
+2. Read the regular box (95% of cards). If the read is not a code-shaped,
+   unclipped read, find the text box's top border (Sobel, a horizontal
+   opening 30% of the card wide, the strongest long line) and read the
+   regular box re-centered above it. Then try the Link box, then the
+   Pendulum box.
+3. Stop at the first read that looks like a code (`PREFIX-REST` with a digit)
+   and stays clear of the box's edges. A read touching an edge, or one that
+   ends left of where regular codes end, is a code the box clipped (a Link
+   code seen through the regular box). When nothing qualifies, keep the best
+   read: code-shaped first, then any text over none, then the most confident.
+
+**Model:** [`SetCodeReader.cpp`](../packages/card-scanner-core/src/models/ygo/SetCodeReader.cpp)
+
+- Input: the search box resized to 256 x 96 gray, 0-1
+- Output: 64 steps x one score per class in `setCodeReading.classNames`
+  order (the CTC blank, then one character each), decoded greedily. The class
+  count is checked against the model at load, and the CDN manifest's
+  `set_code_reader` supplies both the model and its class names.
+
+---
+
 ## Optimization Strategies
 
 ### 1. Blur Filtering
@@ -669,7 +729,7 @@ Runs on every matched card of any game when `languageModelPath` is set.
 
 ### 4. Disambiguation Gating
 
-- **Where:** Set symbol & color detection conditions
+- **Where:** Set symbol, color detection and set code conditions
 - **Impact:** Only runs expensive operations when needed for disambiguation
 
 ### 5. Early Search Exit
@@ -759,3 +819,4 @@ if (card.croppedImage.empty()) {
   - [`SearchStrategy.cpp`](../packages/card-scanner-core/src/core/SearchStrategy.cpp) - Database search
   - [`SetSymbolProcessor.cpp`](../packages/card-scanner-core/src/core/SetSymbolProcessor.cpp) - MTG set symbols
   - [`FABColorProcessor.cpp`](../packages/card-scanner-core/src/core/FABColorProcessor.cpp) - FAB colors
+  - [`SetCodeProcessor.cpp`](../packages/card-scanner-core/src/core/SetCodeProcessor.cpp) - Printed set codes

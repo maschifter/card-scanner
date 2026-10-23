@@ -2,7 +2,9 @@
 
 #include "../types/ScannerConfig.h"
 #include <CardEmbeddingModel.h>
+#include <map>
 #include <memory>
+#include <string>
 
 namespace cardscanner {
 
@@ -11,6 +13,7 @@ class SetSymbolYoloModel;
 class SetSymbolEmbedder;
 class FABColorClassifier;
 class CardLanguageModel;
+class SetCodeReader;
 
 namespace core {
 
@@ -28,6 +31,9 @@ struct ScannerContext {
   std::shared_ptr<CardLanguageModel> language;
   /// Per-game embedders; games absent here use `embedding`.
   GameEmbedders gameEmbedders;
+  /// Set-code readers by game; games naming one model and class list share a
+  /// reader.
+  std::map<std::string, std::shared_ptr<SetCodeReader>> setCodeReaders;
 };
 
 } // namespace core

@@ -279,6 +279,10 @@ const VisionCameraDebug = () => {
                           ` • ${currentCard.setSymbol.setCode.toUpperCase()}`}
                         {currentCard.language &&
                           ` • ${currentCard.language.code.toUpperCase()} ${(currentCard.language.similarity * 100).toFixed(1)}%`}
+                        {currentCard.printedSetCode &&
+                          ` • ${currentCard.printedSetCode.text || '?'} ${(
+                            currentCard.printedSetCode.confidence * 100
+                          ).toFixed(0)}%`}
                       </Text>
                     )}
                   </View>

@@ -40,6 +40,28 @@ export interface NitroCardLanguageInfo {
   similarity: number;
 }
 
+/** A printed set code (Yu-Gi-Oh!: YGLD-ENA22), read when the top matches
+ *  are ambiguous. Unlike NitroSetSymbol.setCode, it comes from the printed
+ *  text. */
+export interface NitroSetCodeInfo {
+  /** Greedy read: the first code-shaped one, else the most confident. */
+  text: string;
+  /** Geometric mean of the per-step best probability, 0-1. */
+  confidence: number;
+  /** Search box that gave the read: regular, anchored, link or pendulum. */
+  layout: string;
+  /** The search box, [x, y, width, height] as fractions of the card. */
+  region: number[];
+  /** Per-step probabilities, row-major [steps x classes], class 0 = CTC
+   *  blank: score a card's printings against it. */
+  probs: number[];
+  steps: number;
+  classes: number;
+  /** What each class reads as, in class order: the CTC blank first, then
+   *  one character each. */
+  classNames: string[];
+}
+
 export interface NitroDetectedCard {
   cardId: string | undefined;
   gameName: string | undefined;
@@ -57,6 +79,7 @@ export interface NitroDetectedCard {
   setSymbol: NitroSetSymbol | undefined;
   fabColor: NitroFabColor | undefined;
   language: NitroCardLanguageInfo | undefined;
+  printedSetCode: NitroSetCodeInfo | undefined;
 }
 
 export interface NitroDetection {

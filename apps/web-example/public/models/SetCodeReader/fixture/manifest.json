@@ -1,0 +1,22 @@
+{
+  "input": {
+    "name": "input",
+    "shape": [
+      1,
+      1,
+      96,
+      256
+    ]
+  },
+  "outputs": [
+    {
+      "name": "log_probs",
+      "shape": [
+        1,
+        64,
+        38
+      ],
+      "file": "output.log_probs.bin"
+    }
+  ]
+}

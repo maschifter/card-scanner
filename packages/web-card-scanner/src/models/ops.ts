@@ -8,6 +8,7 @@ import {
   clamp,
   mul,
   reshape,
+  sub,
   toChw,
   upsample2d,
   type Value,
@@ -30,6 +31,12 @@ export function relu(x: Value): Value {
 /** y · torch.nn.Hardsigmoid(x). */
 export function timesHardsigmoid(y: Value, x: Value): Value {
   return add(mul(y, clamp(mul(x, 1 / 6), -0.5, 0.5)), mul(y, 0.5));
+}
+
+/** Elementwise max(a, b) — torch.maximum. TIE has no max op, so it is
+ *  a + relu(b - a). Same-layout operands only. */
+export function maximum(a: Value, b: Value): Value {
+  return add(a, relu(sub(b, a)));
 }
 
 /** x · hardsigmoid(x) — torch.nn.Hardswish. */

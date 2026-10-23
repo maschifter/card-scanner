@@ -133,6 +133,7 @@ LoadedConfig loadConfigFile(const std::filesystem::path &configPath) {
     resolve(gameConfig.setSymbolDetectionModelPath);
     resolve(gameConfig.setSymbolEmbedderModelPath);
     resolve(gameConfig.colorDetectionModelPath);
+    resolve(gameConfig.setCodeModelPath);
   }
 
   return loaded;

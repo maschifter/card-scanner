@@ -87,17 +87,6 @@ SearchStrategy::extractTopGames(const cardscanner::Detection &detection,
 }
 
 namespace {
-float getEffectiveConfidenceThreshold(const std::string &gameName,
-                                      const ScannerConfig &config) {
-  auto gameIt = config.gameSpecificConfig.find(gameName);
-  if (gameIt != config.gameSpecificConfig.end() &&
-      gameIt->second.confidenceThreshold.has_value()) {
-    return *gameIt->second.confidenceThreshold;
-  }
-
-  return config.confidenceThreshold;
-}
-
 // True when both games come from one YOLO class (pokemon and pokemon-japan,
 // dbs-fusion and dbs-masters). Such databases can hold the same art, so the
 // search must finish the whole group before an early exit is considered, or
@@ -180,7 +169,7 @@ std::vector<CardSearchResult> SearchStrategy::searchMultipleDatabases(
           confidentMatch ||
           (!gameResults.empty() &&
            gameResults[0].score >=
-               getEffectiveConfidenceThreshold(gameToSearch, config) +
+               config.confidenceThresholdFor(gameToSearch) +
                    constants::database::EARLY_EXIT_SCORE_MARGIN);
     } catch (const std::exception &e) {
       // Skip failed game database; a failure never triggers the early exit.
@@ -235,8 +224,7 @@ SearchOutcome SearchStrategy::filterToBestGame(
   std::string bestMatchGame;
   double bestMatchScore = 0.0;
   for (const auto &result : sortedResults) {
-    if (result.score >=
-        getEffectiveConfidenceThreshold(result.gameName, config)) {
+    if (result.score >= config.confidenceThresholdFor(result.gameName)) {
       bestMatchGame = result.gameName;
       bestMatchScore = result.score;
       break;
@@ -262,8 +250,7 @@ SearchOutcome SearchStrategy::filterToBestGame(
   // Filter: keep only cards from best match game
   auto &filteredMatches = outcome.matches;
   for (const auto &result : sortedResults) {
-    float gameThreshold =
-        getEffectiveConfidenceThreshold(result.gameName, config);
+    float gameThreshold = config.confidenceThresholdFor(result.gameName);
     if (result.gameName == bestMatchGame && result.score >= gameThreshold) {
       filteredMatches.push_back(result);
 

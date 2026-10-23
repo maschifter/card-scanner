@@ -146,6 +146,14 @@ std::string ScannerConfig::validate() const {
         return error;
       }
     }
+    if (gameConfig.disambiguationThreshold) {
+      if (const auto error = checkUnitRange(
+              prefix, {{"disambiguationThreshold",
+                        *gameConfig.disambiguationThreshold}});
+          !error.empty()) {
+        return error;
+      }
+    }
     if (const auto error = checkUnitRange(
             prefix,
             {{"setSymbolDetection.detectionThreshold",
@@ -167,6 +175,22 @@ std::string ScannerConfig::validate() const {
     if (gameConfig.hasColorDetection() &&
         gameConfig.colorDetectionClassNames.empty()) {
       return prefix + "colorDetection.classNames must not be empty";
+    }
+    if (gameConfig.hasSetCodeReading()) {
+      const auto &names = gameConfig.setCodeClassNames;
+      const std::string key = prefix + "setCodeReading.classNames";
+      if (names.empty() || names.front() != "blank") {
+        return key + " must start with \"blank\", the CTC blank";
+      }
+      for (auto it = names.begin() + 1; it != names.end(); ++it) {
+        if (it->size() != 1) {
+          return key + " entries after \"blank\" must be one character, got '" +
+                 *it + "'";
+        }
+        if (std::find(it + 1, names.end(), *it) != names.end()) {
+          return key + " lists '" + *it + "' twice";
+        }
+      }
     }
   }
 
@@ -310,6 +334,7 @@ ScannerConfig::GameConfig parseGameConfig(const ConfigValue &object,
   ObjectReader reader(object, prefix, unknownKeys);
   reader.read("embeddingModelPath", game.embeddingModelPath);
   reader.read("confidenceThreshold", game.confidenceThreshold);
+  reader.read("disambiguationThreshold", game.disambiguationThreshold);
 
   if (const ConfigValue &section = reader.member("setSymbolDetection");
       section.isObject()) {
@@ -332,6 +357,14 @@ ScannerConfig::GameConfig parseGameConfig(const ConfigValue &object,
     color.read("dotsRegionRatio", game.dotsRegionRatio);
     color.read("minDotsRegionSize", game.minDotsRegionSize);
     color.reportUnknown();
+  }
+
+  if (const ConfigValue &section = reader.member("setCodeReading");
+      section.isObject()) {
+    ObjectReader setCode(section, prefix + "setCodeReading.", unknownKeys);
+    setCode.read("modelPath", game.setCodeModelPath);
+    setCode.read("classNames", game.setCodeClassNames);
+    setCode.reportUnknown();
   }
 
   reader.reportUnknown();
@@ -390,6 +423,9 @@ parseScannerConfig(const ConfigValue &root,
   if (const auto *games = std::get_if<ConfigValue::Object>(
           &reader.member("gameSpecificConfig").value)) {
     for (const auto &[name, game] : *games) {
+      if (name.compare(0, 2, "//") == 0) {
+        continue; // a comment, like at the top level
+      }
       if (!game.isObject()) {
         throw std::runtime_error("config: gameSpecificConfig['" + name +
                                  "'] must be an object");

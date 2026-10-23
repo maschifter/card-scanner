@@ -9,6 +9,7 @@
 #include "MultiScanSession.h"
 #include "ScannerContext.h"
 #include "SearchStrategy.h"
+#include "SetCodeProcessor.h"
 #include "SetSymbolProcessor.h"
 #include <CardEmbeddingModel.h>
 #include <DatabaseManager.h>
@@ -98,7 +99,7 @@ private:
   performSegmentation(const cv::Mat &frameImage, const ScannerContext &ctx);
 
   /**
-   * @brief Stage 4: Detect and match MTG set symbol
+   * @brief Stage 5A: Detect and match MTG set symbol
    *
    * @param cardImage Cropped card image
    * @param cardMatches Recognition results
@@ -111,7 +112,7 @@ private:
                   const ScannerContext &ctx);
 
   /**
-   * @brief Stage 5: Detect FAB color variant
+   * @brief Stage 5B: Detect FAB color variant
    *
    * @param cardImage Cropped card image
    * @param cardMatches Recognition results
@@ -124,7 +125,7 @@ private:
                         const ScannerContext &ctx);
 
   /**
-   * @brief Stage 5: Detect the print language
+   * @brief Stage 5C: Detect the print language
    *
    * @param cardImage Cropped card image
    * @param ctx Config and the language model
@@ -132,6 +133,20 @@ private:
    */
   static CardLanguageInfo detectLanguage(const cv::Mat &cardImage,
                                          const ScannerContext &ctx);
+
+  /**
+   * @brief Stage 5D: Read the printed set code
+   *
+   * @param cardImage Cropped card image
+   * @param cardMatches Recognition results
+   * @param ctx Config and the per-game set-code readers
+   * @return SetCodeInfo (empty if the top match's game has no reader or the
+   *   top matches are not ambiguous)
+   */
+  static SetCodeInfo
+  detectSetCode(const cv::Mat &cardImage,
+              const std::vector<CardSearchResult> &cardMatches,
+              const ScannerContext &ctx);
 
   /**
    * @brief Process a single detection through the pipeline

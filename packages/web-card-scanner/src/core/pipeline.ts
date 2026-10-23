@@ -84,6 +84,7 @@ export class WebCardScanner {
       matchSetSymbol: true,
       classifyFabColor: true,
       classifyLanguage: true,
+      readSetCode: true,
       segmentationInputSize: YOLO_INPUT_SIZE,
       slowGpuInputSize: SLOW_GPU_INPUT_SIZE,
       ...options,
@@ -108,6 +109,7 @@ export class WebCardScanner {
       opts.matchSetSymbol,
       opts.classifyFabColor,
       opts.classifyLanguage,
+      opts.readSetCode,
     );
 
     const cards = new CardProcessor(

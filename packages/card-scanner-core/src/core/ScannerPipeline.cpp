@@ -349,7 +349,7 @@ ScannerPipeline::detectSetSymbol(const cv::Mat &cardImage,
 
   const auto &mtgConfig = mtgConfigIt->second;
   return SetSymbolProcessor::processSetSymbol(
-      cardImage, cardMatches, config.disambiguationThreshold,
+      cardImage, cardMatches, config.disambiguationThresholdFor("mtg"),
       mtgConfig.setSymbolConfidenceThreshold, ctx.setSymbolYolo.get(),
       ctx.setSymbolEmbedder.get(), setSymbolDb.get());
 }
@@ -368,7 +368,7 @@ FABColorInfo ScannerPipeline::detectFABColorVariant(
 
   const auto &fabConfig = fabConfigIt->second;
   return FABColorProcessor::processColorVariant(
-      cardImage, cardMatches, config.disambiguationThreshold,
+      cardImage, cardMatches, config.disambiguationThresholdFor("fab"),
       ctx.fabColor.get(), fabConfig.dotsRegionRatio,
       fabConfig.minDotsRegionSize);
 }
@@ -386,6 +386,23 @@ CardLanguageInfo ScannerPipeline::detectLanguage(const cv::Mat &cardImage,
         "language detection failed:", e.what());
     return CardLanguageInfo();
   }
+}
+
+SetCodeInfo
+ScannerPipeline::detectSetCode(const cv::Mat &cardImage,
+                             const std::vector<CardSearchResult> &cardMatches,
+                             const ScannerContext &ctx) {
+  if (cardMatches.empty()) {
+    return SetCodeInfo();
+  }
+  const std::string &game = cardMatches[0].gameName;
+  const auto readerIt = ctx.setCodeReaders.find(game);
+  if (readerIt == ctx.setCodeReaders.end()) {
+    return SetCodeInfo();
+  }
+  return SetCodeProcessor::processSetCode(cardImage, cardMatches,
+                                   ctx.config.disambiguationThresholdFor(game),
+                                   readerIt->second.get());
 }
 
 // Stage 4: search the card, and on a miss search it upside down. A sideways
@@ -547,6 +564,8 @@ ScannerPipeline::processDetection(const cv::Mat &frameImage,
     card.fabColor = detectFABColorVariant(card.croppedImage, card.matches, ctx);
     // Any game: Detect print language
     card.language = detectLanguage(card.croppedImage, ctx);
+    // Games configured to read it: the printed set code
+    card.printedSetCode = detectSetCode(card.croppedImage, card.matches, ctx);
   }
 
   return card;

@@ -1,6 +1,6 @@
 /** ScannerPipeline::processDetection. */
 
-import { SIDEWAYS_FLIP_CACHE_TTL_MS } from '../constants.ts';
+import { SET_CODE_GAMES, SIDEWAYS_FLIP_CACHE_TTL_MS } from '../constants.ts';
 import type {
   CardMatch,
   GameClassEntry,
@@ -18,6 +18,7 @@ import { extractTopGames } from './searchStrategy.ts';
 import { matchSetSymbol } from './setSymbolProcessor.ts';
 import { classifyFabColor } from './fabColorProcessor.ts';
 import { classifyLanguage } from './languageProcessor.ts';
+import { readSetCode } from './setCodeProcessor.ts';
 
 export interface Found {
   det: CardDetection;
@@ -115,6 +116,7 @@ export class CardProcessor {
       setSymbolRecognition,
       colorBar,
       language: classifier,
+      setCodeReader,
     } = this.runners;
     const setSymbol =
       stageGame === 'mtg' && setSymbolDetection && setSymbolRecognition
@@ -136,6 +138,10 @@ export class CardProcessor {
       classifier && matches.length
         ? await timed('stages', () => classifyLanguage(dewarp, classifier))
         : null;
+    const printedSetCode =
+      stageGame !== null && SET_CODE_GAMES.includes(stageGame) && setCodeReader
+        ? await timed('stages', () => readSetCode(dewarp, setCodeReader))
+        : null;
 
     return {
       box,
@@ -149,6 +155,7 @@ export class CardProcessor {
       setSymbol,
       fabColor,
       language,
+      printedSetCode,
     };
   }
 

@@ -76,6 +76,17 @@ struct BenchmarkRecord {
   double languagePreprocMs = 0.0;
   double languageClassifyMs = 0.0;
 
+  // Printed set code, when the top matches are ambiguous. Per card, summed
+  // over every box tried until a code-shaped read.
+  bool setCodeRan = false;
+  double setCodeCardPrepMs = 0.0;   // scale to 640 px
+  double setCodeLineFinderMs = 0.0; // text-box border search
+  double setCodePreprocMs = 0.0;    // per read: crop, 256 x 96, gray
+  double setCodeForwardMs = 0.0;    // per read: the model
+  double setCodePostMs = 0.0;       // per read: decode and confidence
+  int setCodeReads = 0;             // boxes tried
+  std::string setCodeText;          // kept read; "(...)" when not code-shaped
+
   double totalMs = 0.0; // whole processFrame call
 
   // The match as the scanner would report it; blank/0 when nothing met confidenceThreshold.
