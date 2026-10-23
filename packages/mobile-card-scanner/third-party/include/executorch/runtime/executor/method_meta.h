@@ -34,12 +34,12 @@ class TensorInfoTestFriend;
  * TensorInfo must outlive this TensorInfo.
  */
 class TensorInfo final {
-public:
+ public:
   TensorInfo() = delete;
-  TensorInfo(const TensorInfo &) = default;
-  TensorInfo(TensorInfo &&) = default;
-  TensorInfo &operator=(const TensorInfo &) = default;
-  TensorInfo &operator=(TensorInfo &&other) = default;
+  TensorInfo(const TensorInfo&) = default;
+  TensorInfo(TensorInfo&&) = default;
+  TensorInfo& operator=(const TensorInfo&) = default;
+  TensorInfo& operator=(TensorInfo&& other) = default;
   ~TensorInfo() = default;
 
   /**
@@ -73,7 +73,7 @@ public:
    */
   std::string_view name() const;
 
-private:
+ private:
   // Let MethodMeta create TensorInfo.
   friend class MethodMeta;
   friend class testing::TensorInfoTestFriend;
@@ -89,16 +89,20 @@ private:
    * @returns A Result containing the TensorInfo on success, or an error on
    * failure.
    */
-  static Result<TensorInfo> create(Span<const int32_t> sizes,
-                                   Span<const uint8_t> dim_order,
-                                   executorch::aten::ScalarType scalar_type,
-                                   const bool is_memory_planned,
-                                   std::string_view name);
+  static Result<TensorInfo> create(
+      Span<const int32_t> sizes,
+      Span<const uint8_t> dim_order,
+      executorch::aten::ScalarType scalar_type,
+      const bool is_memory_planned,
+      std::string_view name);
 
-  TensorInfo(Span<const int32_t> sizes, Span<const uint8_t> dim_order,
-             executorch::aten::ScalarType scalar_type,
-             const bool is_memory_planned, std::string_view name,
-             size_t nbytes);
+  TensorInfo(
+      Span<const int32_t> sizes,
+      Span<const uint8_t> dim_order,
+      executorch::aten::ScalarType scalar_type,
+      const bool is_memory_planned,
+      std::string_view name,
+      size_t nbytes);
 
   /**
    * The sizes of the tensor.
@@ -137,12 +141,12 @@ private:
  * paying the initialization cost of loading the full Method.
  */
 class MethodMeta final {
-public:
+ public:
   MethodMeta() = delete;
-  MethodMeta(const MethodMeta &) = default;
-  MethodMeta(MethodMeta &&) = default;
-  MethodMeta &operator=(const MethodMeta &) = default;
-  MethodMeta &operator=(MethodMeta &&other) = default;
+  MethodMeta(const MethodMeta&) = default;
+  MethodMeta(MethodMeta&&) = default;
+  MethodMeta& operator=(const MethodMeta&) = default;
+  MethodMeta& operator=(MethodMeta&& other) = default;
   ~MethodMeta() = default;
 
   /**
@@ -150,7 +154,7 @@ public:
    *
    * @returns The method name.
    */
-  const char *name() const;
+  const char* name() const;
 
   /**
    * Get the number of inputs to this method.
@@ -250,7 +254,7 @@ public:
    * @param[in] backend_name The name of the backend to search for.
    * @returns true if a backend is used in this method, otherwise false.
    */
-  bool uses_backend(const char *backend_name) const;
+  bool uses_backend(const char* backend_name) const;
 
   /**
    * Get the number of backends used in this method.
@@ -266,7 +270,7 @@ public:
    * @returns A Result wrapping the backend name as a C-style string
    * on success, or an error if the index is invalid.
    */
-  Result<const char *> get_backend_name(size_t index) const;
+  Result<const char*> get_backend_name(size_t index) const;
 
   /**
    * Get the number of instructions in this method.
@@ -289,14 +293,14 @@ public:
     return memory_planned_buffer_size(index);
   }
 
-private:
+ private:
   // Let Program create MethodMeta.
   friend class Program;
 
-  explicit MethodMeta(const executorch_flatbuffer::ExecutionPlan *s_plan);
+  explicit MethodMeta(const executorch_flatbuffer::ExecutionPlan* s_plan);
 
   /// Source of truth for method information
-  const executorch_flatbuffer::ExecutionPlan *s_plan_;
+  const executorch_flatbuffer::ExecutionPlan* s_plan_;
 };
 
 } // namespace ET_RUNTIME_NAMESPACE

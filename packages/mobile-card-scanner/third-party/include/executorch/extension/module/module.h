@@ -18,6 +18,8 @@
 #include <executorch/runtime/backend/options.h>
 #include <executorch/runtime/executor/program.h>
 
+#include <executorch/runtime/core/device_memory_buffer.h>
+
 #ifdef USE_ATEN_LIB
 #define ET_MODULE_NAMESPACE module::aten
 #else // !USE_ATEN_LIB
@@ -41,7 +43,7 @@ namespace ET_MODULE_NAMESPACE {
  * A facade class for loading programs and executing methods within them.
  */
 class Module {
-public:
+ public:
   /**
    * Enum to define loading behavior.
    */
@@ -82,7 +84,8 @@ public:
    * increasing aliasing and the risk of unintended overwrites.
    */
   explicit Module(
-      const std::string &file_path, const LoadMode load_mode = LoadMode::File,
+      const std::string& file_path,
+      const LoadMode load_mode = LoadMode::File,
       std::unique_ptr<runtime::EventTracer> event_tracer = nullptr,
       std::unique_ptr<runtime::MemoryAllocator> memory_allocator = nullptr,
       std::unique_ptr<runtime::MemoryAllocator> temp_allocator = nullptr,
@@ -100,7 +103,8 @@ public:
    * share a single set of memory-planned buffers.
    */
   explicit Module(
-      const std::string &file_path, const std::string &data_map_path,
+      const std::string& file_path,
+      const std::string& data_map_path,
       const LoadMode load_mode = LoadMode::File,
       std::unique_ptr<runtime::EventTracer> event_tracer = nullptr,
       std::unique_ptr<runtime::MemoryAllocator> memory_allocator = nullptr,
@@ -119,7 +123,8 @@ public:
    * share a single set of memory-planned buffers.
    */
   explicit Module(
-      const std::string &file_path, std::vector<std::string> data_files,
+      const std::string& file_path,
+      std::vector<std::string> data_files,
       const LoadMode load_mode = LoadMode::File,
       std::unique_ptr<runtime::EventTracer> event_tracer = nullptr,
       std::unique_ptr<runtime::MemoryAllocator> memory_allocator = nullptr,
@@ -167,10 +172,10 @@ public:
       std::unique_ptr<runtime::DataLoader> data_map_loader = nullptr,
       bool share_memory_arenas = false);
 
-  Module(const Module &) = delete;
-  Module &operator=(const Module &) = delete;
-  Module(Module &&) = delete;
-  Module &operator=(Module &&) = delete;
+  Module(const Module&) = delete;
+  Module& operator=(const Module&) = delete;
+  Module(Module&&) = delete;
+  Module& operator=(Module&&) = delete;
   virtual ~Module() = default;
   /**
    * Loads the program if needed.
@@ -180,9 +185,9 @@ public:
    *
    * @returns An Error to indicate success or failure of the loading process.
    */
-  ET_NODISCARD virtual runtime::Error
-  load(const Program::Verification verification =
-           Program::Verification::Minimal);
+  ET_NODISCARD virtual runtime::Error load(
+      const Program::Verification verification =
+          Program::Verification::Minimal);
 
   /**
    * Loads the program with per-delegate runtime options.
@@ -204,10 +209,10 @@ public:
    *
    * @returns An Error to indicate success or failure of the loading process.
    */
-  ET_NODISCARD virtual runtime::Error
-  load(const LoadBackendOptionsMap &backend_options,
-       const Program::Verification verification =
-           Program::Verification::Minimal);
+  ET_NODISCARD virtual runtime::Error load(
+      const LoadBackendOptionsMap& backend_options,
+      const Program::Verification verification =
+          Program::Verification::Minimal);
 
   /**
    * Returns the deep-copied LoadBackendOptionsMap most recently installed
@@ -220,7 +225,7 @@ public:
    *
    * @returns Const reference to the Module-owned LoadBackendOptionsMap.
    */
-  inline const LoadBackendOptionsMap &backend_options() const {
+  inline const LoadBackendOptionsMap& backend_options() const {
     return backend_options_map_;
   }
 
@@ -229,7 +234,9 @@ public:
    *
    * @returns true if the program is loaded, false otherwise.
    */
-  virtual inline bool is_loaded() const { return program_ != nullptr; }
+  virtual inline bool is_loaded() const {
+    return program_ != nullptr;
+  }
 
   /**
    * Get the program. The data loader used by the program is guaranteed to be
@@ -237,7 +244,9 @@ public:
    *
    * @returns Shared pointer to the program or nullptr if it's not yet loaded.
    */
-  inline std::shared_ptr<Program> program() const { return program_; }
+  inline std::shared_ptr<Program> program() const {
+    return program_;
+  }
 
   /**
    * Get the number of methods available in the loaded program.
@@ -271,16 +280,16 @@ public:
    * @returns An Error to indicate success or failure.
    */
   ET_NODISCARD
-  runtime::Error
-  load_method(const std::string &method_name,
-              runtime::HierarchicalAllocator *planned_memory = nullptr,
-              torch::executor::EventTracer *event_tracer = nullptr,
-              const LoadBackendOptionsMap *backend_options = nullptr,
-              std::vector<Kernel> kernel_registry = {});
+  runtime::Error load_method(
+      const std::string& method_name,
+      runtime::HierarchicalAllocator* planned_memory = nullptr,
+      torch::executor::EventTracer* event_tracer = nullptr,
+      const LoadBackendOptionsMap* backend_options = nullptr,
+      std::vector<Kernel> kernel_registry = {});
 
   ET_DEPRECATED ET_NODISCARD runtime::Error inline load_method(
-      const std::string &method_name,
-      torch::executor::EventTracer *event_tracer) {
+      const std::string& method_name,
+      torch::executor::EventTracer* event_tracer) {
     return load_method(method_name, nullptr, event_tracer, nullptr);
   }
 
@@ -291,7 +300,7 @@ public:
    *
    * @returns True if the method is unloaded, false if no-op.
    */
-  inline bool unload_method(const std::string &method_name) {
+  inline bool unload_method(const std::string& method_name) {
     return methods_.erase(method_name);
   }
 
@@ -307,8 +316,8 @@ public:
    * @returns A Result object containing either a pointer to the requested
    *          method or an error to indicate failure.
    */
-  ET_DEPRECATED ET_NODISCARD runtime::Result<Method *>
-  method(const std::string &method_name);
+  ET_DEPRECATED ET_NODISCARD runtime::Result<Method*> method(
+      const std::string& method_name);
 
   /**
    * Load the 'forward' method from the program and set up memory management if
@@ -321,17 +330,21 @@ public:
    *
    * @returns An Error to indicate success or failure.
    */
-  ET_NODISCARD inline runtime::Error
-  load_forward(runtime::HierarchicalAllocator *planned_memory = nullptr,
-               torch::executor::EventTracer *event_tracer = nullptr,
-               const LoadBackendOptionsMap *backend_options = nullptr,
-               std::vector<Kernel> kernel_registry = {}) {
-    return load_method("forward", planned_memory, event_tracer, backend_options,
-                       std::move(kernel_registry));
+  ET_NODISCARD inline runtime::Error load_forward(
+      runtime::HierarchicalAllocator* planned_memory = nullptr,
+      torch::executor::EventTracer* event_tracer = nullptr,
+      const LoadBackendOptionsMap* backend_options = nullptr,
+      std::vector<Kernel> kernel_registry = {}) {
+    return load_method(
+        "forward",
+        planned_memory,
+        event_tracer,
+        backend_options,
+        std::move(kernel_registry));
   }
 
-  ET_DEPRECATED ET_NODISCARD inline runtime::Error
-  load_forward(torch::executor::EventTracer *event_tracer) {
+  ET_DEPRECATED ET_NODISCARD inline runtime::Error load_forward(
+      torch::executor::EventTracer* event_tracer) {
     return load_forward(nullptr, event_tracer, nullptr);
   }
 
@@ -340,7 +353,9 @@ public:
    *
    * @returns True if the 'forward' method is unloaded, false if no-op.
    */
-  inline bool unload_forward() { return unload_method("forward"); }
+  inline bool unload_forward() {
+    return unload_method("forward");
+  }
 
   /**
    * Checks if a specific method is loaded.
@@ -350,7 +365,7 @@ public:
    * @returns true if the method specified by method_name is loaded, false
    * otherwise.
    */
-  inline bool is_method_loaded(const std::string &method_name) const {
+  inline bool is_method_loaded(const std::string& method_name) const {
     return methods_.count(method_name);
   }
 
@@ -363,7 +378,7 @@ public:
    * @returns A method metadata, or an error if the program or method failed to
    * load.
    */
-  runtime::Result<MethodMeta> method_meta(const std::string &method_name);
+  runtime::Result<MethodMeta> method_meta(const std::string& method_name);
 
   /**
    * Execute a specific method with the given input values and retrieve the
@@ -376,9 +391,9 @@ public:
    * @returns A Result object containing either a vector of output values
    *          from the method or an error to indicate failure.
    */
-  ET_NODISCARD virtual runtime::Result<std::vector<runtime::EValue>>
-  execute(const std::string &method_name,
-          const std::vector<runtime::EValue> &input_values);
+  ET_NODISCARD virtual runtime::Result<std::vector<runtime::EValue>> execute(
+      const std::string& method_name,
+      const std::vector<runtime::EValue>& input_values);
 
   /**
    * Execute a specific method with a single input value.
@@ -390,8 +405,9 @@ public:
    * @returns A Result object containing either a vector of output values
    *          from the method or an error to indicate failure.
    */
-  ET_NODISCARD inline runtime::Result<std::vector<runtime::EValue>>
-  execute(const std::string &method_name, const runtime::EValue &input_value) {
+  ET_NODISCARD inline runtime::Result<std::vector<runtime::EValue>> execute(
+      const std::string& method_name,
+      const runtime::EValue& input_value) {
     return execute(method_name, std::vector<runtime::EValue>{input_value});
   }
 
@@ -404,8 +420,8 @@ public:
    * @returns A Result object containing either a vector of output values
    *          from the method or an error to indicate failure.
    */
-  ET_NODISCARD inline runtime::Result<std::vector<runtime::EValue>>
-  execute(const std::string &method_name) {
+  ET_NODISCARD inline runtime::Result<std::vector<runtime::EValue>> execute(
+      const std::string& method_name) {
     return execute(method_name, std::vector<runtime::EValue>{});
   }
 
@@ -420,9 +436,9 @@ public:
    * @returns A Result object containing either the first output value from the
    * method or an error to indicate failure.
    */
-  ET_NODISCARD inline runtime::Result<runtime::EValue>
-  get(const std::string &method_name,
-      const std::vector<runtime::EValue> &input_values) {
+  ET_NODISCARD inline runtime::Result<runtime::EValue> get(
+      const std::string& method_name,
+      const std::vector<runtime::EValue>& input_values) {
     auto execute_result = execute(method_name, input_values);
     if (!execute_result.ok()) {
       return execute_result.error();
@@ -444,8 +460,9 @@ public:
    * @returns A Result object containing either the first output value from the
    * method or an error to indicate failure.
    */
-  ET_NODISCARD inline runtime::Result<runtime::EValue>
-  get(const std::string &method_name, const runtime::EValue &input_value) {
+  ET_NODISCARD inline runtime::Result<runtime::EValue> get(
+      const std::string& method_name,
+      const runtime::EValue& input_value) {
     return get(method_name, std::vector<runtime::EValue>{input_value});
   }
 
@@ -458,8 +475,8 @@ public:
    * @returns A Result object containing either the first output value from the
    * method or an error to indicate failure.
    */
-  ET_NODISCARD inline runtime::Result<runtime::EValue>
-  get(const std::string &method_name) {
+  ET_NODISCARD inline runtime::Result<runtime::EValue> get(
+      const std::string& method_name) {
     return get(method_name, std::vector<runtime::EValue>{});
   }
 
@@ -472,8 +489,8 @@ public:
    * @returns A Result object containing either a vector of output values
    *          from the 'forward' method or an error to indicate failure.
    */
-  ET_NODISCARD inline runtime::Result<std::vector<runtime::EValue>>
-  forward(const std::vector<runtime::EValue> &input_values) {
+  ET_NODISCARD inline runtime::Result<std::vector<runtime::EValue>> forward(
+      const std::vector<runtime::EValue>& input_values) {
     return execute("forward", input_values);
   }
 
@@ -486,8 +503,8 @@ public:
    * @returns A Result object containing either a vector of output values
    *          from the 'forward' method or an error to indicate failure.
    */
-  ET_NODISCARD inline runtime::Result<std::vector<runtime::EValue>>
-  forward(const runtime::EValue &input_value) {
+  ET_NODISCARD inline runtime::Result<std::vector<runtime::EValue>> forward(
+      const runtime::EValue& input_value) {
     return forward(std::vector<runtime::EValue>{input_value});
   }
 
@@ -512,9 +529,10 @@ public:
    * @returns An Error to indicate success or failure.
    */
   ET_NODISCARD
-  runtime::Error set_input(const std::string &method_name,
-                           const runtime::EValue &input_value,
-                           size_t input_index);
+  runtime::Error set_input(
+      const std::string& method_name,
+      const runtime::EValue& input_value,
+      size_t input_index);
 
   /**
    * Sets a single input value for the "forward" method.
@@ -525,8 +543,9 @@ public:
    * @returns An Error to indicate success or failure.
    */
   ET_NODISCARD
-  inline runtime::Error set_input(const runtime::EValue &input_value,
-                                  size_t input_index) {
+  inline runtime::Error set_input(
+      const runtime::EValue& input_value,
+      size_t input_index) {
     return set_input("forward", input_value, input_index);
   }
 
@@ -539,8 +558,9 @@ public:
    * @returns An Error to indicate success or failure.
    */
   ET_NODISCARD
-  runtime::Error set_inputs(const std::string &method_name,
-                            const std::vector<runtime::EValue> &input_values);
+  runtime::Error set_inputs(
+      const std::string& method_name,
+      const std::vector<runtime::EValue>& input_values);
 
   /**
    * Sets all input values for the "forward" method.
@@ -550,8 +570,8 @@ public:
    * @returns An Error to indicate success or failure.
    */
   ET_NODISCARD
-  inline runtime::Error
-  set_inputs(const std::vector<runtime::EValue> &input_values) {
+  inline runtime::Error set_inputs(
+      const std::vector<runtime::EValue>& input_values) {
     return set_inputs("forward", input_values);
   }
 
@@ -568,9 +588,10 @@ public:
    * @note Only Tensor outputs are currently supported for setting.
    */
   ET_NODISCARD
-  runtime::Error set_output(const std::string &method_name,
-                            runtime::EValue output_value,
-                            size_t output_index = 0);
+  runtime::Error set_output(
+      const std::string& method_name,
+      runtime::EValue output_value,
+      size_t output_index = 0);
 
   /**
    * Sets the output tensor for the "forward" method.
@@ -584,8 +605,9 @@ public:
    * @note Only Tensor outputs are currently supported for setting.
    */
   ET_NODISCARD
-  inline runtime::Error set_output(runtime::EValue output_value,
-                                   size_t output_index = 0) {
+  inline runtime::Error set_output(
+      runtime::EValue output_value,
+      size_t output_index = 0) {
     return set_output("forward", std::move(output_value), output_index);
   }
 
@@ -604,8 +626,9 @@ public:
    * @note Will fail for outputs that are memory-planned or constants.
    */
   ET_NODISCARD
-  runtime::Error set_outputs(const std::string &method_name,
-                             const std::vector<runtime::EValue> &output_values);
+  runtime::Error set_outputs(
+      const std::string& method_name,
+      const std::vector<runtime::EValue>& output_values);
 
   /**
    * Sets all output tensors for the "forward" method.
@@ -618,8 +641,8 @@ public:
    * @note Will fail for outputs that are memory-planned or constants.
    */
   ET_NODISCARD
-  inline runtime::Error
-  set_outputs(const std::vector<runtime::EValue> &output_values) {
+  inline runtime::Error set_outputs(
+      const std::vector<runtime::EValue>& output_values) {
     return set_outputs("forward", output_values);
   }
 
@@ -632,8 +655,8 @@ public:
    * @returns A Result containing the vector of output values, or an error.
    */
   ET_NODISCARD
-  runtime::Result<std::vector<runtime::EValue>>
-  get_outputs(const std::string &method_name);
+  runtime::Result<std::vector<runtime::EValue>> get_outputs(
+      const std::string& method_name);
 
   /**
    * Retrieve all current output values of the "forward" method without
@@ -656,8 +679,9 @@ public:
    * @returns A Result containing the requested output value, or an error.
    */
   ET_NODISCARD
-  runtime::Result<runtime::EValue> get_output(const std::string &method_name,
-                                              size_t output_index = 0);
+  runtime::Result<runtime::EValue> get_output(
+      const std::string& method_name,
+      size_t output_index = 0);
 
   /**
    * Retrieve a single current output value of the "forward" method without
@@ -680,7 +704,7 @@ public:
    * @returns A pointer to the EventTracer instance. Returns nullptr if no
    * EventTracer is set.
    */
-  inline runtime::EventTracer *event_tracer() const {
+  inline runtime::EventTracer* event_tracer() const {
     return event_tracer_.get();
   }
 
@@ -690,19 +714,27 @@ public:
     return runtime::Span<uint8_t>(debug_buffer_.data(), debug_buffer_.size());
   }
 
-private:
+ private:
   struct PlannedMemory {
     std::vector<std::vector<uint8_t>> planned_buffers;
     std::vector<runtime::Span<uint8_t>> planned_spans;
+    std::vector<runtime::DeviceMemoryBuffer> device_buffers;
+    /// Per-buffer Device (type + index) metadata used by
+    /// HierarchicalAllocator. Owns the storage backing the device span the
+    /// allocator references, so it must outlive `planned_memory`.
+    std::vector<runtime::etensor::Device> planned_devices;
     std::unique_ptr<runtime::HierarchicalAllocator> planned_memory;
   };
-  std::unique_ptr<PlannedMemory>
-  make_planned_memory(const std::vector<size_t> &buffer_sizes);
+  std::unique_ptr<PlannedMemory> make_planned_memory(
+      const std::vector<size_t>& buffer_sizes);
   std::unique_ptr<PlannedMemory> make_planned_memory_with_shared_arenas(
-      const std::vector<size_t> &buffer_sizes,
-      std::vector<std::vector<uint8_t>> &shared_arenas);
-  runtime::Result<std::vector<size_t>>
-  get_mem_planned_buffer_sizes(const std::string &method_name);
+      const std::vector<size_t>& buffer_sizes,
+      std::vector<std::vector<uint8_t>>& shared_arenas);
+  runtime::Result<std::unique_ptr<PlannedMemory>>
+  make_planned_memory_with_devices(
+      const ET_RUNTIME_NAMESPACE::MethodMeta& method_meta);
+  runtime::Result<std::vector<size_t>> get_mem_planned_buffer_sizes(
+      const std::string& method_name);
   runtime::Result<std::vector<size_t>> get_max_mem_planned_buffer_sizes();
 
   struct MethodHolder {
@@ -735,10 +767,10 @@ private:
   LoadBackendOptionsMap backend_options_map_;
   bool share_memory_arenas_;
 
-  ET_NODISCARD runtime::Error
-  load_internal(const Program::Verification verification);
+  ET_NODISCARD runtime::Error load_internal(
+      const Program::Verification verification);
 
-protected:
+ protected:
   std::unordered_map<std::string, MethodHolder> methods_;
 
   friend class executorch::extension::ExecuTorchJni;

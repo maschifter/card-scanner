@@ -42,7 +42,7 @@ namespace runtime {
  * and any loaded models that use it.
  */
 class LoadBackendOptionsMap final {
-public:
+ public:
   /**
    * Default constructor - creates an empty map.
    */
@@ -66,7 +66,7 @@ public:
    *         Error::InvalidArgument if backend_id is null/empty or max backends
    * exceeded.
    */
-  Error set_options(const char *backend_id, Span<BackendOption> options) {
+  Error set_options(const char* backend_id, Span<BackendOption> options) {
     if (backend_id == nullptr || backend_id[0] == '\0') {
       return Error::InvalidArgument;
     }
@@ -90,12 +90,13 @@ public:
    * methods.
    * @return Error::Ok on success, Error::InvalidArgument on failure.
    */
-  template <typename Builder> Error set_options(Builder &builder) {
+  template <typename Builder>
+  Error set_options(Builder& builder) {
     return set_options_impl(builder.backend_id(), builder.view());
   }
 
-private:
-  Error set_options_impl(const char *backend_id, Span<BackendOption> options) {
+ private:
+  Error set_options_impl(const char* backend_id, Span<BackendOption> options) {
     // Check if backend already exists and update it
     for (size_t i = 0; i < size_; ++i) {
       if (std::strcmp(entries_[i].backend_id, backend_id) == 0) {
@@ -121,7 +122,7 @@ private:
     return Error::Ok;
   }
 
-public:
+ public:
   /**
    * Gets options for a specific backend.
    *
@@ -129,15 +130,15 @@ public:
    * @return Span of options for this backend, or an empty span if the backend
    *         has no options configured or backend_id is null.
    */
-  Span<const BackendOption> get_options(const char *backend_id) const {
+  Span<const BackendOption> get_options(const char* backend_id) const {
     if (backend_id == nullptr) {
       return Span<const BackendOption>(nullptr, static_cast<size_t>(0));
     }
 
     for (size_t i = 0; i < size_; ++i) {
       if (std::strcmp(entries_[i].backend_id, backend_id) == 0) {
-        return Span<const BackendOption>(entries_[i].options.data(),
-                                         entries_[i].options.size());
+        return Span<const BackendOption>(
+            entries_[i].options.data(), entries_[i].options.size());
       }
     }
 
@@ -150,7 +151,7 @@ public:
    * @param backend_id The backend identifier to check.
    * @return true if options are set for this backend, false otherwise.
    */
-  bool has_options(const char *backend_id) const {
+  bool has_options(const char* backend_id) const {
     if (backend_id == nullptr) {
       return false;
     }
@@ -167,7 +168,9 @@ public:
   /**
    * Returns the number of backends with configured options.
    */
-  size_t size() const { return size_; }
+  size_t size() const {
+    return size_;
+  }
 
   /**
    * Non-owning view of a single (backend_id, options) entry, returned by
@@ -175,7 +178,7 @@ public:
    * destroyed.
    */
   struct EntryView {
-    const char *backend_id = nullptr;
+    const char* backend_id = nullptr;
     Span<const BackendOption> options;
   };
 
@@ -198,14 +201,18 @@ public:
    * @endcode
    */
   EntryView entry_at(size_t index) const {
-    ET_DCHECK_MSG(index < size_, "entry_at index %zu out of bounds (size=%zu)",
-                  index, size_);
-    return EntryView{entries_[index].backend_id,
-                     Span<const BackendOption>(entries_[index].options.data(),
-                                               entries_[index].options.size())};
+    ET_DCHECK_MSG(
+        index < size_,
+        "entry_at index %zu out of bounds (size=%zu)",
+        index,
+        size_);
+    return EntryView{
+        entries_[index].backend_id,
+        Span<const BackendOption>(
+            entries_[index].options.data(), entries_[index].options.size())};
   }
 
-private:
+ private:
   static constexpr size_t kMaxBackends = 8;
   static constexpr size_t kMaxBackendIdLength = 64;
 

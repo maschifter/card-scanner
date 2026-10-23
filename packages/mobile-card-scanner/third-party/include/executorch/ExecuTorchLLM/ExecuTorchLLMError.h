@@ -10,7 +10,6 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-FOUNDATION_EXPORT NSErrorDomain const
-    ExecuTorchLLMErrorDomain NS_SWIFT_NAME(ErrorDomain);
+FOUNDATION_EXPORT NSErrorDomain const ExecuTorchLLMErrorDomain NS_SWIFT_NAME(ErrorDomain);
 
 NS_ASSUME_NONNULL_END

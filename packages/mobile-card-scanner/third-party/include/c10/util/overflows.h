@@ -33,8 +33,9 @@ C10_CLANG_DIAGNOSTIC_IGNORE("-Wimplicit-float-conversion")
 // `error: comparison of constant '255' with boolean expression is always false`
 // for `f > limit::max()` below
 template <typename To, typename From>
-std::enable_if_t<std::is_same_v<From, bool>, bool>
-overflows(From /*f*/, bool strict_unsigned [[maybe_unused]] = false) {
+std::enable_if_t<std::is_same_v<From, bool>, bool> overflows(
+    From /*f*/,
+    bool strict_unsigned [[maybe_unused]] = false) {
   return false;
 }
 
@@ -49,22 +50,38 @@ overflows(From f, bool strict_unsigned = false) {
     // `a + 255 * b`.
     if (!strict_unsigned) {
       return greater_than_max<To>(f) ||
-             (c10::is_negative(f) &&
-              -static_cast<uint64_t>(f) > static_cast<uint64_t>(limit::max()));
+          (c10::is_negative(f) &&
+           -static_cast<uint64_t>(f) > static_cast<uint64_t>(limit::max()));
     }
   }
   return c10::less_than_lowest<To>(f) || greater_than_max<To>(f);
 }
 
 template <typename To, typename From>
-std::enable_if_t<std::is_floating_point_v<From>, bool>
-overflows(From f, bool strict_unsigned [[maybe_unused]] = false) {
-  using limit = std::numeric_limits<typename scalar_value_type<To>::type>;
+std::enable_if_t<std::is_floating_point_v<From>, bool> overflows(
+    From f,
+    bool strict_unsigned [[maybe_unused]] = false) {
+  using ToScalar = typename scalar_value_type<To>::type;
+  using limit = std::numeric_limits<ToScalar>;
   if (limit::has_infinity && std::isinf(static_cast<double>(f))) {
     return false;
   }
   if (!limit::has_quiet_NaN && (f != f)) {
     return true;
+  }
+  if constexpr (std::is_integral_v<ToScalar>) {
+    // limit::max() for wide integer types is NOT exactly representable in
+    // floating point (e.g. int64 max = 2^63-1 rounds up to 2^63), so `f >
+    // limit::max()` lets a just-out-of-range value like 2^63 slip through and
+    // then become INT64_MIN via static_cast. Compare against the
+    // exactly-representable upper bound max()+1 == 2^digits instead. lowest()
+    // is 0 or a negated power of two, so it stays exact. (digits-1 keeps the
+    // shift < 64 for the uint64 case; the *2 recovers 2^digits without a 1<<64
+    // overflow.)
+    constexpr int digits = limit::digits;
+    constexpr From upper =
+        static_cast<From>(uint64_t{1} << (digits - 1)) * From{2};
+    return f < static_cast<From>(limit::lowest()) || f >= upper;
   }
   return f < limit::lowest() || f > limit::max();
 }
@@ -76,8 +93,9 @@ C10_CLANG_DIAGNOSTIC_POP()
 #endif
 
 template <typename To, typename From>
-std::enable_if_t<is_complex<From>::value, bool>
-overflows(From f, bool strict_unsigned = false) {
+std::enable_if_t<is_complex<From>::value, bool> overflows(
+    From f,
+    bool strict_unsigned = false) {
   // casts from complex to real are considered to overflow if the
   // imaginary component is non-zero
   if (!is_complex<To>::value && f.imag() != 0) {
@@ -87,9 +105,11 @@ overflows(From f, bool strict_unsigned = false) {
   // (Technically, the imag overflow check is guaranteed to be false
   // when !is_complex<To>, but any optimizer worth its salt will be
   // able to figure it out.)
-  return overflows<typename scalar_value_type<To>::type,
-                   typename From::value_type>(f.real(), strict_unsigned) ||
-         overflows<typename scalar_value_type<To>::type,
-                   typename From::value_type>(f.imag(), strict_unsigned);
+  return overflows<
+             typename scalar_value_type<To>::type,
+             typename From::value_type>(f.real(), strict_unsigned) ||
+      overflows<
+             typename scalar_value_type<To>::type,
+             typename From::value_type>(f.imag(), strict_unsigned);
 }
 } // namespace c10

@@ -46,7 +46,7 @@ class TensorParser;
  * A deserialized ExecuTorch program binary.
  */
 class Program final {
-public:
+ public:
   /**
    * Types of validation that the Program can do before parsing the data.
    */
@@ -76,6 +76,15 @@ public:
   };
 
   /**
+   * The highest program schema version that this runtime can read.
+   *
+   * Keep in sync with EXECUTORCH_SCHEMA_VERSION in
+   * //executorch/exir/version.py, which is the version that the exporter stamps
+   * into every PTE file.
+   */
+  static constexpr uint32_t kMaxSupportedSchemaVersion = 0;
+
+  /**
    * Loads a Program from the provided loader. The Program will hold a pointer
    * to the loader, which must outlive the returned Program instance.
    *
@@ -85,17 +94,19 @@ public:
    * @param[in] verification The type of verification to do before returning
    *     success.
    */
-  ET_NODISCARD static Result<Program>
-  load(DataLoader *loader, Verification verification = Verification::Minimal);
+  ET_NODISCARD static Result<Program> load(
+      DataLoader* loader,
+      Verification verification = Verification::Minimal);
 
   /// DEPRECATED: Use the lowercase `load()` instead.
-  ET_DEPRECATED ET_NODISCARD static Result<Program>
-  Load(DataLoader *loader, Verification verification = Verification::Minimal) {
+  ET_DEPRECATED ET_NODISCARD static Result<Program> Load(
+      DataLoader* loader,
+      Verification verification = Verification::Minimal) {
     return load(loader, verification);
   }
 
   // Movable, to be compatible with Result.
-  Program(Program &&) noexcept = default;
+  Program(Program&&) noexcept = default;
   ~Program() = default;
 
   /**
@@ -104,14 +115,14 @@ public:
    * @param[in] nbytes the number of bytes to read from the buffer.
    * @return The buffer with corresponding index.
    */
-  Result<const void *> get_constant_buffer_data(size_t buffer_idx,
-                                                size_t nbytes) const;
+  Result<const void*> get_constant_buffer_data(size_t buffer_idx, size_t nbytes)
+      const;
 
   /**
    * Get the named data map from the program.
    * @return The named data map.
    */
-  Result<const NamedDataMap *> get_named_data_map() const;
+  Result<const NamedDataMap*> get_named_data_map() const;
 
   /**
    * Returns the number of methods in the program.
@@ -127,7 +138,7 @@ public:
    * @returns The name of the requested method. The pointer is owned by the
    * Program, and has the same lifetime as the Program.
    */
-  Result<const char *> get_method_name(size_t method_index) const;
+  Result<const char*> get_method_name(size_t method_index) const;
 
   /**
    * Loads the named method and prepares it for execution.
@@ -145,19 +156,20 @@ public:
    *
    * @returns The loaded method on success, or an error on failure.
    */
-  Result<Method>
-  load_method(const char *method_name, MemoryManager *memory_manager,
-              EventTracer *event_tracer = nullptr,
-              const NamedDataMap *named_data_map = nullptr,
-              const LoadBackendOptionsMap *backend_options = nullptr,
-              Span<const Kernel> kernel_registry = {}) const;
+  Result<Method> load_method(
+      const char* method_name,
+      MemoryManager* memory_manager,
+      EventTracer* event_tracer = nullptr,
+      const NamedDataMap* named_data_map = nullptr,
+      const LoadBackendOptionsMap* backend_options = nullptr,
+      Span<const Kernel> kernel_registry = {}) const;
 
   /**
    * Gathers metadata for the named method.
    *
    * @param[in] method_name The name of the method to get metadata for.
    */
-  Result<MethodMeta> method_meta(const char *method_name) const;
+  Result<MethodMeta> method_meta(const char* method_name) const;
 
   /**
    * DEPRECATED: Get the pytree encoding string for the output. Deprecated as
@@ -167,8 +179,8 @@ public:
    *
    * @return The pytree encoding string for the output
    */
-  ET_DEPRECATED Result<const char *>
-  get_output_flattening_encoding(const char *method_name = "forward") const;
+  ET_DEPRECATED Result<const char*> get_output_flattening_encoding(
+      const char* method_name = "forward") const;
 
   /**
    * Describes the presence of an ExecuTorch program header.
@@ -211,9 +223,9 @@ public:
    *
    * @returns A value describing the presence of a header in the data.
    */
-  static HeaderStatus check_header(const void *data, size_t size);
+  static HeaderStatus check_header(const void* data, size_t size);
 
-private:
+ private:
   // Let some classes call these private methods.
   friend class BackendDelegate;
   friend class Executor;
@@ -221,13 +233,15 @@ private:
   friend class deserialization::TensorParser;
   friend class testing::ProgramTestFriend;
 
-  const executorch_flatbuffer::Program *get_internal_program() const {
+  const executorch_flatbuffer::Program* get_internal_program() const {
     return internal_program_;
   }
 
   // Used by Method to look up entries in the delegate data table.
-  Error get_backend_delegate_data(size_t index, const void **out_data,
-                                  size_t *out_size) const;
+  Error get_backend_delegate_data(
+      size_t index,
+      const void** out_data,
+      size_t* out_size) const;
 
   /**
    * Loads a segment by index.
@@ -243,8 +257,8 @@ private:
    *     DataLoader: The Program.segment table is inconsistent, or the
    *     data cannot be accessed.
    */
-  ET_NODISCARD Result<FreeableBuffer>
-  LoadSegment(const DataLoader::SegmentInfo &segment_info) const;
+  ET_NODISCARD Result<FreeableBuffer> LoadSegment(
+      const DataLoader::SegmentInfo& segment_info) const;
 
   /**
    * Loads a portion of a mutable segment into the provided buffer.
@@ -265,15 +279,19 @@ private:
    *     data cannot be accessed.
    */
   ET_NODISCARD Error load_mutable_subsegment_into(
-      size_t mutable_data_segments_index, size_t offset_index, size_t size,
-      void *buffer) const;
+      size_t mutable_data_segments_index,
+      size_t offset_index,
+      size_t size,
+      void* buffer) const;
 
-private:
-  Program(DataLoader *loader, size_t segment_base_offset,
-          FreeableBuffer &&program_data,
-          const executorch_flatbuffer::Program *internal_program,
-          FreeableBuffer &&constant_segment_data,
-          std::optional<internal::PteDataMap> &&pte_data_map)
+ private:
+  Program(
+      DataLoader* loader,
+      size_t segment_base_offset,
+      FreeableBuffer&& program_data,
+      const executorch_flatbuffer::Program* internal_program,
+      FreeableBuffer&& constant_segment_data,
+      std::optional<internal::PteDataMap>&& pte_data_map)
       : program_data_(std::move(program_data)),
         // Don't need the loader if there are no segments.
         loader_(segment_base_offset > 0 ? loader : nullptr),
@@ -283,19 +301,19 @@ private:
         pte_data_map_(std::move(pte_data_map)) {}
 
   // Not copyable or assignable.
-  Program(const Program &rhs) = delete;
-  Program &operator=(Program &&rhs) noexcept = delete;
-  Program &operator=(const Program &rhs) = delete;
+  Program(const Program& rhs) = delete;
+  Program& operator=(Program&& rhs) noexcept = delete;
+  Program& operator=(const Program& rhs) = delete;
 
   /// The serialized program data. Tensors will point directly into this buffer.
   FreeableBuffer program_data_;
 
   /// Used to load segment data. Null if there are no segments.
-  DataLoader *loader_;
+  DataLoader* loader_;
 
   /// The flatbuffer representation of the program. Must not be exposed to
   /// users.
-  const executorch_flatbuffer::Program *internal_program_;
+  const executorch_flatbuffer::Program* internal_program_;
 
   /// The offset to the first segment, in bytes. If zero, no segments should
   /// be present in internal_program_.

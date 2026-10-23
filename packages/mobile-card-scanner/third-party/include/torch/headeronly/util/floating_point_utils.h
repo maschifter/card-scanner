@@ -1,8 +1,8 @@
 #pragma once
 
-#include <cstdint>
 #include <torch/headeronly/macros/Macros.h>
 #include <torch/headeronly/util/bit_cast.h>
+#include <cstdint>
 
 HIDDEN_NAMESPACE_BEGIN(torch, headeronly, detail)
 

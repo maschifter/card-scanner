@@ -44,23 +44,29 @@ struct Device final {
       : type_(type), index_(index) {}
 
   /// Returns the type of device the tensor data resides on.
-  DeviceType type() const noexcept { return type_; }
+  DeviceType type() const noexcept {
+    return type_;
+  }
 
   /// Returns true if the device is of CPU type.
-  bool is_cpu() const noexcept { return type_ == DeviceType::CPU; }
+  bool is_cpu() const noexcept {
+    return type_ == DeviceType::CPU;
+  }
 
   /// Returns the device index.
-  DeviceIndex index() const noexcept { return index_; }
+  DeviceIndex index() const noexcept {
+    return index_;
+  }
 
-  bool operator==(const Device &other) const noexcept {
+  bool operator==(const Device& other) const noexcept {
     return type_ == other.type_ && index_ == other.index_;
   }
 
-  bool operator!=(const Device &other) const noexcept {
+  bool operator!=(const Device& other) const noexcept {
     return !(*this == other);
   }
 
-private:
+ private:
   DeviceType type_;
   DeviceIndex index_ = 0;
 };

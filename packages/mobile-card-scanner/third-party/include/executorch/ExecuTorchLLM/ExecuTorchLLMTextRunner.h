@@ -36,8 +36,7 @@ __attribute__((deprecated("This API is experimental.")))
 
  @param modelPath      File system path to the serialized model.
  @param tokenizerPath  File system path to the tokenizer data.
- @param specialTokens  An array of NSString special tokens to use during
- tokenization.
+ @param specialTokens  An array of NSString special tokens to use during tokenization.
  @return An initialized ExecuTorchLLMTextRunner instance.
 */
 - (instancetype)initWithModelPath:(NSString *)modelPath

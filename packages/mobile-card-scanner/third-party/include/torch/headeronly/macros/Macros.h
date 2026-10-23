@@ -31,15 +31,15 @@
 #include <torch/headeronly/macros/Export.h>
 
 #if defined(__clang__)
-#define __ubsan_ignore_float_divide_by_zero__                                  \
+#define __ubsan_ignore_float_divide_by_zero__ \
   __attribute__((no_sanitize("float-divide-by-zero")))
 #define __ubsan_ignore_undefined__ __attribute__((no_sanitize("undefined")))
-#define __ubsan_ignore_signed_int_overflow__                                   \
+#define __ubsan_ignore_signed_int_overflow__ \
   __attribute__((no_sanitize("signed-integer-overflow")))
-#define __ubsan_ignore_pointer_overflow__                                      \
+#define __ubsan_ignore_pointer_overflow__ \
   __attribute__((no_sanitize("pointer-overflow")))
 #define __ubsan_ignore_function__ __attribute__((no_sanitize("function")))
-#define __ubsan_ignore_float_cast_overflow__                                   \
+#define __ubsan_ignore_float_cast_overflow__ \
   __attribute__((no_sanitize("float-cast-overflow")))
 #else
 #define __ubsan_ignore_float_divide_by_zero__
@@ -94,9 +94,9 @@
 
 // Disable the copy and assignment operator for a class. Note that this will
 // disable the usage of the class in std containers.
-#define C10_DISABLE_COPY_AND_ASSIGN(classname)                                 \
-  classname(const classname &) = delete;                                       \
-  classname &operator=(const classname &) = delete
+#define C10_DISABLE_COPY_AND_ASSIGN(classname) \
+  classname(const classname&) = delete;        \
+  classname& operator=(const classname&) = delete
 
 #define C10_CONCATENATE_IMPL(s1, s2) s1##s2
 #define C10_CONCATENATE(s1, s2) C10_CONCATENATE_IMPL(s1, s2)
@@ -122,6 +122,15 @@
 #define C10_HAS_CPP_ATTRIBUTE(x) __has_cpp_attribute(x)
 #else
 #define C10_HAS_CPP_ATTRIBUTE(x) (0)
+#endif
+
+/// Bind a returned reference/pointer's lifetime to a parameter (or *this) so
+/// Clang can warn when it would dangle. Expands to nothing on compilers that
+/// lack the attribute (e.g. non-clang, older nvcc).
+#if C10_HAS_CPP_ATTRIBUTE(clang::lifetimebound)
+#define C10_LIFETIMEBOUND [[clang::lifetimebound]]
+#else
+#define C10_LIFETIMEBOUND
 #endif
 
 #ifndef FBCODE_CAFFE2
@@ -273,7 +282,7 @@ using namespace c10::xpu;
 // to resolve potential warnings.
 #if __CUDA_ARCH__ == 750
 constexpr uint32_t CUDA_MAX_THREADS_PER_SM = 1024;
-#elif __CUDA_ARCH__ == 860 || __CUDA_ARCH__ == 870 || __CUDA_ARCH__ == 890 ||  \
+#elif __CUDA_ARCH__ == 860 || __CUDA_ARCH__ == 870 || __CUDA_ARCH__ == 890 || \
     __CUDA_ARCH__ == 1200
 constexpr uint32_t CUDA_MAX_THREADS_PER_SM = 1536;
 #else
@@ -295,24 +304,24 @@ constexpr uint32_t CUDA_THREADS_PER_BLOCK_FALLBACK = 256;
 // performance tuning on a modern GPU. Instead, you should write
 // __launch_bounds__(C10_MAX_THREADS_PER_BLOCK(a), C10_MIN_BLOCKS_PER_SM(a, b)),
 // which will also properly respect limits on old architectures.
-#define C10_MAX_THREADS_PER_BLOCK(val)                                         \
-  (((val) <= CUDA_MAX_THREADS_PER_BLOCK) ? (val)                               \
+#define C10_MAX_THREADS_PER_BLOCK(val)           \
+  (((val) <= CUDA_MAX_THREADS_PER_BLOCK) ? (val) \
                                          : CUDA_THREADS_PER_BLOCK_FALLBACK)
-#define C10_MIN_BLOCKS_PER_SM(threads_per_block, blocks_per_sm)                \
-  ((((threads_per_block) * (blocks_per_sm) <= CUDA_MAX_THREADS_PER_SM)         \
-        ? (blocks_per_sm)                                                      \
-        : ((CUDA_MAX_THREADS_PER_SM + (threads_per_block) - 1) /               \
+#define C10_MIN_BLOCKS_PER_SM(threads_per_block, blocks_per_sm)        \
+  ((((threads_per_block) * (blocks_per_sm) <= CUDA_MAX_THREADS_PER_SM) \
+        ? (blocks_per_sm)                                              \
+        : ((CUDA_MAX_THREADS_PER_SM + (threads_per_block) - 1) /       \
            (threads_per_block))))
 // C10_LAUNCH_BOUNDS is analogous to __launch_bounds__
-#define C10_LAUNCH_BOUNDS_0                                                    \
-  __launch_bounds__(256,                                                       \
-                    4) // default launch bounds that should give good occupancy
-                       // and versatility across all architectures.
-#define C10_LAUNCH_BOUNDS_1(max_threads_per_block)                             \
+#define C10_LAUNCH_BOUNDS_0 \
+  __launch_bounds__(        \
+      256, 4) // default launch bounds that should give good occupancy and
+              // versatility across all architectures.
+#define C10_LAUNCH_BOUNDS_1(max_threads_per_block) \
   __launch_bounds__((C10_MAX_THREADS_PER_BLOCK((max_threads_per_block))))
-#define C10_LAUNCH_BOUNDS_2(max_threads_per_block, min_blocks_per_sm)          \
-  __launch_bounds__(                                                           \
-      (C10_MAX_THREADS_PER_BLOCK((max_threads_per_block))),                    \
+#define C10_LAUNCH_BOUNDS_2(max_threads_per_block, min_blocks_per_sm) \
+  __launch_bounds__(                                                  \
+      (C10_MAX_THREADS_PER_BLOCK((max_threads_per_block))),           \
       (C10_MIN_BLOCKS_PER_SM((max_threads_per_block), (min_blocks_per_sm))))
 #else
 #define C10_HOST_DEVICE
@@ -326,39 +335,88 @@ constexpr uint32_t CUDA_THREADS_PER_BLOCK_FALLBACK = 256;
 #define C10_HIP_HOST_DEVICE
 #endif
 
-#if defined(USE_ROCM)
 // C10_WARP_SIZE is only allowed for device code.
-// Host code _must_ use at::cuda::warp_size()
+// Host code dynamically-sized launch configs _must_ use at::cuda::warp_size().
+// Host or device statically-sized arrays _must_ use either
+// C10_WARP_SIZE_UPPER_BOUND or C10_WARP_SIZE_LOWER_BOUND, as needed.
+//
 // HIP header used to define warpSize as a constexpr that was either 32 or 64
 // depending on the target device, and then always set it to 64 for host code.
-// Host pass of HIP compiler needs C10_WARP_SIZE defined to _something_ so we
-// set it to something unreasonable to trigger obvious host code errors.
-
+// For a time, that allowed C10_WARP_SIZE to be defined like so:
+//
+// #ifdef USE_ROCM
+// #define C10_WARP_SIZE warpSize
+// #else
+// #define C10_WARP_SIZE 32
+// #endif
+//
+// In ROCm 7, warpSize is no longer constexpr, matching CUDA behavior.
+// We can now only use warpSize for C10_WARP_SIZE in device code and this is
+// enforced by using __device__ in its definition.  In host code where
+// C10_WARP_SIZE was previously used as a compile-time constant, this will now
+// cause a compile-time error.
+//
+// If an array was previously expected to be sized at compile-time using
+// C10_WARP_SIZE, users must now use either C10_WARP_SIZE_UPPER_BOUND or
+// C10_WARP_SIZE_LOWER_BOUND depending on the situation.
+//
+// If C10_WARP_SIZE was previously used to determine kernel launch sizes, users
+// must now use at::cuda::warp_size() for the dynamic runtime query.
+//
+// Unfortunately, C10_WARP_SIZE has been public and available for both host and
+// device since approximately 2019, so forcing it to be device-only would break
+// existing code in the wild.
+#if defined(USE_ROCM)
 namespace at::cuda {
 TORCH_CUDA_CPP_API int warp_size();
 }
-#ifdef __HIPCC__
-static inline int __host__ C10_WARP_SIZE_INTERNAL() {
+#if defined(__HIPCC__)
+static __host__ inline int C10_WARP_SIZE_INTERNAL() {
   return at::cuda::warp_size();
 }
-
-static inline constexpr int __device__ C10_WARP_SIZE_INTERNAL() {
+// NOTE: __device__ C10_WARP_SIZE_INTERNAL
+// For __SPIRV__, we must use dynamic warpSize. When not targeting __SPIRV__,
+// we can use constexpr. This matches prior behavior. We preserve this for
+// backward compatibility instead of forcing old code to use dynamic warpSize
+// and losing constexpr. However, compiling for --offload-arch=amdgcnspirv
+// could expose where C10_WARP_SIZE was used incorrectly where the dynamic
+// warpSize is not allowed.
+#if defined(__SPIRV__)
+static __device__ inline int C10_WARP_SIZE_INTERNAL() {
+  return warpSize;
+}
+#else // __SPIRV__
+static __device__ inline constexpr int C10_WARP_SIZE_INTERNAL() {
 #if defined(__GFX9__)
   return 64;
-#else  // __GFX9__
+#else // __GFX9__
   return 32;
 #endif // __GFX9__
 }
-#else  // __HIPCC__
-static inline int C10_WARP_SIZE_INTERNAL() { return at::cuda::warp_size(); }
-#endif // __HIPCC__
-
-#define C10_WARP_SIZE (C10_WARP_SIZE_INTERNAL())
-#define C10_WARP_SIZE_STATIC 64
-
-#else // defined(USE_ROCM)
-#define C10_WARP_SIZE 32
+#endif // __SPIRV__
+#if defined(__SPIRV__)
+#define C10_WARP_SIZE_LOWER_BOUND 32
+#define C10_WARP_SIZE_UPPER_BOUND 64
+#elif defined(__GFX9__)
+#define C10_WARP_SIZE_LOWER_BOUND 64
+#define C10_WARP_SIZE_UPPER_BOUND 64
+#else
+#define C10_WARP_SIZE_LOWER_BOUND 32
+#define C10_WARP_SIZE_UPPER_BOUND 32
 #endif
+#else // !__HIPCC__
+static inline int C10_WARP_SIZE_INTERNAL() {
+  return at::cuda::warp_size();
+}
+#define C10_WARP_SIZE_LOWER_BOUND 32
+#define C10_WARP_SIZE_UPPER_BOUND 64
+#endif // __HIPCC__
+#define C10_WARP_SIZE (C10_WARP_SIZE_INTERNAL())
+#else // !USE_ROCM
+#define C10_WARP_SIZE 32
+#define C10_WARP_SIZE_LOWER_BOUND 32
+#define C10_WARP_SIZE_UPPER_BOUND 32
+#endif // USE_ROCM
 
 #if defined(_MSC_VER) && _MSC_VER <= 1900
 #define __func__ __FUNCTION__
@@ -378,59 +436,81 @@ static inline int C10_WARP_SIZE_INTERNAL() { return at::cuda::warp_size(); }
 extern "C" {
 C10_IMPORT
 #if defined(__SYCL_DEVICE_ONLY__)
-extern SYCL_EXTERNAL void _wassert(const wchar_t *wexpr, const wchar_t *wfile,
-                                   unsigned line);
+extern SYCL_EXTERNAL void _wassert(
+    const wchar_t* wexpr,
+    const wchar_t* wfile,
+    unsigned line);
 #else
 #if defined(__CUDA_ARCH__)
 __host__ __device__
 #endif // __CUDA_ARCH__
-    void _wassert(wchar_t const *_Message, wchar_t const *_File,
-                  unsigned _Line);
+    void
+    _wassert(wchar_t const* _Message, wchar_t const* _File, unsigned _Line);
 #endif // __SYCL_DEVICE_ONLY__
 }
 #endif // NDEBUG
-#define CUDA_KERNEL_ASSERT(cond)                                               \
-  if (C10_UNLIKELY(!(cond))) {                                                 \
-    (void)(_wassert(_CRT_WIDE(#cond), _CRT_WIDE(__FILE__),                     \
-                    static_cast<unsigned>(__LINE__)),                          \
-           0);                                                                 \
+#define CUDA_KERNEL_ASSERT(cond)                 \
+  if (C10_UNLIKELY(!(cond))) {                   \
+    (void)(_wassert(                             \
+               _CRT_WIDE(#cond),                 \
+               _CRT_WIDE(__FILE__),              \
+               static_cast<unsigned>(__LINE__)), \
+           0);                                   \
   }
 // TODO: This doesn't assert the message because I (chilli) couldn't figure out
 // a nice way to convert a char* to a wchar_t*
-#define CUDA_KERNEL_ASSERT_MSG(cond, msg)                                      \
-  if (C10_UNLIKELY(!(cond))) {                                                 \
-    (void)(_wassert(_CRT_WIDE(#cond), _CRT_WIDE(__FILE__),                     \
-                    static_cast<unsigned>(__LINE__)),                          \
-           0);                                                                 \
+#define CUDA_KERNEL_ASSERT_MSG(cond, msg)        \
+  if (C10_UNLIKELY(!(cond))) {                   \
+    (void)(_wassert(                             \
+               _CRT_WIDE(#cond),                 \
+               _CRT_WIDE(__FILE__),              \
+               static_cast<unsigned>(__LINE__)), \
+           0);                                   \
   }
-#define CUDA_KERNEL_ASSERT_PRINTF(cond, msg, ...)                              \
-  if (C10_UNLIKELY(!(cond))) {                                                 \
-    (void)(printf(                                                             \
-        "[CUDA_KERNEL_ASSERT] " __FILE__ ":" C10_STRINGIZE(                    \
-            __LINE__) ": %s: block: [%d,%d,%d], thread: [%d,%d,%d]: "          \
-                      "Assertion failed: `" #cond "`: " msg "\n",              \
-        __func__, blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x,             \
-        threadIdx.y, threadIdx.z, ##__VA_ARGS__));                             \
-    (void)(_wassert(_CRT_WIDE(#cond), _CRT_WIDE(__FILE__),                     \
-                    static_cast<unsigned>(__LINE__)),                          \
-           0);                                                                 \
+#define CUDA_KERNEL_ASSERT_PRINTF(cond, msg, ...)                     \
+  if (C10_UNLIKELY(!(cond))) {                                        \
+    (void)(printf(                                                    \
+        "[CUDA_KERNEL_ASSERT] " __FILE__ ":" C10_STRINGIZE(           \
+            __LINE__) ": %s: block: [%d,%d,%d], thread: [%d,%d,%d]: " \
+                      "Assertion failed: `" #cond "`: " msg "\n",     \
+        __func__,                                                     \
+        blockIdx.x,                                                   \
+        blockIdx.y,                                                   \
+        blockIdx.z,                                                   \
+        threadIdx.x,                                                  \
+        threadIdx.y,                                                  \
+        threadIdx.z,                                                  \
+        ##__VA_ARGS__));                                              \
+    (void)(_wassert(                                                  \
+               _CRT_WIDE(#cond),                                      \
+               _CRT_WIDE(__FILE__),                                   \
+               static_cast<unsigned>(__LINE__)),                      \
+           0);                                                        \
   }
-#define SYCL_KERNEL_ASSERT(cond)                                               \
-  if (C10_UNLIKELY(!(cond))) {                                                 \
-    (void)(_wassert(_CRT_WIDE(#cond), _CRT_WIDE(__FILE__),                     \
-                    static_cast<unsigned>(__LINE__)),                          \
-           0);                                                                 \
+#define SYCL_KERNEL_ASSERT(cond)                 \
+  if (C10_UNLIKELY(!(cond))) {                   \
+    (void)(_wassert(                             \
+               _CRT_WIDE(#cond),                 \
+               _CRT_WIDE(__FILE__),              \
+               static_cast<unsigned>(__LINE__)), \
+           0);                                   \
   }
 #else // __APPLE__, _MSC_VER
 #if defined(NDEBUG)
 extern "C" {
 #if defined(__SYCL_DEVICE_ONLY__)
-extern SYCL_EXTERNAL void __assert_fail(const char *expr, const char *file,
-                                        unsigned int line, const char *func);
+extern SYCL_EXTERNAL void __assert_fail(
+    const char* expr,
+    const char* file,
+    unsigned int line,
+    const char* func);
 #elif (defined(__EMSCRIPTEN__))
 // As defined in assert.h in the Emscripten stdlib
-_Noreturn void __assert_fail(const char *expr, const char *file, int line,
-                             const char *func);
+_Noreturn void __assert_fail(
+    const char* expr,
+    const char* file,
+    int line,
+    const char* func);
 #else // __SYCL_DEVICE_ONLY__
 #if (defined(__CUDA_ARCH__) && !(defined(__clang__) && defined(__CUDA__)))
 // CUDA supports __assert_fail function which are common for both device
@@ -442,9 +522,12 @@ __host__ __device__
     // exactly how it is in glibc in case parts of the program are compiled with
     // different NDEBUG settings. Otherwise we might get 'ambiguous declaration'
     // error. Note: On ROCm - this declaration serves for host side compilation.
-    void __assert_fail(const char *assertion, const char *file,
-                       unsigned int line, const char *function) noexcept
-    __attribute__((__noreturn__));
+    void
+    __assert_fail(
+        const char* assertion,
+        const char* file,
+        unsigned int line,
+        const char* function) noexcept __attribute__((__noreturn__));
 
 #endif // __SYCL_DEVICE_ONLY__
 }
@@ -455,47 +538,54 @@ __host__ __device__
 // never triggered. We choose to use abort() instead which will still
 // terminate the application but without a more useful error message.
 #if !defined(C10_USE_ROCM_KERNEL_ASSERT) && defined(USE_ROCM)
-#define CUDA_KERNEL_ASSERT(cond)                                               \
-  if C10_UNLIKELY (!(cond)) {                                                  \
-    abort();                                                                   \
+#define CUDA_KERNEL_ASSERT(cond) \
+  if C10_UNLIKELY (!(cond)) {    \
+    abort();                     \
   }
-#define CUDA_KERNEL_ASSERT_MSG(cond, msg)                                      \
-  if C10_UNLIKELY (!(cond)) {                                                  \
-    abort();                                                                   \
+#define CUDA_KERNEL_ASSERT_MSG(cond, msg) \
+  if C10_UNLIKELY (!(cond)) {             \
+    abort();                              \
   }
-#define CUDA_KERNEL_ASSERT_PRINTF(cond, msg, ...)                              \
-  if C10_UNLIKELY (!(cond)) {                                                  \
-    abort();                                                                   \
+#define CUDA_KERNEL_ASSERT_PRINTF(cond, msg, ...) \
+  if C10_UNLIKELY (!(cond)) {                     \
+    abort();                                      \
   }
-#define SYCL_KERNEL_ASSERT(cond)                                               \
-  if C10_UNLIKELY (!(cond)) {                                                  \
-    abort();                                                                   \
+#define SYCL_KERNEL_ASSERT(cond) \
+  if C10_UNLIKELY (!(cond)) {    \
+    abort();                     \
   }
 #else
-#define CUDA_KERNEL_ASSERT(cond)                                               \
-  if (C10_UNLIKELY(!(cond))) {                                                 \
-    __assert_fail(#cond, __FILE__, static_cast<unsigned int>(__LINE__),        \
-                  __func__);                                                   \
+#define CUDA_KERNEL_ASSERT(cond)                                         \
+  if (C10_UNLIKELY(!(cond))) {                                           \
+    __assert_fail(                                                       \
+        #cond, __FILE__, static_cast<unsigned int>(__LINE__), __func__); \
   }
-#define CUDA_KERNEL_ASSERT_MSG(cond, msg)                                      \
-  if (C10_UNLIKELY(!(cond))) {                                                 \
-    __assert_fail(msg, __FILE__, static_cast<unsigned int>(__LINE__),          \
-                  __func__);                                                   \
+#define CUDA_KERNEL_ASSERT_MSG(cond, msg)                              \
+  if (C10_UNLIKELY(!(cond))) {                                         \
+    __assert_fail(                                                     \
+        msg, __FILE__, static_cast<unsigned int>(__LINE__), __func__); \
   }
-#define CUDA_KERNEL_ASSERT_PRINTF(cond, msg, ...)                              \
-  if (C10_UNLIKELY(!(cond))) {                                                 \
-    printf("[CUDA_KERNEL_ASSERT] " __FILE__ ":" C10_STRINGIZE(                 \
-               __LINE__) ": %s: block: [%d,%d,%d], thread: [%d,%d,%d]: "       \
-                         "Assertion failed: `" #cond "`: " msg "\n",           \
-           __func__, blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x,          \
-           threadIdx.y, threadIdx.z, ##__VA_ARGS__);                           \
-    __assert_fail(#cond, __FILE__, static_cast<unsigned int>(__LINE__),        \
-                  __func__);                                                   \
+#define CUDA_KERNEL_ASSERT_PRINTF(cond, msg, ...)                        \
+  if (C10_UNLIKELY(!(cond))) {                                           \
+    printf(                                                            \
+        "[CUDA_KERNEL_ASSERT] " __FILE__ ":" C10_STRINGIZE(            \
+            __LINE__) ": %s: block: [%d,%d,%d], thread: [%d,%d,%d]: "  \
+            "Assertion failed: `" #cond "`: " msg "\n",                \
+        __func__,                                                      \
+        blockIdx.x,                                                    \
+        blockIdx.y,                                                    \
+        blockIdx.z,                                                    \
+        threadIdx.x,                                                   \
+        threadIdx.y,                                                   \
+        threadIdx.z,                                                   \
+        ##__VA_ARGS__); \
+    __assert_fail(                                                       \
+        #cond, __FILE__, static_cast<unsigned int>(__LINE__), __func__); \
   }
-#define SYCL_KERNEL_ASSERT(cond)                                               \
-  if (C10_UNLIKELY(!(cond))) {                                                 \
-    __assert_fail(#cond, __FILE__, static_cast<unsigned int>(__LINE__),        \
-                  __func__);                                                   \
+#define SYCL_KERNEL_ASSERT(cond)                                         \
+  if (C10_UNLIKELY(!(cond))) {                                           \
+    __assert_fail(                                                       \
+        #cond, __FILE__, static_cast<unsigned int>(__LINE__), __func__); \
   }
 #endif //  C10_USE_ROCM_KERNEL_ASSERT && USE_ROCM
 #endif // __APPLE__
@@ -506,7 +596,7 @@ __host__ __device__
 // CUDA_KERNEL_ASSERT_PRINTF If C10_CUDA_VERBOSE_ASSERT is not defined,
 // CUDA_KERNEL_ASSERT_VERBOSE will behave the same as CUDA_KERNEL_ASSERT.
 #ifdef C10_ENABLE_VERBOSE_ASSERT
-#define CUDA_KERNEL_ASSERT_VERBOSE(cond, ...)                                  \
+#define CUDA_KERNEL_ASSERT_VERBOSE(cond, ...) \
   CUDA_KERNEL_ASSERT_PRINTF(cond, __VA_ARGS__)
 #else
 #define CUDA_KERNEL_ASSERT_VERBOSE(cond, ...) CUDA_KERNEL_ASSERT(cond)
@@ -519,8 +609,9 @@ __host__ __device__
 #if defined(__ANDROID__)
 #define C10_ANDROID 1
 #define C10_MOBILE 1
-#elif (defined(__APPLE__) &&                                                   \
-       (TARGET_IPHONE_SIMULATOR || TARGET_OS_SIMULATOR || TARGET_OS_IPHONE))
+#elif (                   \
+    defined(__APPLE__) && \
+    (TARGET_IPHONE_SIMULATOR || TARGET_OS_SIMULATOR || TARGET_OS_IPHONE))
 #define C10_IOS 1
 #define C10_MOBILE 1
 #endif // ANDROID / IOS
@@ -535,7 +626,7 @@ __host__ __device__
 #define CONSTEXPR_EXCEPT_WIN_CUDA constexpr
 #define C10_HOST_CONSTEXPR_EXCEPT_WIN_CUDA constexpr
 
-#define STATIC_CONSTEXPR_STR_INL_EXCEPT_WIN_CUDA(field, val)                   \
+#define STATIC_CONSTEXPR_STR_INL_EXCEPT_WIN_CUDA(field, val) \
   static constexpr const char field[] = val;
 #define STATIC_CONST_STR_OUT_OF_LINE_FOR_WIN_CUDA(cls, field, val)
 #endif // !defined(FBCODE_CAFFE2) && !defined(C10_NODEPRECATED)
@@ -543,7 +634,7 @@ __host__ __device__
 #ifndef HAS_DEMANGLE
 #if defined(__ANDROID__) || defined(_WIN32) || defined(__EMSCRIPTEN__)
 #define HAS_DEMANGLE 0
-#elif defined(__APPLE__) &&                                                    \
+#elif defined(__APPLE__) && \
     (TARGET_IPHONE_SIMULATOR || TARGET_OS_SIMULATOR || TARGET_OS_IPHONE)
 #define HAS_DEMANGLE 0
 #else
@@ -557,7 +648,7 @@ __host__ __device__
 #ifdef __clang__
 #define C10_CLANG_DIAGNOSTIC_PUSH() _Pragma("clang diagnostic push")
 #define C10_CLANG_DIAGNOSTIC_POP() _Pragma("clang diagnostic pop")
-#define C10_CLANG_DIAGNOSTIC_IGNORE(flag)                                      \
+#define C10_CLANG_DIAGNOSTIC_IGNORE(flag) \
   _C10_PRAGMA_(clang diagnostic ignored flag)
 #define C10_CLANG_HAS_WARNING(flag) __has_warning(flag)
 #else
@@ -569,18 +660,18 @@ __host__ __device__
 
 #ifdef __clang__
 
-#define C10_DIAGNOSTIC_PUSH_AND_IGNORED_IF_DEFINED(warning)                    \
-  _C10_PRAGMA_(clang diagnostic push)                                          \
-  _C10_PRAGMA_(clang diagnostic ignored "-Wunknown-warning-option")            \
+#define C10_DIAGNOSTIC_PUSH_AND_IGNORED_IF_DEFINED(warning)         \
+  _C10_PRAGMA_(clang diagnostic push)                               \
+  _C10_PRAGMA_(clang diagnostic ignored "-Wunknown-warning-option") \
   _C10_PRAGMA_(clang diagnostic ignored warning)
 
 #define C10_DIAGNOSTIC_POP() _C10_PRAGMA_(clang diagnostic pop)
 
 #elif __GNUC__
 
-#define C10_DIAGNOSTIC_PUSH_AND_IGNORED_IF_DEFINED(warning)                    \
-  _C10_PRAGMA_(GCC diagnostic push)                                            \
-  _C10_PRAGMA_(GCC diagnostic ignored "-Wpragmas")                             \
+#define C10_DIAGNOSTIC_PUSH_AND_IGNORED_IF_DEFINED(warning) \
+  _C10_PRAGMA_(GCC diagnostic push)                         \
+  _C10_PRAGMA_(GCC diagnostic ignored "-Wpragmas")          \
   _C10_PRAGMA_(GCC diagnostic ignored warning)
 
 #define C10_DIAGNOSTIC_POP() _C10_PRAGMA_(GCC diagnostic pop)
@@ -595,7 +686,7 @@ __host__ __device__
 // This macro is used to find older C++ compilers
 // that don't support move optimization for return values.
 
-#if (defined(__GNUC__) && __GNUC__ < 13) ||                                    \
+#if (defined(__GNUC__) && __GNUC__ < 13 && __cplusplus < 202002L) || \
     (defined(__clang_major__) && __clang_major__ < 13)
 #define C10_RETURN_MOVE_IF_OLD_COMPILER 1
 #else
@@ -613,17 +704,17 @@ __host__ __device__
 // Helper macros to handle 1-3 hidden namespace levels when not windows
 #define _HIDDEN_NS_GET_MACRO(_1, _2, _3, NAME, ...) NAME
 #define _HIDDEN_NS_1(n1) namespace n1 __attribute__((visibility("hidden"))) {
-#define _HIDDEN_NS_2(n1, n2)                                                   \
-  namespace n1 {                                                               \
+#define _HIDDEN_NS_2(n1, n2) \
+  namespace n1 {             \
   namespace n2 __attribute__((visibility("hidden"))) {
-#define _HIDDEN_NS_3(n1, n2, n3)                                               \
-  namespace n1::n2 {                                                           \
+#define _HIDDEN_NS_3(n1, n2, n3) \
+  namespace n1::n2 {             \
   namespace n3 __attribute__((visibility("hidden"))) {
 
 // Helper macros to close namespaces when not windows
 #define _HIDDEN_NS_END_1(n1) }
-#define _HIDDEN_NS_END_N(n1, ...)                                              \
-  }                                                                            \
+#define _HIDDEN_NS_END_N(n1, ...) \
+  }                               \
   }
 
 // Helper macros to join strs with :: (for win, where symbols are hidden by
@@ -636,21 +727,22 @@ __host__ __device__
 
 #if !defined(HIDDEN_NAMESPACE_BEGIN)
 #if defined(__GNUG__) && !defined(_WIN32)
-#define HIDDEN_NAMESPACE_BEGIN(...)                                            \
-  _HIDDEN_NS_GET_MACRO(__VA_ARGS__, _HIDDEN_NS_3, _HIDDEN_NS_2,                \
-                       _HIDDEN_NS_1)(__VA_ARGS__)
+#define HIDDEN_NAMESPACE_BEGIN(...) \
+  _HIDDEN_NS_GET_MACRO(             \
+      __VA_ARGS__, _HIDDEN_NS_3, _HIDDEN_NS_2, _HIDDEN_NS_1)(__VA_ARGS__)
 #else
-#define HIDDEN_NAMESPACE_BEGIN(...)                                            \
-  namespace _EXPAND(_JOIN_GET_MACRO(__VA_ARGS__, _JOIN_NS3, _JOIN_NS2,         \
-                                    _JOIN_NS1)(__VA_ARGS__)) {
+#define HIDDEN_NAMESPACE_BEGIN(...)  \
+  namespace _EXPAND(_JOIN_GET_MACRO( \
+      __VA_ARGS__, _JOIN_NS3, _JOIN_NS2, _JOIN_NS1)(__VA_ARGS__)) {
 #endif
 #endif
 
 #if !defined(HIDDEN_NAMESPACE_END)
 #if defined(__GNUG__) && !defined(_WIN32)
-#define HIDDEN_NAMESPACE_END(...)                                              \
-  _HIDDEN_NS_GET_MACRO(__VA_ARGS__, _HIDDEN_NS_END_N, _HIDDEN_NS_END_N,        \
-                       _HIDDEN_NS_END_1)(__VA_ARGS__)
+#define HIDDEN_NAMESPACE_END(...)                                         \
+  _HIDDEN_NS_GET_MACRO(                                                   \
+      __VA_ARGS__, _HIDDEN_NS_END_N, _HIDDEN_NS_END_N, _HIDDEN_NS_END_1)( \
+      __VA_ARGS__)
 #else
 #define HIDDEN_NAMESPACE_END(...) }
 #endif

@@ -77,7 +77,7 @@ This package depends on ExecuTorch (for ML model execution) and OpenCV (for imag
 
 **Updating ExecuTorch/OpenCV Dependencies:**
 
-If you need to update the ExecuTorch or OpenCV binaries/headers to a newer version:
+If you need to update the OpenCV binaries/headers to a newer version (ExecuTorch comes from the sources listed under **Current Dependencies**):
 
 1. Clone the [react-native-executorch](https://github.com/software-mansion/react-native-executorch) repository
 2. Copy the binaries from the following locations:
@@ -89,7 +89,7 @@ Headers live in `third-party/include/`, with `cpuinfo/` and `pthreadpool/` regis
 
 **Current Dependencies:**
 
-- ExecuTorch: 1.3 - pre-built binaries from react-native-executorch
+- ExecuTorch: 1.5.1 plus two upstream fixes merged after it, the same two software-mansion-labs/executorch carries for react-native-executorch: pytorch/executorch#22779 (XNNPACK weights cache freed constants PReLU still reads) and #22788 (programs whose only constants are zero-length failed to load). Built from the `v1.5.1` tag the way software-mansion-labs/executorch builds react-native-executorch's libraries: Android with the `scripts/build_android_library.sh` options minus the JNI version script (which hides the C++ API this package links against), `ANDROID_STL=c++_shared`, LLM and Vulkan off; iOS with `scripts/build_apple_frameworks.sh --Release --coreml --xnnpack --optimized`. Headers as react-native-executorch's `scripts/vendor-headers.sh` assembles them; `classes.jar` from `org.pytorch:executorch-android:1.5.1`
 - OpenCV: Pre-built binaries from react-native-executorch
 - ObjectBox: Extracted from `objectbox-android` (Android) and `objectbox-swift` (iOS) packages
 

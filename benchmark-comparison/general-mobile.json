@@ -2,15 +2,15 @@
   "summary": "Old vs new card-recognition benchmark. The new benchmark covers 11 more supported trading card games than the old one.",
   "summary-note": "Between the two run two photos were replaced.",
   "ios_model": "iPhone 16",
-  "android_model": "Samsung Galaxy S24 (SM-S921B)",
+  "android_model": "Samsung Galaxy A34 5G (SM-A346B)",
   "methodology": {
     "unit_of_test": "1 card",
     "runs_per_card": 10,
     "warmup_iterations_per_card": 2,
     "warmup_handling": "The first 2 iterations per card are flagged isWarmup:true and are excluded from every average reported. Only the 10 measured (non-warmup) iterations per card are averaged.",
-    "note_on_coverage": "Every game has 5 cards tested, except 'cyberpunk' in the new benchmark, which has only 2 cards tested.",
+    "note_on_coverage": "Every game has 5 cards tested.",
     "note_on_accuracy": "On main a match now counts as correct if it hits any of several accepted IDs for a card, because the same card often exists in the database more than once, differing only by edition or printing.",
-    "note_on_images": "2 photos were replaced between runs. Restricted to 8 games, the new code reaches 92.5% accuracy (37 of 40 cards) against 80.0% (32 of 40) for the old code, identical on Android and iOS."
+    "note_on_images": "2 photos were replaced between runs. Restricted to 8 games, the new code reaches 90.0% accuracy (36 of 40 cards) against 80.0% (32 of 40) for the old code, identical on Android and iOS."
   },
   "sample_sizes": {
     "old": {
@@ -20,8 +20,8 @@
     },
     "new": {
       "games_covered": 19,
-      "unique_cards_tested": 92,
-      "measured_runs": 920
+      "unique_cards_tested": 95,
+      "measured_runs": 950
     }
   },
   "games": {
@@ -80,11 +80,11 @@
     },
     "new": {
       "correct": 810,
-      "below_threshold": 50,
-      "no_detection": 50,
+      "below_threshold": 100,
+      "no_detection": 30,
       "wrong_match": 10,
-      "accuracy_pct": 88.0,
-      "note": "Shared old-vs-new figures. iOS on the 2026-09-04 CoreML run scores 820/920 (89.1%)."
+      "accuracy_pct": 85.3,
+      "note": "Identical on Android and iOS: the 2026-10-20 runs give every photo the same outcome on both platforms."
     },
     "old_games_only": {
       "scope": "The 8 games present in both runs (fab, lorcana, mtg, onepiece, pokemon, riftbound, rise, sorcery): 40 cards, 400 measured runs per platform.",
@@ -97,12 +97,12 @@
         "accuracy_pct": 80.0
       },
       "new": {
-        "correct_cards": 37,
+        "correct_cards": 36,
         "total_cards": 40,
         "below_threshold": 3,
-        "no_detection": 0,
+        "no_detection": 1,
         "wrong_match": 0,
-        "accuracy_pct": 92.5
+        "accuracy_pct": 90.0
       },
       "new_per_game_result": {
         "fab": "5/5",
@@ -111,7 +111,7 @@
         "onepiece": "5/5",
         "pokemon": "5/5",
         "riftbound": "4/5",
-        "rise": "3/5",
+        "rise": "2/5",
         "sorcery": "5/5"
       }
     }
@@ -119,44 +119,27 @@
   "platform_timing_results_ms": {
     "note": "Average ms per scan, warmup iterations excluded. Android and iOS are single runs on different backends and different averaging bases (Android over all measured scans, iOS over full-pipeline scans only), so the platforms are not directly comparable.",
     "android": {
-      "run": "2026-09-07 Samsung Galaxy S24 (SM-S921B), XNNPACK-delegated .pte with the segmentation model in fp16. 19 games / 92 cards / 920 measured runs.",
-      "total_ms": 27.079,
-      "stage_sum_ms": 32.385,
-      "yolo_ms": 22.239,
-      "preproc_ms": 0.193,
-      "save_ms": 5.475,
-      "embedder_ms": 3.585,
-      "db_search_ms": 0.893,
-      "accuracy_pct": 88.04,
-      "note": "total_ms excludes save_ms on this run; stage_sum_ms is the figure to compare against the previous fp32 run, which included save in total_ms.",
-      "previous_fp32_run": {
-        "note": "Same suite and device, fp32 segmentation model, build about 10 days older.",
-        "total_ms": 51.035,
-        "stage_sum_ms": 50.783,
-        "yolo_ms": 39.363,
-        "preproc_ms": 0.202,
-        "save_ms": 5.902,
-        "embedder_ms": 3.408,
-        "db_search_ms": 1.908,
-        "accuracy_pct": 88.04
-      },
-      "fp16_vs_fp32": {
-        "yolo_ms_pct": -43.5,
-        "stage_sum_ms_pct": -36.2,
-        "accuracy_pct_diff": 0.0,
-        "caveat": "Not a clean A/B: db_search also halved, which the model swap cannot explain."
-      }
+      "run": "2026-10-20 Samsung Galaxy A34 5G (SM-A346B), XNNPACK-delegated .pte on ExecuTorch 1.5.1 (segmentation and set-symbol detection fp16, language int8). 19 games / 95 cards / 950 measured runs.",
+      "total_ms": 64.781,
+      "stage_sum_ms": 73.486,
+      "yolo_ms": 45.028,
+      "preproc_ms": 0.426,
+      "save_ms": 9.027,
+      "embedder_ms": 7.324,
+      "db_search_ms": 1.441,
+      "accuracy_pct": 85.26,
+      "note": "total_ms excludes save_ms and includes the language stage; stage_sum_ms adds every stage, save included."
     },
     "ios": {
-      "run": "2026-09-04 iPhone 16 (iPhone17,3), iOS 26.6.1, CoreML-delegated .pte. 19 games / 92 cards / 920 measured runs.",
-      "total_ms": 7.57,
-      "yolo_ms": 5.66,
-      "preproc_ms": 0.1,
-      "save_ms": 4.22,
-      "embedder_ms": 1.33,
-      "db_search_ms": 0.44,
-      "accuracy_pct": 89.13,
-      "note": "total_ms excludes save_ms on this run."
+      "run": "2026-10-20 iPhone 16 (iPhone17,3), iOS 26.6.1, CoreML-delegated .pte on ExecuTorch 1.5.1. 19 games / 95 cards / 950 measured runs.",
+      "total_ms": 6.089,
+      "yolo_ms": 3.287,
+      "preproc_ms": 0.105,
+      "save_ms": 4.146,
+      "embedder_ms": 1.225,
+      "db_search_ms": 0.415,
+      "accuracy_pct": 85.26,
+      "note": "total_ms excludes save_ms and includes the language stage."
     }
   },
   "benchmark_input_changes_on_shared_games": {

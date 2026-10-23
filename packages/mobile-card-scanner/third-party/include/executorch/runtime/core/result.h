@@ -45,8 +45,9 @@ namespace runtime {
  *   }
  * @endcode
  */
-template <typename T> class Result final {
-public:
+template <typename T>
+class Result final {
+ public:
   /// `value_type` member for generic programming.
   typedef T value_type;
 
@@ -60,19 +61,20 @@ public:
   /* implicit */ Result(Error error)
       : error_(error == Error::Ok ? Error::Internal : error), hasValue_(false) {
     if ET_UNLIKELY (error == Error::Ok) {
-      ET_LOG(Debug, "Attempted to create Result from Error::Ok, this has been "
-                    "converted to Error::Internal.");
+      ET_LOG(
+          Debug,
+          "Attempted to create Result from Error::Ok, this has been converted to Error::Internal.");
     }
   }
 
   /// Value copy constructor.
-  /* implicit */ Result(const T &val) : value_(val), hasValue_(true) {}
+  /* implicit */ Result(const T& val) : value_(val), hasValue_(true) {}
 
   /// Value move constructor.
-  /* implicit */ Result(T &&val) : value_(std::move(val)), hasValue_(true) {}
+  /* implicit */ Result(T&& val) : value_(std::move(val)), hasValue_(true) {}
 
   /// Result move constructor.
-  /* implicit */ Result(Result &&rhs) noexcept : hasValue_(rhs.hasValue_) {
+  /* implicit */ Result(Result&& rhs) noexcept : hasValue_(rhs.hasValue_) {
     if (hasValue_) {
       // Use the value type's move constructor.
       new (&value_) T(std::move(rhs.value_));
@@ -95,7 +97,9 @@ public:
    * If true, it is guaranteed that `error()` will return `Error::Ok`.
    * If false, it is guaranteed that `error()` will not return `Error::Ok`.
    */
-  ET_NODISCARD bool ok() const { return hasValue_; }
+  ET_NODISCARD bool ok() const {
+    return hasValue_;
+  }
 
   /**
    * Returns the error code of this Result.
@@ -117,7 +121,7 @@ public:
    *
    * Only legal to call if `ok()` returns true.
    */
-  T &get() {
+  T& get() {
     CheckOk();
     return value_;
   }
@@ -127,7 +131,7 @@ public:
    *
    * Only legal to call if `ok()` returns true.
    */
-  const T &get() const {
+  const T& get() const {
     CheckOk();
     return value_;
   }
@@ -137,35 +141,37 @@ public:
    *
    * Only legal to call if `ok()` returns true.
    */
-  const T &operator*() const &;
-  T &operator*() &;
+  const T& operator*() const&;
+  T& operator*() &;
 
   /*
    * Returns a pointer to the Result's value.
    *
    * Only legal to call if `ok()` returns true.
    */
-  const T *operator->() const;
-  T *operator->();
+  const T* operator->() const;
+  T* operator->();
 
-private:
+ private:
   /**
    * Delete default constructor since all Results should contain a value or
    * error.
    */
   Result() = delete;
   /// Delete copy constructor since T may not be copyable.
-  Result(const Result &) = delete;
+  Result(const Result&) = delete;
   /// Delete copy assignment since T may not be copyable.
-  Result &operator=(const Result &) = delete;
+  Result& operator=(const Result&) = delete;
   /// Delete move assignment since it's not a supported pattern to reuse Result.
-  Result &operator=(Result &&rhs) = delete;
+  Result& operator=(Result&& rhs) = delete;
 
   // Panics if ok() would return false;
-  void CheckOk() const { ET_CHECK(hasValue_); }
+  void CheckOk() const {
+    ET_CHECK(hasValue_);
+  }
 
   union {
-    T value_;     // Used if hasValue_ is true.
+    T value_; // Used if hasValue_ is true.
     Error error_; // Used if hasValue_ is false.
   };
 
@@ -173,22 +179,26 @@ private:
   const bool hasValue_;
 };
 
-template <typename T> const T &Result<T>::operator*() const & {
+template <typename T>
+const T& Result<T>::operator*() const& {
   CheckOk();
   return value_;
 }
 
-template <typename T> T &Result<T>::operator*() & {
+template <typename T>
+T& Result<T>::operator*() & {
   CheckOk();
   return value_;
 }
 
-template <typename T> const T *Result<T>::operator->() const {
+template <typename T>
+const T* Result<T>::operator->() const {
   CheckOk();
   return &value_;
 }
 
-template <typename T> T *Result<T>::operator->() {
+template <typename T>
+T* Result<T>::operator->() {
   CheckOk();
   return &value_;
 }
@@ -206,9 +216,14 @@ using ::executorch::runtime::Result;
 
 /**
  * Unwrap a Result to obtain its value. If the Result contains an error,
- * propogate the error via trivial function return.
+ * propagate the error via trivial function return.
  *
  * Note: A function using ET_UNWRAP should itself return a Result or Error.
+ *
+ * This macro expands to a GNU statement expression and is therefore used as an
+ * expression (e.g. `auto value = ET_UNWRAP(expr);`). It is NOT portable to
+ * MSVC, which does not support statement expressions. Code that must compile
+ * under MSVC should use ET_ASSIGN_OR_RETURN below instead.
  *
  * @param[in] result__ Expression yielding the result to unwrap.
  * @param[in] ... Optional format string for the log error message and its
@@ -217,34 +232,34 @@ using ::executorch::runtime::Result;
 #define ET_UNWRAP(result__, ...) ET_INTERNAL_UNWRAP(result__, ##__VA_ARGS__)
 
 // Internal only: Use ET_UNWRAP() instead.
-#define ET_INTERNAL_UNWRAP(...)                                                \
-  ET_INTERNAL_UNWRAP_SELECT(__VA_ARGS__, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)        \
+#define ET_INTERNAL_UNWRAP(...)                                         \
+  ET_INTERNAL_UNWRAP_SELECT(__VA_ARGS__, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1) \
   (__VA_ARGS__)
 
 // Internal only: Use ET_UNWRAP() instead.
-#define ET_INTERNAL_UNWRAP_SELECT(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, N,  \
-                                  ...)                                         \
+#define ET_INTERNAL_UNWRAP_SELECT(                   \
+    _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, N, ...) \
   ET_INTERNAL_UNWRAP_##N
 
 // Internal only: Use ET_UNWRAP() instead.
-#define ET_INTERNAL_UNWRAP_1(result__)                                         \
-  ({                                                                           \
-    auto et_result__ = (result__);                                             \
-    if (!et_result__.ok()) {                                                   \
-      return et_result__.error();                                              \
-    }                                                                          \
-    std::move(*et_result__);                                                   \
+#define ET_INTERNAL_UNWRAP_1(result__) \
+  ({                                   \
+    auto et_result__ = (result__);     \
+    if (!et_result__.ok()) {           \
+      return et_result__.error();      \
+    }                                  \
+    std::move(*et_result__);           \
   })
 
 // Internal only: Use ET_UNWRAP() instead.
-#define ET_INTERNAL_UNWRAP_2(result__, message__, ...)                         \
-  ({                                                                           \
-    auto et_result__ = (result__);                                             \
-    if (!et_result__.ok()) {                                                   \
-      ET_LOG(Error, message__, ##__VA_ARGS__);                                 \
-      return et_result__.error();                                              \
-    }                                                                          \
-    std::move(*et_result__);                                                   \
+#define ET_INTERNAL_UNWRAP_2(result__, message__, ...) \
+  ({                                                   \
+    auto et_result__ = (result__);                     \
+    if (!et_result__.ok()) {                           \
+      ET_LOG(Error, message__, ##__VA_ARGS__);         \
+      return et_result__.error();                      \
+    }                                                  \
+    std::move(*et_result__);                           \
   })
 
 // Internal only: Use ET_UNWRAP() instead.
@@ -256,3 +271,63 @@ using ::executorch::runtime::Result;
 #define ET_INTERNAL_UNWRAP_8 ET_INTERNAL_UNWRAP_2
 #define ET_INTERNAL_UNWRAP_9 ET_INTERNAL_UNWRAP_2
 #define ET_INTERNAL_UNWRAP_10 ET_INTERNAL_UNWRAP_2
+
+/**
+ * Assign the unwrapped value of a Result to a newly declared variable, or
+ * return the error via trivial function return.
+ *
+ * Unlike ET_UNWRAP (which expands to a GNU statement expression), this macro
+ * expands to plain statements and is therefore portable to MSVC. Prefer it in
+ * code that must build with MSVC.
+ *
+ * Note: A function using ET_ASSIGN_OR_RETURN should itself return a Result or
+ * Error.
+ *
+ * Usage:
+ *   ET_ASSIGN_OR_RETURN(value, expr);
+ *   ET_ASSIGN_OR_RETURN(value, expr, "log message %d", arg);
+ *
+ * @param[in] var__ Name of the variable to declare and assign the unwrapped
+ *   value to.
+ * @param[in] result__ Expression yielding the result to unwrap.
+ * @param[in] ... Optional format string for the log error message and its
+ *   arguments.
+ */
+#define ET_ASSIGN_OR_RETURN(...)                                           \
+  ET_INTERNAL_ASSIGN_OR_RETURN_EXPAND(ET_INTERNAL_ASSIGN_OR_RETURN_SELECT( \
+      __VA_ARGS__, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)(__VA_ARGS__))
+
+// Internal only: Use ET_ASSIGN_OR_RETURN() instead.
+#define ET_INTERNAL_ASSIGN_OR_RETURN_EXPAND(x) x
+
+// Internal only: Use ET_ASSIGN_OR_RETURN() instead.
+#define ET_INTERNAL_ASSIGN_OR_RETURN_SELECT(              \
+    _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, N, ...) \
+  ET_INTERNAL_ASSIGN_OR_RETURN_##N
+
+// Internal only: Use ET_ASSIGN_OR_RETURN() instead.
+#define ET_INTERNAL_ASSIGN_OR_RETURN_2(var__, result__) \
+  auto et_assign_result_##var__ = (result__);           \
+  if (!et_assign_result_##var__.ok()) {                 \
+    return et_assign_result_##var__.error();            \
+  }                                                     \
+  auto var__ = std::move(*et_assign_result_##var__)
+
+// Internal only: Use ET_ASSIGN_OR_RETURN() instead.
+#define ET_INTERNAL_ASSIGN_OR_RETURN_3(var__, result__, message__, ...) \
+  auto et_assign_result_##var__ = (result__);                           \
+  if (!et_assign_result_##var__.ok()) {                                 \
+    ET_LOG(Error, message__, ##__VA_ARGS__);                            \
+    return et_assign_result_##var__.error();                            \
+  }                                                                     \
+  auto var__ = std::move(*et_assign_result_##var__)
+
+// Internal only: Use ET_ASSIGN_OR_RETURN() instead.
+#define ET_INTERNAL_ASSIGN_OR_RETURN_4 ET_INTERNAL_ASSIGN_OR_RETURN_3
+#define ET_INTERNAL_ASSIGN_OR_RETURN_5 ET_INTERNAL_ASSIGN_OR_RETURN_3
+#define ET_INTERNAL_ASSIGN_OR_RETURN_6 ET_INTERNAL_ASSIGN_OR_RETURN_3
+#define ET_INTERNAL_ASSIGN_OR_RETURN_7 ET_INTERNAL_ASSIGN_OR_RETURN_3
+#define ET_INTERNAL_ASSIGN_OR_RETURN_8 ET_INTERNAL_ASSIGN_OR_RETURN_3
+#define ET_INTERNAL_ASSIGN_OR_RETURN_9 ET_INTERNAL_ASSIGN_OR_RETURN_3
+#define ET_INTERNAL_ASSIGN_OR_RETURN_10 ET_INTERNAL_ASSIGN_OR_RETURN_3
+#define ET_INTERNAL_ASSIGN_OR_RETURN_11 ET_INTERNAL_ASSIGN_OR_RETURN_3

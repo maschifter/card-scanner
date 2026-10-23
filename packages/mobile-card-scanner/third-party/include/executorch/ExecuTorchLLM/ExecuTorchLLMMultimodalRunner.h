@@ -41,12 +41,14 @@ __attribute__((objc_subclassing_restricted))
 - (instancetype)initWithData:(NSData *)data
                        width:(NSInteger)width
                       height:(NSInteger)height
-                    channels:(NSInteger)channels NS_DESIGNATED_INITIALIZER;
+                    channels:(NSInteger)channels
+    NS_DESIGNATED_INITIALIZER;
 
 - (instancetype)initWithFloatData:(NSData *)data
                             width:(NSInteger)width
                            height:(NSInteger)height
-                         channels:(NSInteger)channels NS_DESIGNATED_INITIALIZER;
+                         channels:(NSInteger)channels
+    NS_DESIGNATED_INITIALIZER;
 
 @property(nonatomic, readonly) NSData *data;
 
@@ -83,12 +85,14 @@ __attribute__((objc_subclassing_restricted))
 - (instancetype)initWithData:(NSData *)data
                    batchSize:(NSInteger)batchSize
                         bins:(NSInteger)bins
-                      frames:(NSInteger)frames NS_DESIGNATED_INITIALIZER;
+                      frames:(NSInteger)frames
+    NS_DESIGNATED_INITIALIZER;
 
 - (instancetype)initWithFloatData:(NSData *)data
                         batchSize:(NSInteger)batchSize
                              bins:(NSInteger)bins
-                           frames:(NSInteger)frames NS_DESIGNATED_INITIALIZER;
+                           frames:(NSInteger)frames
+    NS_DESIGNATED_INITIALIZER;
 
 @property(nonatomic, readonly) NSData *data;
 
@@ -121,7 +125,8 @@ __attribute__((objc_subclassing_restricted))
  @return A retained ExecuTorchLLMMultimodalInput instance of type Text.
 */
 + (instancetype)inputWithText:(NSString *)text
-    NS_SWIFT_NAME(init(_:)) NS_RETURNS_RETAINED;
+    NS_SWIFT_NAME(init(_:))
+    NS_RETURNS_RETAINED;
 
 /**
  Creates an image input.
@@ -130,7 +135,8 @@ __attribute__((objc_subclassing_restricted))
  @return A retained ExecuTorchLLMMultimodalInput instance of type Image.
 */
 + (instancetype)inputWithImage:(ExecuTorchLLMImage *)image
-    NS_SWIFT_NAME(init(_:)) NS_RETURNS_RETAINED;
+    NS_SWIFT_NAME(init(_:))
+    NS_RETURNS_RETAINED;
 
 /**
  Creates an audio-features input.
@@ -139,7 +145,8 @@ __attribute__((objc_subclassing_restricted))
  @return A retained ExecuTorchLLMMultimodalInput instance of type Audio.
 */
 + (instancetype)inputWithAudio:(ExecuTorchLLMAudio *)audio
-    NS_SWIFT_NAME(init(_:)) NS_RETURNS_RETAINED;
+    NS_SWIFT_NAME(init(_:))
+    NS_RETURNS_RETAINED;
 
 @property(nonatomic, readonly) ExecuTorchLLMMultimodalInputType type;
 

@@ -8,6 +8,7 @@
 
 #import "ExecuTorchBackendOption.h"
 #import "ExecuTorchBackendOptionsMap.h"
+#import "ExecuTorchEventTracer.h"
 #import "ExecuTorchValue.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -176,6 +177,36 @@ NS_SWIFT_NAME(Module)
  * @return An initialized ExecuTorchModule instance.
  */
 - (instancetype)initWithFilePath:(NSString *)filePath;
+
+/**
+ * Initializes a module that records events through the given tracer.
+ *
+ * The module takes over the tracer, so pass a fresh one and do not reuse it
+ * with another module. Read it back later with the `eventTracer` property, for
+ * example to collect a profile.
+ *
+ * @param filePath A string representing the path to the ExecuTorch program
+ * file.
+ * @param dataFilePaths A list of strings representing paths to .ptd files with
+ * external tensors and external data.
+ * @param loadMode A value from ExecuTorchModuleLoadMode that determines the
+ * file loading behavior.
+ * @param eventTracer The tracer the module records through.
+ * @return An initialized ExecuTorchModule instance.
+ */
+- (instancetype)initWithFilePath:(NSString *)filePath
+                   dataFilePaths:(NSArray<NSString *> *)dataFilePaths
+                        loadMode:(ExecuTorchModuleLoadMode)loadMode
+                     eventTracer:(ExecuTorchEventTracer *)eventTracer
+    NS_SWIFT_NAME(init(filePath:dataFilePaths:loadMode:eventTracer:));
+
+/**
+ * The tracer the module records through, or nil if it was created without one.
+ *
+ * The module owns the tracer, so this pointer is valid only while the module
+ * is.
+ */
+@property(nonatomic, readonly, nullable) ExecuTorchEventTracer *eventTracer;
 
 /**
  * Loads the module’s program using the specified verification level.

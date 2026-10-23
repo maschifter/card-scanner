@@ -1,38 +1,46 @@
 {
   "summary": {
     "basis": "mean ms per scan over the scans that ran the full pipeline, warmup iterations excluded",
-    "yolo_ms": 5.66,
-    "preproc_ms": 0.1,
-    "embedder_ms": 1.33,
-    "db_search_ms": 0.44,
-    "save_ms": 4.22,
-    "total_ms": 7.57,
-    "accuracy_pct": 89.13
+    "yolo_ms": 3.287,
+    "preproc_ms": 0.105,
+    "embedder_ms": 1.225,
+    "db_search_ms": 0.415,
+    "save_ms": 4.146,
+    "total_ms": 6.089,
+    "accuracy_pct": 85.26
   },
   "run": {
-    "date": "2026-09-04",
+    "date": "2026-10-20",
     "device": "iPhone 16 (iPhone17,3)",
     "os": "iOS 26.6.1",
-    "backend": "CoreML-delegated .pte",
+    "backend": "ExecuTorch 1.5.1: CoreML-delegated .pte for segmentation, set-symbol detection and language, XNNPACK-delegated .pte for the embedders and ColorBarModel",
     "models": "mobile .pte models (apps/mobile-example)",
-    "images": "mobile-example games_images, 19 games / 92 cards, warmup 2, iterations 10",
-    "note": "total_ms excludes save_ms: the median gap between totalMs and yolo+preproc+embedder+db_search is 0.02 ms."
+    "images": "mobile-example games_images, 19 games / 95 cards, warmup 2, iterations 10",
+    "note": "total_ms excludes save_ms and includes the language stage (extra_models): the median gap between totalMs and the sum of the stages is 0.02 ms."
   },
   "scans": {
-    "measured": 920,
-    "full_pipeline": 870,
-    "correct": 820,
-    "no_detection": 50,
+    "measured": 950,
+    "full_pipeline": 920,
+    "correct": 810,
+    "no_detection": 30,
     "game_mismatch": 10,
-    "below_threshold": 30,
+    "below_threshold": 90,
     "wrong_match": 10
   },
   "extra_models": [
     {
       "label": "FAB color",
       "ran": 20,
-      "out_of": 870,
-      "ms": 0.41
+      "out_of": 920,
+      "ms": 0.403
+    },
+    {
+      "label": "Language",
+      "ran": 820,
+      "out_of": 920,
+      "ms": 1.144,
+      "preproc_ms": 0.233,
+      "classify_ms": 0.911
     }
   ]
 }

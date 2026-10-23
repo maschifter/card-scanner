@@ -12,15 +12,18 @@
 
 namespace std {
 
-template <typename T> constexpr T real(const c10::complex<T> &z) {
+template <typename T>
+constexpr T real(const c10::complex<T>& z) {
   return z.real();
 }
 
-template <typename T> constexpr T imag(const c10::complex<T> &z) {
+template <typename T>
+constexpr T imag(const c10::complex<T>& z) {
   return z.imag();
 }
 
-template <typename T> C10_HOST_DEVICE T abs(const c10::complex<T> &z) {
+template <typename T>
+C10_HOST_DEVICE T abs(const c10::complex<T>& z) {
 #if defined(__CUDACC__) || defined(__HIPCC__)
   return thrust::abs(static_cast<thrust::complex<T>>(z));
 #else
@@ -28,19 +31,13 @@ template <typename T> C10_HOST_DEVICE T abs(const c10::complex<T> &z) {
 #endif
 }
 
-#if defined(USE_ROCM)
-#define ROCm_Bug(x)
-#else
-#define ROCm_Bug(x) x
-#endif
-
-template <typename T> C10_HOST_DEVICE T arg(const c10::complex<T> &z) {
-  return ROCm_Bug(std)::atan2(std::imag(z), std::real(z));
+template <typename T>
+C10_HOST_DEVICE T arg(const c10::complex<T>& z) {
+  return std::atan2(std::imag(z), std::real(z));
 }
 
-#undef ROCm_Bug
-
-template <typename T> constexpr T norm(const c10::complex<T> &z) {
+template <typename T>
+constexpr T norm(const c10::complex<T>& z) {
   return z.real() * z.real() + z.imag() * z.imag();
 }
 
@@ -51,7 +48,8 @@ template <typename T> constexpr T norm(const c10::complex<T> &z) {
 //   constexpr std::complex<long double> conj( long double z );
 // These are not implemented
 // TODO(@zasdfgbnm): implement them as c10::conj
-template <typename T> constexpr c10::complex<T> conj(const c10::complex<T> &z) {
+template <typename T>
+constexpr c10::complex<T> conj(const c10::complex<T>& z) {
   return c10::complex<T>(z.real(), -z.imag());
 }
 
@@ -67,6 +65,9 @@ template <typename T> constexpr c10::complex<T> conj(const c10::complex<T> &z) {
 #define C10_INTERNAL_INCLUDE_COMPLEX_REMAINING_H
 // math functions are included in a separate file
 #include <c10/util/complex_math.h> // IWYU pragma: keep
-// utilities for complex types
-#include <c10/util/complex_utils.h> // IWYU pragma: keep
 #undef C10_INTERNAL_INCLUDE_COMPLEX_REMAINING_H
+
+namespace c10 {
+using torch::headeronly::is_complex;
+using torch::headeronly::scalar_value_type;
+} // namespace c10

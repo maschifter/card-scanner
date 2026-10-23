@@ -19,25 +19,25 @@
  */
 
 // https://gcc.gnu.org/projects/cxx-status.html#cxx17
-#if !defined(__clang__) && !defined(_MSC_VER) && defined(__GNUC__) &&          \
+#if !defined(__clang__) && !defined(_MSC_VER) && defined(__GNUC__) && \
     __GNUC__ < 7
-#error                                                                         \
+#error \
     "You're trying to build ExecuTorch with a too old version of GCC. We need GCC 7 or later."
 #endif
 
 // https://clang.llvm.org/cxx_status.html#cxx17
 #if defined(__clang__) && __clang_major__ < 5
-#error                                                                         \
+#error \
     "You're trying to build ExecuTorch with a too old version of Clang. We need Clang 5 or later."
 #endif
 
-#if (defined(_MSC_VER) && (!defined(_MSVC_LANG) || _MSVC_LANG < 201703L)) ||   \
+#if (defined(_MSC_VER) && (!defined(_MSVC_LANG) || _MSVC_LANG < 201703L)) || \
     (!defined(_MSC_VER) && __cplusplus < 201703L)
 #error "You need C++17 to compile ExecuTorch"
 #endif
 
 #if defined(_MSC_VER) && (defined(min) || defined(max))
-#error                                                                         \
+#error \
     "Macro clash with min and max -- define NOMINMAX when compiling your program on Windows"
 #endif
 
@@ -82,14 +82,14 @@
 
 #else // defined(__GNUC__)
 
-#define ET_UNREACHABLE()                                                       \
-  while (1)                                                                    \
+#define ET_UNREACHABLE() \
+  while (1)              \
     ;
 
 #endif // defined(__GNUC__)
 
 #define ET_DEPRECATED [[deprecated]]
-#define ET_EXPERIMENTAL                                                        \
+#define ET_EXPERIMENTAL \
   [[deprecated("This API is experimental and may change without notice.")]]
 #define ET_FALLTHROUGH [[fallthrough]]
 #define ET_NODISCARD [[nodiscard]]
@@ -130,7 +130,7 @@
 #include <sal.h>
 #define ET_PRINTFLIKE(_string_index, _va_index) _Printf_format_string_
 #else
-#define ET_PRINTFLIKE(_string_index, _va_index)                                \
+#define ET_PRINTFLIKE(_string_index, _va_index) \
   __attribute__((format(printf, _string_index, _va_index)))
 #endif
 
@@ -138,8 +138,14 @@
 #define __has_builtin(x) (0)
 #endif
 
-#if __has_builtin(__builtin_strrchr)
+#if defined(__FILE_NAME__)
+/// __FILE_NAME__ provides just the filename at
+/// compile time, avoiding embedding full paths in the binary
+#define ET_SHORT_FILENAME __FILE_NAME__
+#elif __has_builtin(__builtin_strrchr)
 /// Name of the source file without a directory string.
+/// Note: This approach embeds the full path in .rodata even though only the
+/// basename is used at runtime. __FILE_NAME__ is preferred when available.
 #define ET_SHORT_FILENAME (__builtin_strrchr("/" __FILE__, '/') + 1)
 #else
 #define ET_SHORT_FILENAME __FILE__
@@ -152,12 +158,17 @@
 #define ET_LINE __LINE__
 #endif // __has_builtin(__builtin_LINE)
 
-#if __has_builtin(__builtin_FUNCTION)
+#if defined(ET_USE_BUILTIN_FUNCTION_NAME) && ET_USE_BUILTIN_FUNCTION_NAME == 0
+/// __FUNCTION__ provides a short undecorated name, saving .rodata space
+/// compared to __builtin_FUNCTION() which includes the full signature
+/// (namespace, parameters, return type).
+#define ET_FUNCTION __FUNCTION__
+#elif __has_builtin(__builtin_FUNCTION)
 /// Name of the current function as a const char[].
 #define ET_FUNCTION __builtin_FUNCTION()
 #else
 #define ET_FUNCTION __FUNCTION__
-#endif // __has_builtin(__builtin_FUNCTION)
+#endif
 
 // As of G3 RJ-2024.3 toolchain, zu format specifier is not supported for Xtensa
 #if defined(__XTENSA__)

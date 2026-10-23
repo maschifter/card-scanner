@@ -3,6 +3,7 @@
 #include <complex>
 
 #include <torch/headeronly/macros/Macros.h>
+#include <torch/headeronly/util/BFloat16.h>
 #include <torch/headeronly/util/Half.h>
 
 #if defined(__CUDACC__) || defined(__HIPCC__)
@@ -143,21 +144,22 @@ namespace c10 {
 //  - lots of members and functions of c10::Half are not constexpr
 //  - thrust::complex only support float and double
 
-template <typename T> struct alignas(sizeof(T) * 2) complex {
+template <typename T>
+struct alignas(sizeof(T) * 2) complex {
   using value_type = T;
 
   T real_ = T(0);
   T imag_ = T(0);
 
   constexpr complex() = default;
-  C10_HOST_DEVICE constexpr complex(const T &re, const T &im = T())
+  C10_HOST_DEVICE constexpr complex(const T& re, const T& im = T())
       : real_(re), imag_(im) {}
   template <typename U>
-  explicit constexpr complex(const std::complex<U> &other)
+  explicit constexpr complex(const std::complex<U>& other)
       : complex(other.real(), other.imag()) {}
 #if defined(__CUDACC__) || defined(__HIPCC__)
   template <typename U>
-  explicit C10_HOST_DEVICE complex(const thrust::complex<U> &other)
+  explicit C10_HOST_DEVICE complex(const thrust::complex<U>& other)
       : real_(other.real()), imag_(other.imag()) {}
 // NOTE can not be implemented as follow due to ROCm bug:
 //   explicit C10_HOST_DEVICE complex(const thrust::complex<U> &other):
@@ -168,63 +170,64 @@ template <typename T> struct alignas(sizeof(T) * 2) complex {
   // c10::complex<double>
   template <typename U = T>
   C10_HOST_DEVICE explicit constexpr complex(
-      const std::enable_if_t<std::is_same_v<U, float>, complex<double>> &other)
+      const std::enable_if_t<std::is_same_v<U, float>, complex<double>>& other)
       : real_(other.real_), imag_(other.imag_) {}
   template <typename U = T>
   C10_HOST_DEVICE constexpr complex(
-      const std::enable_if_t<std::is_same_v<U, double>, complex<float>> &other)
+      const std::enable_if_t<std::is_same_v<U, double>, complex<float>>& other)
       : real_(other.real_), imag_(other.imag_) {}
 
-  constexpr complex<T> &operator=(T re) {
+  constexpr complex<T>& operator=(T re) {
     real_ = re;
     imag_ = 0;
     return *this;
   }
 
-  constexpr complex<T> &operator+=(T re) {
+  constexpr complex<T>& operator+=(T re) {
     real_ += re;
     return *this;
   }
 
-  constexpr complex<T> &operator-=(T re) {
+  constexpr complex<T>& operator-=(T re) {
     real_ -= re;
     return *this;
   }
 
-  constexpr complex<T> &operator*=(T re) {
+  constexpr complex<T>& operator*=(T re) {
     real_ *= re;
     imag_ *= re;
     return *this;
   }
 
-  constexpr complex<T> &operator/=(T re) {
+  constexpr complex<T>& operator/=(T re) {
     real_ /= re;
     imag_ /= re;
     return *this;
   }
 
-  template <typename U> constexpr complex<T> &operator=(const complex<U> &rhs) {
+  template <typename U>
+  constexpr complex<T>& operator=(const complex<U>& rhs) {
     real_ = rhs.real();
     imag_ = rhs.imag();
     return *this;
   }
 
   template <typename U>
-  constexpr complex<T> &operator+=(const complex<U> &rhs) {
+  constexpr complex<T>& operator+=(const complex<U>& rhs) {
     real_ += rhs.real();
     imag_ += rhs.imag();
     return *this;
   }
 
   template <typename U>
-  constexpr complex<T> &operator-=(const complex<U> &rhs) {
+  constexpr complex<T>& operator-=(const complex<U>& rhs) {
     real_ -= rhs.real();
     imag_ -= rhs.imag();
     return *this;
   }
 
   template <typename U>
-  constexpr complex<T> &operator*=(const complex<U> &rhs) {
+  constexpr complex<T>& operator*=(const complex<U>& rhs) {
     // (a + bi) * (c + di) = (a*c - b*d) + (a * d + b * c) i
     T a = real_;
     T b = imag_;
@@ -241,8 +244,8 @@ template <typename T> struct alignas(sizeof(T) * 2) complex {
 #define FORCE_INLINE_APPLE
 #endif
   template <typename U>
-  constexpr FORCE_INLINE_APPLE complex<T> &
-  operator/=(const complex<U> &rhs) __ubsan_ignore_float_divide_by_zero__ {
+  constexpr FORCE_INLINE_APPLE complex<T>& operator/=(const complex<U>& rhs)
+      __ubsan_ignore_float_divide_by_zero__ {
     // (a + bi) / (c + di) = (ac + bd)/(c^2 + d^2) + (bc - ad)/(c^2 + d^2) i
     // the calculation below follows numpy's complex division
     T a = real_;
@@ -281,7 +284,7 @@ template <typename T> struct alignas(sizeof(T) * 2) complex {
 #undef FORCE_INLINE_APPLE
 
   template <typename U>
-  constexpr complex<T> &operator=(const std::complex<U> &rhs) {
+  constexpr complex<T>& operator=(const std::complex<U>& rhs) {
     real_ = rhs.real();
     imag_ = rhs.imag();
     return *this;
@@ -289,14 +292,15 @@ template <typename T> struct alignas(sizeof(T) * 2) complex {
 
 #if defined(__CUDACC__) || defined(__HIPCC__)
   template <typename U>
-  C10_HOST_DEVICE complex<T> &operator=(const thrust::complex<U> &rhs) {
+  C10_HOST_DEVICE complex<T>& operator=(const thrust::complex<U>& rhs) {
     real_ = rhs.real();
     imag_ = rhs.imag();
     return *this;
   }
 #endif
 
-  template <typename U> explicit constexpr operator std::complex<U>() const {
+  template <typename U>
+  explicit constexpr operator std::complex<U>() const {
     return std::complex<U>(std::complex<T>(real(), imag()));
   }
 
@@ -308,12 +312,22 @@ template <typename T> struct alignas(sizeof(T) * 2) complex {
 #endif
 
   // consistent with NumPy behavior
-  explicit constexpr operator bool() const { return real() || imag(); }
+  explicit constexpr operator bool() const {
+    return real() || imag();
+  }
 
-  C10_HOST_DEVICE constexpr T real() const { return real_; }
-  constexpr void real(T value) { real_ = value; }
-  C10_HOST_DEVICE constexpr T imag() const { return imag_; }
-  constexpr void imag(T value) { imag_ = value; }
+  C10_HOST_DEVICE constexpr T real() const {
+    return real_;
+  }
+  constexpr void real(T value) {
+    real_ = value;
+  }
+  C10_HOST_DEVICE constexpr T imag() const {
+    return imag_;
+  }
+  constexpr void imag(T value) {
+    imag_ = value;
+  }
 };
 
 namespace complex_literals {
@@ -336,81 +350,83 @@ constexpr complex<double> operator""_id(unsigned long long imag) {
 
 } // namespace complex_literals
 
-template <typename T> constexpr complex<T> operator+(const complex<T> &val) {
+template <typename T>
+constexpr complex<T> operator+(const complex<T>& val) {
   return val;
 }
 
-template <typename T> constexpr complex<T> operator-(const complex<T> &val) {
+template <typename T>
+constexpr complex<T> operator-(const complex<T>& val) {
   return complex<T>(-val.real(), -val.imag());
 }
 
 template <typename T>
-constexpr complex<T> operator+(const complex<T> &lhs, const complex<T> &rhs) {
+constexpr complex<T> operator+(const complex<T>& lhs, const complex<T>& rhs) {
   complex<T> result = lhs;
   return result += rhs;
 }
 
 template <typename T>
-constexpr complex<T> operator+(const complex<T> &lhs, const T &rhs) {
+constexpr complex<T> operator+(const complex<T>& lhs, const T& rhs) {
   complex<T> result = lhs;
   return result += rhs;
 }
 
 template <typename T>
-constexpr complex<T> operator+(const T &lhs, const complex<T> &rhs) {
+constexpr complex<T> operator+(const T& lhs, const complex<T>& rhs) {
   return complex<T>(lhs + rhs.real(), rhs.imag());
 }
 
 template <typename T>
-constexpr complex<T> operator-(const complex<T> &lhs, const complex<T> &rhs) {
+constexpr complex<T> operator-(const complex<T>& lhs, const complex<T>& rhs) {
   complex<T> result = lhs;
   return result -= rhs;
 }
 
 template <typename T>
-constexpr complex<T> operator-(const complex<T> &lhs, const T &rhs) {
+constexpr complex<T> operator-(const complex<T>& lhs, const T& rhs) {
   complex<T> result = lhs;
   return result -= rhs;
 }
 
 template <typename T>
-constexpr complex<T> operator-(const T &lhs, const complex<T> &rhs) {
+constexpr complex<T> operator-(const T& lhs, const complex<T>& rhs) {
   complex<T> result = -rhs;
   return result += lhs;
 }
 
 template <typename T>
-constexpr complex<T> operator*(const complex<T> &lhs, const complex<T> &rhs) {
+constexpr complex<T> operator*(const complex<T>& lhs, const complex<T>& rhs) {
   complex<T> result = lhs;
   return result *= rhs;
 }
 
 template <typename T>
-constexpr complex<T> operator*(const complex<T> &lhs, const T &rhs) {
+constexpr complex<T> operator*(const complex<T>& lhs, const T& rhs) {
   complex<T> result = lhs;
   return result *= rhs;
 }
 
 template <typename T>
-constexpr complex<T> operator*(const T &lhs, const complex<T> &rhs) {
+constexpr complex<T> operator*(const T& lhs, const complex<T>& rhs) {
   complex<T> result = rhs;
   return result *= lhs;
 }
 
 template <typename T>
-constexpr complex<T> operator/(const complex<T> &lhs, const complex<T> &rhs) {
+constexpr complex<T> operator/(const complex<T>& lhs, const complex<T>& rhs) {
   complex<T> result = lhs;
   return result /= rhs;
 }
 
 template <typename T>
-constexpr complex<T> operator/(const complex<T> &lhs, const T &rhs) {
+constexpr complex<T> operator/(const complex<T>& lhs, const T& rhs) {
   complex<T> result = lhs;
   return result /= rhs;
 }
 
 template <typename T>
-constexpr complex<T> operator/(const T &lhs, const complex<T> &rhs) {
+constexpr complex<T> operator/(const T& lhs, const complex<T>& rhs) {
   complex<T> result(lhs, T());
   return result /= rhs;
 }
@@ -419,91 +435,94 @@ constexpr complex<T> operator/(const T &lhs, const complex<T> &rhs) {
 // not support this when T is a floating-point number. This is useful because it
 // saves a lot of "static_cast" when operate a complex and an integer. This
 // makes the code both less verbose and potentially more efficient.
-#define COMPLEX_INTEGER_OP_TEMPLATE_CONDITION                                  \
-  typename std::enable_if_t<                                                   \
-      std::is_floating_point_v<fT> && std::is_integral_v<iT>, int> = 0
+#define COMPLEX_INTEGER_OP_TEMPLATE_CONDITION                 \
+  typename std::enable_if_t<                                  \
+      std::is_floating_point_v<fT> && std::is_integral_v<iT>, \
+      int> = 0
 
 template <typename fT, typename iT, COMPLEX_INTEGER_OP_TEMPLATE_CONDITION>
-constexpr c10::complex<fT> operator+(const c10::complex<fT> &a, const iT &b) {
+constexpr c10::complex<fT> operator+(const c10::complex<fT>& a, const iT& b) {
   return a + static_cast<fT>(b);
 }
 
 template <typename fT, typename iT, COMPLEX_INTEGER_OP_TEMPLATE_CONDITION>
-constexpr c10::complex<fT> operator+(const iT &a, const c10::complex<fT> &b) {
+constexpr c10::complex<fT> operator+(const iT& a, const c10::complex<fT>& b) {
   return static_cast<fT>(a) + b;
 }
 
 template <typename fT, typename iT, COMPLEX_INTEGER_OP_TEMPLATE_CONDITION>
-constexpr c10::complex<fT> operator-(const c10::complex<fT> &a, const iT &b) {
+constexpr c10::complex<fT> operator-(const c10::complex<fT>& a, const iT& b) {
   return a - static_cast<fT>(b);
 }
 
 template <typename fT, typename iT, COMPLEX_INTEGER_OP_TEMPLATE_CONDITION>
-constexpr c10::complex<fT> operator-(const iT &a, const c10::complex<fT> &b) {
+constexpr c10::complex<fT> operator-(const iT& a, const c10::complex<fT>& b) {
   return static_cast<fT>(a) - b;
 }
 
 template <typename fT, typename iT, COMPLEX_INTEGER_OP_TEMPLATE_CONDITION>
-constexpr c10::complex<fT> operator*(const c10::complex<fT> &a, const iT &b) {
+constexpr c10::complex<fT> operator*(const c10::complex<fT>& a, const iT& b) {
   return a * static_cast<fT>(b);
 }
 
 template <typename fT, typename iT, COMPLEX_INTEGER_OP_TEMPLATE_CONDITION>
-constexpr c10::complex<fT> operator*(const iT &a, const c10::complex<fT> &b) {
+constexpr c10::complex<fT> operator*(const iT& a, const c10::complex<fT>& b) {
   return static_cast<fT>(a) * b;
 }
 
 template <typename fT, typename iT, COMPLEX_INTEGER_OP_TEMPLATE_CONDITION>
-constexpr c10::complex<fT> operator/(const c10::complex<fT> &a, const iT &b) {
+constexpr c10::complex<fT> operator/(const c10::complex<fT>& a, const iT& b) {
   return a / static_cast<fT>(b);
 }
 
 template <typename fT, typename iT, COMPLEX_INTEGER_OP_TEMPLATE_CONDITION>
-constexpr c10::complex<fT> operator/(const iT &a, const c10::complex<fT> &b) {
+constexpr c10::complex<fT> operator/(const iT& a, const c10::complex<fT>& b) {
   return static_cast<fT>(a) / b;
 }
 
 #undef COMPLEX_INTEGER_OP_TEMPLATE_CONDITION
 
 template <typename T>
-constexpr bool operator==(const complex<T> &lhs, const complex<T> &rhs) {
+constexpr bool operator==(const complex<T>& lhs, const complex<T>& rhs) {
   return (lhs.real() == rhs.real()) && (lhs.imag() == rhs.imag());
 }
 
 template <typename T>
-constexpr bool operator==(const complex<T> &lhs, const T &rhs) {
+constexpr bool operator==(const complex<T>& lhs, const T& rhs) {
   return (lhs.real() == rhs) && (lhs.imag() == T());
 }
 
 template <typename T>
-constexpr bool operator==(const T &lhs, const complex<T> &rhs) {
+constexpr bool operator==(const T& lhs, const complex<T>& rhs) {
   return (lhs == rhs.real()) && (T() == rhs.imag());
 }
 
 template <typename T>
-constexpr bool operator!=(const complex<T> &lhs, const complex<T> &rhs) {
+constexpr bool operator!=(const complex<T>& lhs, const complex<T>& rhs) {
   return !(lhs == rhs);
 }
 
 template <typename T>
-constexpr bool operator!=(const complex<T> &lhs, const T &rhs) {
+constexpr bool operator!=(const complex<T>& lhs, const T& rhs) {
   return !(lhs == rhs);
 }
 
 template <typename T>
-constexpr bool operator!=(const T &lhs, const complex<T> &rhs) {
+constexpr bool operator!=(const T& lhs, const complex<T>& rhs) {
   return !(lhs == rhs);
 }
 
 template <typename T, typename CharT, typename Traits>
-std::basic_ostream<CharT, Traits> &
-operator<<(std::basic_ostream<CharT, Traits> &os, const complex<T> &x) {
+std::basic_ostream<CharT, Traits>& operator<<(
+    std::basic_ostream<CharT, Traits>& os,
+    const complex<T>& x) {
   return (os << static_cast<std::complex<T>>(x));
 }
 
 template <typename T, typename CharT, typename Traits>
-std::basic_istream<CharT, Traits> &
-operator>>(std::basic_istream<CharT, Traits> &is, complex<T> &x) {
+std::basic_istream<CharT, Traits>& operator>>(
+    std::basic_istream<CharT, Traits>& is,
+    complex<T>& x) {
   std::complex<T> tmp;
   is >> tmp;
   x = tmp;
@@ -511,7 +530,7 @@ operator>>(std::basic_istream<CharT, Traits> &is, complex<T> &x) {
 }
 
 template <typename T>
-C10_HOST_DEVICE complex<T> polar(const T &r, const T &theta = T()) {
+C10_HOST_DEVICE complex<T> polar(const T& r, const T& theta = T()) {
 #if defined(__CUDACC__) || defined(__HIPCC__)
   return static_cast<complex<T>>(thrust::polar(r, theta));
 #else
@@ -521,7 +540,8 @@ C10_HOST_DEVICE complex<T> polar(const T &r, const T &theta = T()) {
 #endif
 }
 
-template <> struct alignas(4) complex<Half> {
+template <>
+struct alignas(4) complex<Half> {
   Half real_;
   Half imag_;
 
@@ -529,9 +549,9 @@ template <> struct alignas(4) complex<Half> {
   complex() = default;
   // Half constructor is not constexpr so the following constructor can't
   // be constexpr
-  C10_HOST_DEVICE explicit inline complex(const Half &real, const Half &imag)
+  C10_HOST_DEVICE explicit inline complex(const Half& real, const Half& imag)
       : real_(real), imag_(imag) {}
-  C10_HOST_DEVICE inline complex(const c10::complex<float> &value)
+  C10_HOST_DEVICE inline complex(const c10::complex<float>& value)
       : real_(value.real()), imag_(value.imag()) {}
 
   // Conversion operator
@@ -539,22 +559,80 @@ template <> struct alignas(4) complex<Half> {
     return {real_, imag_};
   }
 
-  constexpr C10_HOST_DEVICE Half real() const { return real_; }
-  constexpr C10_HOST_DEVICE Half imag() const { return imag_; }
+  constexpr C10_HOST_DEVICE Half real() const {
+    return real_;
+  }
+  constexpr C10_HOST_DEVICE Half imag() const {
+    return imag_;
+  }
 
-  C10_HOST_DEVICE complex<Half> &operator+=(const complex<Half> &other) {
+  C10_HOST_DEVICE complex<Half>& operator+=(const complex<Half>& other) {
     real_ = static_cast<float>(real_) + static_cast<float>(other.real_);
     imag_ = static_cast<float>(imag_) + static_cast<float>(other.imag_);
     return *this;
   }
 
-  C10_HOST_DEVICE complex<Half> &operator-=(const complex<Half> &other) {
+  C10_HOST_DEVICE complex<Half>& operator-=(const complex<Half>& other) {
     real_ = static_cast<float>(real_) - static_cast<float>(other.real_);
     imag_ = static_cast<float>(imag_) - static_cast<float>(other.imag_);
     return *this;
   }
 
-  C10_HOST_DEVICE complex<Half> &operator*=(const complex<Half> &other) {
+  C10_HOST_DEVICE complex<Half>& operator*=(const complex<Half>& other) {
+    auto a = static_cast<float>(real_);
+    auto b = static_cast<float>(imag_);
+    auto c = static_cast<float>(other.real());
+    auto d = static_cast<float>(other.imag());
+    real_ = a * c - b * d;
+    imag_ = a * d + b * c;
+    return *this;
+  }
+};
+
+template <>
+struct alignas(4) complex<BFloat16> {
+  BFloat16 real_;
+  BFloat16 imag_;
+
+  // Constructors
+  complex() = default;
+  // BFloat16 constructor is not constexpr so the following constructor can't
+  // be constexpr
+  C10_HOST_DEVICE explicit inline complex(
+      const BFloat16& real,
+      const BFloat16& imag)
+      : real_(real), imag_(imag) {}
+  C10_HOST_DEVICE inline complex(const c10::complex<float>& value)
+      : real_(value.real()), imag_(value.imag()) {}
+
+  // Conversion operator
+  inline C10_HOST_DEVICE operator c10::complex<float>() const {
+    return {real_, imag_};
+  }
+
+  constexpr C10_HOST_DEVICE BFloat16 real() const {
+    return real_;
+  }
+  constexpr C10_HOST_DEVICE BFloat16 imag() const {
+    return imag_;
+  }
+
+  C10_HOST_DEVICE complex<BFloat16>& operator+=(
+      const complex<BFloat16>& other) {
+    real_ = static_cast<float>(real_) + static_cast<float>(other.real_);
+    imag_ = static_cast<float>(imag_) + static_cast<float>(other.imag_);
+    return *this;
+  }
+
+  C10_HOST_DEVICE complex<BFloat16>& operator-=(
+      const complex<BFloat16>& other) {
+    real_ = static_cast<float>(real_) - static_cast<float>(other.real_);
+    imag_ = static_cast<float>(imag_) - static_cast<float>(other.imag_);
+    return *this;
+  }
+
+  C10_HOST_DEVICE complex<BFloat16>& operator*=(
+      const complex<BFloat16>& other) {
     auto a = static_cast<float>(real_);
     auto b = static_cast<float>(imag_);
     auto c = static_cast<float>(other.real());
@@ -591,3 +669,8 @@ using c10::complex_literals::operator""_id;
 HIDDEN_NAMESPACE_END(torch, headeronly)
 
 C10_CLANG_DIAGNOSTIC_POP()
+
+#define C10_INTERNAL_INCLUDE_COMPLEX_REMAINING_H
+// utilities for complex types
+#include <torch/headeronly/util/complex_utils.h> // IWYU pragma: keep
+#undef C10_INTERNAL_INCLUDE_COMPLEX_REMAINING_H

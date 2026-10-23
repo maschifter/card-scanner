@@ -62,7 +62,7 @@ Pod::Spec.new do |s|
       "-force_load \"#{et_binaries_path}/libthreadpool_ios.a\"",
       "\"#{pthreadpool_binaries_path}/physical-arm64-release/libpthreadpool.a\"",
       "\"#{cpuinfo_binaries_path}/libcpuinfo.a\"",
-      '-framework CoreML -framework Accelerate -lsqlite3',
+      '-framework CoreML -framework Accelerate -framework CoreImage -lsqlite3',
     ].join(' '),
 
     "OTHER_LDFLAGS[sdk=iphonesimulator*]" => [
@@ -74,7 +74,7 @@ Pod::Spec.new do |s|
       "-force_load \"#{et_binaries_path}/libthreadpool_simulator.a\"",
       "\"#{pthreadpool_binaries_path}/simulator-arm64-debug/libpthreadpool.a\"",
       "\"#{cpuinfo_binaries_path}/libcpuinfo.a\"",
-      '-framework CoreML -framework Accelerate -lsqlite3',
+      '-framework CoreML -framework Accelerate -framework CoreImage -lsqlite3',
     ].join(' '),
 
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'x86_64',

@@ -13,22 +13,28 @@ namespace c10 {
 
 namespace detail {
 
-template <typename I, bool one_sided = false,
-          std::enable_if_t<std::is_integral_v<I>, int> = 0>
+template <
+    typename I,
+    bool one_sided = false,
+    std::enable_if_t<std::is_integral_v<I>, int> = 0>
 struct integer_iterator {
   using iterator_category = std::input_iterator_tag;
   using value_type = I;
   using difference_type = std::ptrdiff_t;
-  using pointer = I *;
-  using reference = I &;
+  using pointer = I*;
+  using reference = I&;
 
   explicit constexpr integer_iterator(I val) : value(val) {}
 
-  constexpr I operator*() const { return value; }
+  constexpr I operator*() const {
+    return value;
+  }
 
-  constexpr I const *operator->() const { return &value; }
+  constexpr I const* operator->() const {
+    return &value;
+  }
 
-  constexpr integer_iterator &operator++() {
+  constexpr integer_iterator& operator++() {
     ++value;
     return *this;
   }
@@ -39,7 +45,7 @@ struct integer_iterator {
     return copy;
   }
 
-  constexpr bool operator==(const integer_iterator &other) const {
+  constexpr bool operator==(const integer_iterator& other) const {
     if constexpr (one_sided) {
       // Range-for loops' end test is `begin != end`, not `begin <
       // end`. To handle `c10::irange(n)` where n < 0 (which should be
@@ -58,26 +64,32 @@ struct integer_iterator {
     return false; // Horrible hack
   }
 
-  constexpr bool operator!=(const integer_iterator &other) const {
+  constexpr bool operator!=(const integer_iterator& other) const {
     return !(*this == other);
   }
 
-protected:
+ protected:
   I value;
 };
 
 } // namespace detail
 
-template <typename I, bool one_sided = false,
-          std::enable_if_t<std::is_integral_v<I>, bool> = true>
+template <
+    typename I,
+    bool one_sided = false,
+    std::enable_if_t<std::is_integral_v<I>, bool> = true>
 struct integer_range {
-public:
+ public:
   constexpr integer_range(I begin, I end) : begin_(begin), end_(end) {}
   using iterator = detail::integer_iterator<I, one_sided>;
-  constexpr iterator begin() const { return begin_; }
-  constexpr iterator end() const { return end_; }
+  constexpr iterator begin() const {
+    return begin_;
+  }
+  constexpr iterator end() const {
+    return end_;
+  }
 
-private:
+ private:
   iterator begin_;
   iterator end_;
 };
@@ -86,20 +98,24 @@ private:
 /// If end<=begin, then the range is empty.
 /// The range has the type of the `end` integer; `begin` integer is
 /// cast to this type.
-template <typename Integer1, typename Integer2,
-          std::enable_if_t<std::is_integral_v<Integer1>, bool> = true,
-          std::enable_if_t<std::is_integral_v<Integer2>, bool> = true>
+template <
+    typename Integer1,
+    typename Integer2,
+    std::enable_if_t<std::is_integral_v<Integer1>, bool> = true,
+    std::enable_if_t<std::is_integral_v<Integer2>, bool> = true>
 constexpr integer_range<Integer2> irange(Integer1 begin, Integer2 end) {
   // If end<=begin then the range is empty; we can achieve this effect by
   // choosing the larger of {begin, end} as the loop terminator
-  return {static_cast<Integer2>(begin),
-          std::max(static_cast<Integer2>(begin), end)};
+  return {
+      static_cast<Integer2>(begin),
+      std::max(static_cast<Integer2>(begin), end)};
 }
 
 /// Creates an integer range for the half-open interval [0, end)
 /// If end<=begin, then the range is empty
-template <typename Integer,
-          std::enable_if_t<std::is_integral_v<Integer>, bool> = true>
+template <
+    typename Integer,
+    std::enable_if_t<std::is_integral_v<Integer>, bool> = true>
 constexpr integer_range<Integer, true> irange(Integer end) {
   return {Integer(), end};
 }

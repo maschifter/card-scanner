@@ -25,15 +25,16 @@ using std::bit_cast;
 // See https://en.cppreference.com/w/cpp/numeric/bit_cast for more
 // information as well as the source of our implementations.
 template <class To, class From>
-C10_HOST_DEVICE std::enable_if_t<sizeof(To) == sizeof(From) &&
-                                     std::is_trivially_copyable_v<From> &&
-                                     std::is_trivially_copyable_v<To>,
-                                 To>
+C10_HOST_DEVICE std::enable_if_t<
+    sizeof(To) == sizeof(From) && std::is_trivially_copyable_v<From> &&
+        std::is_trivially_copyable_v<To>,
+    To>
 // constexpr support needs compiler magic
-bit_cast(const From &src) noexcept {
-  static_assert(std::is_trivially_constructible_v<To>,
-                "This implementation additionally requires "
-                "destination type to be trivially constructible");
+bit_cast(const From& src) noexcept {
+  static_assert(
+      std::is_trivially_constructible_v<To>,
+      "This implementation additionally requires "
+      "destination type to be trivially constructible");
 
   To dst;
   std::memcpy(&dst, &src, sizeof(To));

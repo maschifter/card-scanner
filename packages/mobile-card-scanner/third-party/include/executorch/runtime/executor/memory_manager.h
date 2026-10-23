@@ -10,6 +10,8 @@
 
 #include <executorch/runtime/core/hierarchical_allocator.h>
 #include <executorch/runtime/core/memory_allocator.h>
+#include <executorch/runtime/core/portable_type/device.h>
+#include <executorch/runtime/core/span.h>
 
 namespace executorch {
 namespace runtime {
@@ -28,7 +30,7 @@ namespace runtime {
  * and kernels use these provided allocators whenever possible.
  */
 class MemoryManager final {
-public:
+ public:
   /**
    * Constructs a new MemoryManager.
    *
@@ -42,20 +44,24 @@ public:
    *     must agree with the corresponding
    *     `MethodMeta::num_memory_planned_buffers()` and
    *     `MethodMeta::memory_planned_buffer_size(N)` values, which are embedded
-   *     in the Program.
+   *     in the Program. For device-aware programs, the per-buffer device
+   *     metadata is owned by the HierarchicalAllocator as well.
    * @param[in] temp_allocator The allocator to use when allocating temporary
    *     data during kernel or delegate execution. Must outlive the Method that
    *     uses it. May be `nullptr` if the Method does not use kernels or
    *     delegates that allocate temporary data. This allocator will be reset
    *     after every kernel or delegate call during execution.
    */
-  explicit MemoryManager(MemoryAllocator *method_allocator,
-                         HierarchicalAllocator *planned_memory = nullptr,
-                         MemoryAllocator *temp_allocator = nullptr)
-      : method_allocator_(method_allocator), planned_memory_(planned_memory),
+  explicit MemoryManager(
+      MemoryAllocator* method_allocator,
+      HierarchicalAllocator* planned_memory = nullptr,
+      MemoryAllocator* temp_allocator = nullptr)
+      : method_allocator_(method_allocator),
+        planned_memory_(planned_memory),
         temp_allocator_(temp_allocator) {
-    ET_CHECK_MSG(method_allocator != temp_allocator,
-                 "method allocator cannot be the same as temp allocator");
+    ET_CHECK_MSG(
+        method_allocator != temp_allocator,
+        "method allocator cannot be the same as temp allocator");
   }
 
   /**
@@ -63,10 +69,11 @@ public:
    *
    * TODO(T162089316): Remove this once all users migrate to the new ctor.
    */
-  ET_DEPRECATED MemoryManager(MemoryAllocator *constant_allocator,
-                              HierarchicalAllocator *non_constant_allocator,
-                              MemoryAllocator *runtime_allocator,
-                              MemoryAllocator *temporary_allocator)
+  ET_DEPRECATED MemoryManager(
+      MemoryAllocator* constant_allocator,
+      HierarchicalAllocator* non_constant_allocator,
+      MemoryAllocator* runtime_allocator,
+      MemoryAllocator* temporary_allocator)
       : MemoryManager(
             /*method_allocator=*/runtime_allocator,
             /*planned_memory=*/non_constant_allocator,
@@ -79,12 +86,16 @@ public:
    * structures while loading a Method. Must not be used after its associated
    * Method has been loaded.
    */
-  MemoryAllocator *method_allocator() const { return method_allocator_; }
+  MemoryAllocator* method_allocator() const {
+    return method_allocator_;
+  }
 
   /**
    * Returns the memory-planned buffers to use for mutable tensor data.
    */
-  HierarchicalAllocator *planned_memory() const { return planned_memory_; }
+  HierarchicalAllocator* planned_memory() const {
+    return planned_memory_;
+  }
 
   /**
    * Returns the allocator to use for allocating temporary data during kernel or
@@ -93,12 +104,37 @@ public:
    * This allocator will be reset after every kernel or delegate call during
    * execution.
    */
-  MemoryAllocator *temp_allocator() const { return temp_allocator_; }
+  MemoryAllocator* temp_allocator() const {
+    return temp_allocator_;
+  }
 
-private:
-  MemoryAllocator *method_allocator_;
-  HierarchicalAllocator *planned_memory_;
-  MemoryAllocator *temp_allocator_;
+  /**
+   * Returns per-buffer device metadata. One entry per planned memory buffer,
+   * same count as planned_memory buffers. Empty if no device metadata was
+   * provided (CPU-only program) or if `planned_memory` is null.
+   *
+   * This is a thin wrapper around
+   * `HierarchicalAllocator::planned_buffer_devices()`.
+   */
+  Span<const etensor::Device> planned_buffer_devices() const {
+    if (planned_memory_ == nullptr) {
+      return {};
+    }
+    return planned_memory_->planned_buffer_devices();
+  }
+
+  /**
+   * Returns true if any planned buffer has device metadata attached.
+   * When false, the memory setup is CPU-only.
+   */
+  bool has_device_memory() const {
+    return planned_buffer_devices().size() > 0;
+  }
+
+ private:
+  MemoryAllocator* method_allocator_;
+  HierarchicalAllocator* planned_memory_;
+  MemoryAllocator* temp_allocator_;
 };
 
 } // namespace runtime
