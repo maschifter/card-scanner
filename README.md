@@ -1,8 +1,10 @@
 # CARD-NEXUS
 
 A card scanner with machine-learning card recognition for trading card games,
-including Magic: The Gathering, Lorcana, Flesh and Blood, and Pokémon. It runs
-on phones through React Native and on desktops as an OBS Studio plugin.
+including Magic: The Gathering, Lorcana, Flesh and Blood, Pokémon, Yu-Gi-Oh!,
+and a dozen others. The games are whatever the detector's classes and the CDN
+manifest's databases cover. It runs on phones through React Native, on
+desktops in C++ (shown as an OBS Studio plugin), and in the browser on WebGPU.
 
 ## What is in the repository
 
@@ -13,8 +15,19 @@ One recognition pipeline in C++, wrapped for each platform:
 | `packages/card-scanner-core` | The pipeline: segmentation, dewarping, embedding, and search. Platform-agnostic. |
 | `packages/mobile-card-scanner` | The React Native wrapper. Links ExecuTorch for inference. |
 | `packages/desktop-card-scanner` | The desktop wrapper and the OBS bindings. Links ONNX Runtime. |
-| `apps/mobile-example` | The Expo app that scans through a phone camera. |
-| `apps/desktop-example` | The OBS plugin and the scanner server it talks to. |
+| `packages/web-card-scanner` | The browser port of the pipeline on WebGPU (ruNNtime). |
+| `apps/mobile-example` | Example: an Expo app that scans through a phone camera. |
+| `apps/desktop-example` | Example: an OBS plugin and the scanner server it talks to. |
+| `apps/web-example` | Example: a React client and a reference search backend. |
+
+The SDKs are the `packages/`. The `apps/` only show how to call the SDK
+APIs: they aren't product code, and you don't need to copy their structure.
+To add a scanner to your own app, follow the integration guide in the SDK's
+README:
+
+- React Native: [Integrate the SDK into your app](packages/mobile-card-scanner/README.md#integrate-the-sdk-into-your-app)
+- Desktop C++: [Integrate the package into your app](packages/desktop-card-scanner/README.md#integrate-the-package-into-your-app)
+- Web: [Integrate the package into your app](packages/web-card-scanner/README.md#integrate-the-package-into-your-app)
 
 Core declares `loadSession` and leaves it undefined. Each platform links
 exactly one definition, which is how one pipeline runs on two inference
@@ -31,6 +44,8 @@ runtimes without either one leaking into the other.
 - [OBS plugin](apps/desktop-example/README.md) — install it and use it
 - [Web package](packages/web-card-scanner/README.md) — the browser library on
   WebGPU
+- [Web example](apps/web-example/README.md) — run the browser example and its
+  backend
 
 ## Mobile
 
@@ -42,7 +57,7 @@ Android 10 (API 29) and later.
 - Node.js 20.19.4 or later
 - Yarn 4.1.1
 - Git LFS
-- CMake 3.18 or later, which generates the native code
+- CMake 3.14 or later, which generates the native code
 - Xcode, for iOS
 - Android Studio, for Android
 

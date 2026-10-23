@@ -7,6 +7,9 @@ set, and art.
 
 This is the desktop consumer of `desktop-card-scanner`. The package holds the
 scanner; this app supplies the models, the databases, a `main()`, and the web UI.
+It is an example of calling the package's API, not product code. To scan cards
+in your own C++ app, follow
+[Integrate the package into your app](../../packages/desktop-card-scanner/README.md#integrate-the-package-into-your-app).
 
 ## How it works
 
@@ -104,8 +107,8 @@ node tools/export.mjs
 The same build, but assembled in `build-obs/export`, verified there, and
 zipped with an `INSTALL.txt` to
 `~/Desktop/obs-card-scanner-<version>-<commit>-<platform>.zip`. A non-Release
-build, benchmark timers, or models from the CDN manifest (`-m`) are marked in the
-name; `--out <zip>` writes it elsewhere and the release options apply. The bundle is not signed, so a copy
+build, benchmark timers, or the repo's models and databases instead of the CDN
+manifest's (`-repo`) are marked in the name; `--out <zip>` writes it elsewhere and the release options apply. The bundle is not signed, so a copy
 downloaded through a browser needs the `xattr` line the notes give.
 
 ## Use it
@@ -289,6 +292,17 @@ each one searches. Its entry count decodes the model's prediction tensor, so it
 must be contiguous from `0` and must match the class order the model was
 exported with. See the package README for what happens when it does not.
 
+`gameSpecificConfig.<game>` adds a game's extra models and overrides:
+`confidenceThreshold`, `disambiguationThreshold` (the top-two score gap under
+which the game's disambiguation stage runs), `embeddingModelPath`,
+`setSymbolDetection` (MTG), `colorDetection` (FaB) and `setCodeReading`
+(Yu-Gi-Oh!: `modelPath` and optional `classNames`, the CTC blank first). The
+keys match the mobile `ScannerConfig`; see
+[the API reference](../../docs/API.md#scannerconfig). When the manifest routes
+`ygo` or `ygo-ocg`, `release.mjs` adds `setCodeReading` with
+`SetCodeReader.onnx` and the manifest's class names, and a
+`disambiguationThreshold` of 0.05, keeping any value `config.json` sets.
+
 ## Server options
 
 The module starts the server for you and passes these itself. You need them
@@ -300,6 +314,7 @@ card-scanner-server <config.json> [options]
   --frame-port N     default 27846
   --control-port N   default 27845
   --replay <dir>     pump images from a directory instead of waiting for OBS
+  --timings          report stage timings, as the OBS filter's box does
 ```
 
 ## Control protocol
@@ -311,7 +326,8 @@ connect. That check keeps other browsers out, not other pages inside OBS: a
 sandboxed iframe in a third-party Browser Source also has a `null` origin and
 gets in. It can send the commands below and read the state, nothing more. The
 server broadcasts the whole state on every change, so a client that reloads
-is current from its first message:
+is current from its first message. An abridged example; `protocol/StateMessage.cpp`
+in the package has every field:
 
 ```json
 {

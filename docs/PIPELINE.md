@@ -59,9 +59,9 @@ The scanner processes camera frames through a **5-stage pipeline**:
 │  • Detect cards → bounding boxes                            │
 │  • Predict top game → predictedGameName                     │
 │  • Predict games → top 3 classes → databases to search      │
-│  • Optional: Dewarped images                                │
 │  • NMS + group-box filter → drop duplicates                 │
 │  • Selection: center-most (single mode)                     │
+│  • Dewarp the kept detections                               │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
@@ -89,10 +89,10 @@ The scanner processes camera frames through a **5-stage pipeline**:
 ┌──────────────────────────────────────────────────────────────┐
 │  STAGE 4: Card Recognition                                   │
 ├──────────────────────────────────────────────────────────────┤
-│  4.1 Compute Embedding                                       │
-│      └─> CardEmbeddingModel → feature vector                │
-│  4.2 Extract Top Games                                       │
+│  4.1 Extract Top Games                                       │
 │      └─> Filter YOLO predictions by confidence              │
+│  4.2 Compute Embedding (per embedder, on demand)             │
+│      └─> CardEmbeddingModel → feature vector                │
 │  4.3 Multi-Database Search                                   │
 │      ├─> Search candidate games in YOLO-confidence order    │
 │      ├─> Databases sharing one YOLO class always searched   │
@@ -153,7 +153,7 @@ Camera frames enter through the Nitro plugin. The Vision Camera v5 frame worklet
 2. The frame is converted to an RGB `cv::Mat` and rotated upright according to `frame.orientation` ([`utils/FrameTransform.cpp`](../packages/mobile-card-scanner/common/rnbridge/FrameTransform.cpp)) - a copy that never aliases the camera buffer - and the Frame is disposed right there, before the window wait and `ScannerPipeline::processFrame`. Dropped and failed frames are disposed on their exit path too (an RAII guard in `scanFrame`), so the Frame is disposed exactly once and the worklet must not dispose a Frame it handed to `scanFrame`.
 3. Resulting bounding boxes are inverse-mapped back to raw frame-buffer coordinates and delivered to the JS detection listener.
 
-`scanImage` and the benchmark runner call the same pipeline directly with a decoded image. `scanImage` runs on a detached thread and takes the same exclusivity as step 1 through `claimScan` - it queues for it rather than dropping - so a camera frame and an image scan never overlap. Being user-initiated, it bypasses the `maxFrameRate` throttle the way the benchmark runner does, and so never consumes the camera's throttle window.
+`scanImage` (in core, `ScannerRegistry::scanImageFile`) and the benchmark runner call the same pipeline directly with a decoded image. `scanImage` runs on a detached thread and takes the same exclusivity as step 1 through `claimScan` - it queues for it rather than dropping - so a camera frame and an image scan never overlap. Being user-initiated, it bypasses the `maxFrameRate` throttle the way the benchmark runner does, and so never consumes the camera's throttle window.
 
 ### `ScannerPipeline::processFrame`
 
@@ -240,7 +240,7 @@ if (config.maxFrameRate > 0) {
 **Source:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 ```cpp
-auto segmentation = performSegmentation(frameImage, config, yoloModel);
+auto detections = performSegmentation(frameImage, ctx);
 ```
 
 **Implementation:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
@@ -248,7 +248,8 @@ auto segmentation = performSegmentation(frameImage, config, yoloModel);
 #### Step 1.1: YOLO Detection
 
 ```cpp
-std::vector<Detection> rawDetections = yoloModel->detect(frameImage);
+auto detections = ctx.yolo->segment(frameImage, multiThreshold(config),
+                                    config.scanMode != "single");
 ```
 
 **Model:** YoloSegmentationModel
@@ -259,7 +260,6 @@ std::vector<Detection> rawDetections = yoloModel->detect(frameImage);
 - Top game prediction (`predictedGameName`) — the canonical name of the winning class
 - Game predictions: the top 3 classes expanded into database names for the
   multi-database search (a class covering several games contributes all of them)
-- Optional dewarped images
 
 Postprocessing prunes raw boxes before any mask or dewarp work, so discarded boxes never cost anything:
 
@@ -270,12 +270,15 @@ Postprocessing prunes raw boxes before any mask or dewarp work, so discarded box
 
 #### Step 1.2: Detection Selection
 
-**Source:** [`models/YoloSegmentationModel.cpp`](../packages/card-scanner-core/src/models/YoloSegmentationModel.cpp)
+**Source:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp) (`applyScanMode`) and [`CardSelection.cpp`](../packages/card-scanner-core/src/core/CardSelection.cpp) (`selectCenterMost`)
 
 The surviving detections are then narrowed by scan mode:
 
 - **`"single"` mode** - returns the detection closest to the frame center (quad centroid), with sticky selection (the tracked card wins over rivals unless one is clearly more central)
 - **`"multiple"` mode** - returns all remaining detections
+
+Only then are the kept detections dewarped (`utils::dewarpDetections`), so a
+discarded box never costs a warp.
 
 ---
 
@@ -337,22 +340,13 @@ if (config.lowLightThreshold > 0.0 &&
 **Source:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp)
 
 ```cpp
-card.matches = recognizeCard(processingImage, detection, config,
-                             dbManager, embeddingModel);
+auto outcome = SearchStrategy::searchCard(image, detection, config,
+                                          *ctx.embedding, ctx.gameEmbedders);
 ```
 
 **Implementation:** [`ScannerPipeline.cpp`](../packages/card-scanner-core/src/core/ScannerPipeline.cpp) → [`SearchStrategy.cpp`](../packages/card-scanner-core/src/core/SearchStrategy.cpp)
 
-#### Step 4.1: Compute Embedding
-
-```cpp
-std::vector<float> embedding = embeddingModel->computeEmbedding(cardImage);
-```
-
-**Model:** CardEmbeddingModel
-**Output:** Feature vector (256 dimensions for cards and 128 dimensions for set symbols)
-
-#### Step 4.2: Extract Top Games
+#### Step 4.1: Extract Top Games
 
 **Source:** [`SearchStrategy.cpp`](../packages/card-scanner-core/src/core/SearchStrategy.cpp) (`extractTopGames`)
 
@@ -386,16 +380,27 @@ See [`SearchStrategy.cpp`](../packages/card-scanner-core/src/core/SearchStrategy
 Two merged classes in the top 3 would expand to 6 names; the cap drops the
 lowest-ranked ones rather than searching them.
 
+#### Step 4.2: Compute Embedding
+
+**Model:** CardEmbeddingModel
+**Output:** Feature vector (256 dimensions for cards and 128 dimensions for set symbols)
+
+The search computes embeddings on demand, inside the loop below: a database
+whose game has its own embedder (`gameSpecificConfig.<game>.embeddingModelPath`,
+see `ctx.gameEmbedders`) gets an embedding from that model, and every other
+database shares one embedding from the default model, computed once.
+
 #### Step 4.3: Multi-Database Search
 
 **Source:** [`SearchStrategy.cpp`](../packages/card-scanner-core/src/core/SearchStrategy.cpp)
 
 ```cpp
 std::vector<CardSearchResult> searchMultipleDatabases(
-    const std::vector<float> &embedding,
+    const cv::Mat &cardImage,
     const std::vector<std::string> &topGames,
     const ScannerConfig &config,
-    DatabaseManager &dbManager
+    CardEmbeddingModel &defaultEmbedder,
+    const GameEmbedders &gameEmbedders
 ) {
   std::vector<CardSearchResult> allResults;
 
@@ -403,8 +408,12 @@ std::vector<CardSearchResult> searchMultipleDatabases(
     const auto &gameToSearch = topGames[i];
 
     try {
-      GameStorePtr gameDb = dbManager.getStore(gameToSearch);
+      GameStorePtr gameDb =
+          DatabaseManager::getInstance().getStore(gameToSearch);
       if (!gameDb) continue;
+
+      // The game's own embedder, else the shared default embedding
+      const auto &embedding = embeddingFor(gameToSearch);
 
       // Search in this game's database
       auto gameResults = gameDb->search_similar_cards(embedding, config.searchCandidates);
@@ -418,7 +427,7 @@ std::vector<CardSearchResult> searchMultipleDatabases(
       confidentMatch = confidentMatch ||
           (!gameResults.empty() &&
            gameResults[0].score >=
-               getEffectiveConfidenceThreshold(gameToSearch, config) +
+               config.confidenceThresholdFor(gameToSearch) +
                    constants::database::EARLY_EXIT_SCORE_MARGIN);
     } catch (const std::exception &e) {
       // Skip failed game database; never triggers the early exit
@@ -469,7 +478,7 @@ SearchOutcome filterToBestGame(
   // game's qualifying hit.
   std::string bestMatchGame;
   for (const auto &result : sortedResults) {
-    if (result.score >= getEffectiveConfidenceThreshold(result.gameName, config)) {
+    if (result.score >= config.confidenceThresholdFor(result.gameName)) {
       bestMatchGame = result.gameName;
       break;
     }
@@ -488,7 +497,7 @@ SearchOutcome filterToBestGame(
   auto &filteredMatches = outcome.matches;
   for (const auto &result : sortedResults) {
     if (result.gameName == bestMatchGame &&
-        result.score >= getEffectiveConfidenceThreshold(result.gameName, config)) {
+        result.score >= config.confidenceThresholdFor(result.gameName)) {
       filteredMatches.push_back(result);
 
       if (filteredMatches.size() >= static_cast<size_t>(config.maxMatches)) {
@@ -689,7 +698,7 @@ if (!isAmbiguous(cardMatches, disambiguationThreshold)) return empty;
 
 1. Scale the card to `card::DEWARP_HEIGHT` (640 px), the height the search
    box fractions assume.
-2. Read the regular box (95% of cards). If the read is not a code-shaped,
+2. Read the regular box, which most cards use. If the read is not a code-shaped,
    unclipped read, find the text box's top border (Sobel, a horizontal
    opening 30% of the card wide, the strongest long line) and read the
    regular box re-centered above it. Then try the Link box, then the
@@ -703,7 +712,7 @@ if (!isAmbiguous(cardMatches, disambiguationThreshold)) return empty;
 **Model:** [`SetCodeReader.cpp`](../packages/card-scanner-core/src/models/ygo/SetCodeReader.cpp)
 
 - Input: the search box resized to 256 x 96 gray, 0-1
-- Output: 64 steps x one score per class in `setCodeReading.classNames`
+- Output: steps (64 for the manifest's reader) x one score per class in `setCodeReading.classNames`
   order (the CTC blank, then one character each), decoded greedily. The class
   count is checked against the model at load, and the CDN manifest's
   `set_code_reader` supplies both the model and its class names.
@@ -747,9 +756,15 @@ if (!isAmbiguous(cardMatches, disambiguationThreshold)) return empty;
 
 ```cpp
 static std::mutex modelMutex_;
+static std::shared_timed_mutex pipelineMutex_;
 ```
 
-All model initialization/access protected by mutex.
+Two locks guard the models. `modelMutex_` guards the model pointers and the
+config. `pipelineMutex_` decides who may use the models: every scan holds it
+shared through a `ScanLease`, while initializing, releasing, benchmarking and
+swapping a database take it exclusively. A scan that can't get its shared
+lock (during a benchmark, an initialize or a release) returns no result instead
+of waiting.
 
 ### Frame Throttling
 
@@ -782,12 +797,15 @@ All database operations are thread-safe via internal locking.
 
 ```cpp
 try {
-  card = processDetection(frameImage, detection, index, config, /*...*/);
+  result.cards.push_back(
+      processDetection(frameImage, detections[i], ctx, thorough, capture));
 } catch (const std::exception &e) {
-  log(LOG_LEVEL::Error, "Detection processing failed: %s", e.what());
-  // Return partial card with detection info only
-  card.boundingBox = detection.bbox;
-  card.detectionConfidence = detection.confidence;
+  // Keep the card with its detection info only
+  ProcessedCard emptyCard;
+  emptyCard.boundingBox = utils::ImageUtils::boundingBoxToRect(detections[i].box);
+  emptyCard.detectionConfidence = detections[i].box.conf;
+  emptyCard.quad = detections[i].quad;
+  result.cards.push_back(emptyCard);
 }
 ```
 

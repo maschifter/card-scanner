@@ -6,6 +6,11 @@ embeddings travel to a backend that owns the card databases. Your browser
 never downloads a database; the one-time model download is about 20 MB,
 cached in OPFS.
 
+This app, including its Node backend in `server/`, is an example of calling
+the package's API, not product code. To scan cards in your own web app, follow
+[Integrate the package into your app](../../packages/web-card-scanner/README.md#integrate-the-package-into-your-app);
+your backend owns its own card databases and search.
+
 ## One-time setup
 
 The model weights, their parity fixtures and the search databases are

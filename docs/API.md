@@ -22,6 +22,9 @@ Complete API reference for `@cardnexus/card-scanner`. For Web, see [`@cardnexus/
     - [getDatabaseInfo](#getdatabaseinfo)
     - [swapDatabase](#swapdatabase)
     - [deleteDatabase](#deletedatabase)
+    - [doesCardIdExist](#doescardidexist)
+  - [Benchmarking](#benchmarking)
+    - [runBenchmarkFromImages](#runbenchmarkfromimages)
   - [Set-Code Picking](#set-code-picking)
     - [pickPrinting](#pickprinting)
   - [Type Definitions](#type-definitions)
@@ -32,14 +35,17 @@ Complete API reference for `@cardnexus/card-scanner`. For Web, see [`@cardnexus/
     - [CapturedImage](#capturedimage)
     - [BoundingBox](#boundingbox)
     - [AlternativeMatch](#alternativematch)
-    - [SetSymbolInfo](#setsymbolinfo)
-    - [FABColorInfo](#fabcolorinfo)
+    - [SetSymbol](#setsymbol)
+    - [FabColor](#fabcolor)
     - [CardLanguageInfo](#cardlanguageinfo)
     - [SetCodeInfo](#setcodeinfo)
     - [DatabaseInfo](#databaseinfo)
     - [InitializationResult](#initializationresult)
     - [SwapResult](#swapresult)
     - [DeleteResult](#deleteresult)
+  - [Adding New Games](#adding-new-games)
+    - [Merged Classes (one class, several games)](#merged-classes-one-class-several-games)
+  - [Game-Specific Embedding Models](#game-specific-embedding-models)
   - [Error Handling](#error-handling)
 
 ---
@@ -81,6 +87,8 @@ const result = await initializeScanner({
   lowLightThreshold: 65,
   lowLightGamma: 2.0,
   maxFrameRate: 5,
+  // Segmentation class id -> database name(s); must match the model's classes
+  gameClassMapping: { 0: 'fab', 1: 'lorcana', 2: 'mtg' /* ... */ },
 });
 
 if (!result.success) {
@@ -131,7 +139,7 @@ cardScannerPlugin.requestShutter(requested: boolean): void;
 
 **`scanFrame(frame, coordinateSnapshot)`** — synchronous scan, called from an `AsyncRunner` task:
 
-- Runs the pipeline and sends the result to the listener, if one is registered. Frames are dropped silently before the pipeline runs when another scan is in progress, the throttle window opens later than the ~35ms accept margin, or the frame is unreadable
+- Runs the pipeline and sends the result to the listener, if one is registered. Frames are dropped silently before the pipeline runs when another scan is in progress, the throttle window opens later than the ~20ms accept margin, or the frame is unreadable
 - **Takes ownership of the Frame**: `scanFrame` disposes it on every path (dropped, failed, scanned). When scanned, the Frame is disposed right after the pixel copy - before the throttle-window wait and ML - so the camera gets its buffer back as early as possible. Never call `frame.dispose()` after `scanFrame` - the only Frames the worklet disposes are the ones it never handed over (e.g. `runAsync` returned `false`)
 - `coordinateSnapshot` - numbers passed through unchanged to the listener result; use it to snapshot frame→camera coordinate mapping while the frame is still alive
 
@@ -190,7 +198,7 @@ const frameOutput = useFrameOutput({
 **Notes:**
 
 - One scan at a time: while a scan is running, newer frames are dropped (`runAsync` returns `false`; a concurrent `scanFrame` from another runner is rejected natively). The camera buffer is released as soon as the pixels are copied, so on Android (CameraX keep-only-latest) frames keep flowing during ML and the first frame after the scan ends is a fresh one
-- Automatically throttles to `maxFrameRate` (default: 5 FPS); frames are rejected without copying unless the window is open or opens within ~35ms - an early frame is copied, released, and the scan sleeps the gap, so it starts right at the window instead of waiting for another camera frame
+- Automatically throttles to `maxFrameRate` (default: 5 FPS); frames are rejected without copying unless the window is open or opens within ~20ms - an early frame is copied, released, and the scan sleeps the gap, so it starts right at the window instead of waiting for another camera frame
 - Skips blurry frames based on `blurThreshold`
 - Low-light enhancement applied if `lowLightThreshold` exceeded
 - Multi-game search: no need to specify game name
@@ -228,7 +236,8 @@ Synchronous. `pauseScanning` turns camera frames away at the native claim; the f
 ### setScanMode
 
 ```typescript
-function setScanMode(mode: 'single' | 'multiple' | 'auto'): void;
+type ScanMode = 'single' | 'multiple' | 'auto'; // exported
+function setScanMode(mode: ScanMode): void;
 ```
 
 Switches the mode without reloading models, and resets the multi-card window and the sticky card pick. It doesn't resume a paused scanner; call `resumeScanning()` for that. Takes effect on the next frame.
@@ -383,7 +392,16 @@ if (result.success) {
 }
 ```
 
-**Implementation:** [`packages/mobile-card-scanner/src/index.ts`](../packages/mobile-card-scanner/src/index.ts)
+**Notes:**
+
+- Moves `sourcePath` into the SDK's database directory, so the file is gone
+  from `sourcePath` afterward; a read-only source (an app-bundle asset on
+  iOS) is copied instead
+- Keeps the previous database until the new one opens, and rolls back to it
+  if the new file doesn't open
+- The MTG set-symbol database installs under the name `"set-symbols"`
+
+**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
 
 ---
 
@@ -422,6 +440,70 @@ if (result.success) {
 - Cannot be undone
 
 **Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
+
+---
+
+### doesCardIdExist
+
+Checks whether a card id is in a game's database.
+
+```typescript
+function doesCardIdExist(gameName: string, cardId: string): Promise<boolean>;
+```
+
+**Parameters:**
+
+- `gameName` - Game identifier
+- `cardId` - Exact card id to look up
+
+**Returns:**
+
+- `Promise<boolean>` - `true` when the database has the id
+
+**Throws** when the game's database can't be opened.
+
+**Implementation:** [`packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp`](../packages/mobile-card-scanner/common/rnbridge/CardScannerInstaller.cpp)
+
+---
+
+## Benchmarking
+
+### runBenchmarkFromImages
+
+Scans still images through the full pipeline and records each stage's
+duration and the outcome. Use it to measure the scanner on a device.
+
+```typescript
+function runBenchmarkFromImages(
+  images: BenchmarkImageInput[],
+  warmupIterations: number,
+  benchmarkIterations: number,
+): Promise<BenchmarkResult>;
+
+interface BenchmarkImageInput {
+  imagePath: string; // Path to a still image on disk
+  game: string; // Expected game name
+  cardIds: string[]; // Every id that counts as a hit
+}
+
+interface BenchmarkResult {
+  success: boolean;
+  recordCount?: number;
+  records?: BenchmarkRecord[]; // One per scan, parsed from recordsJson
+  recordsJson?: string;
+  error?: string;
+}
+```
+
+Each image is decoded once, then scanned `warmupIterations +
+benchmarkIterations` times; warmup records carry `isWarmup: true`. A
+`BenchmarkRecord` holds the stage timings, what was matched, and a
+`ScanOutcome`: `'correct'`, `'wrong_match'`, `'below_threshold'`,
+`'no_detection'`, `'no_ground_truth'` or `'unknown'`. For every field, see
+`BenchmarkRecord` in `src/index.ts`. The function resolves with
+`success: false` and `error` instead of rejecting.
+
+**Implementation:** [`packages/mobile-card-scanner/src/index.ts`](../packages/mobile-card-scanner/src/index.ts)
 
 ---
 
@@ -577,6 +659,7 @@ interface ScannerConfig {
         embeddingModelPath: string;
         detectionThreshold: number;
         confidenceThreshold: number;
+        imageSize?: number; // The detection model's input size (default: 384)
       };
 
       // FAB-specific: Color variant detection
@@ -669,8 +752,8 @@ interface DetectedCard {
   alternativeCards: AlternativeMatch[];
 
   // Game-specific metadata
-  setSymbol?: SetSymbolInfo; // MTG: set symbol detection
-  fabColor?: FABColorInfo; // FAB: color variant detection
+  setSymbol?: SetSymbol; // MTG: set symbol detection
+  fabColor?: FabColor; // FAB: color variant detection
   language?: CardLanguageInfo; // Any game: print language of a matched card
   printedSetCode?: SetCodeInfo; // Printed set code, where configured
 }
@@ -717,17 +800,18 @@ Alternative card match (lower confidence).
 interface AlternativeMatch {
   cardId: string;
   confidence: number;
+  gameName?: string; // The database the candidate came from; near misses can span games
 }
 ```
 
 ---
 
-### SetSymbolInfo
+### SetSymbol
 
 MTG set symbol detection result.
 
 ```typescript
-interface SetSymbolInfo {
+interface SetSymbol {
   setCode: string; // Set code (e.g., "neo", "one")
   similarity: number; // Match confidence [0.0, 1.0]
 }
@@ -735,12 +819,12 @@ interface SetSymbolInfo {
 
 ---
 
-### FABColorInfo
+### FabColor
 
 Flesh and Blood color variant detection result.
 
 ```typescript
-interface FABColorInfo {
+interface FabColor {
   color: string; // "red", "yellow", or "blue"
   similarity: number; // Match confidence [0.0, 1.0]
 }
@@ -774,7 +858,7 @@ interface SetCodeInfo {
   layout: string; // Search box: "regular", "anchored", "link" or "pendulum"
   region: number[]; // [x, y, width, height] as fractions of the card
   probs: number[]; // Row-major [steps x classes] probabilities
-  steps: number; // Time steps the model reads, 64
+  steps: number; // Time steps in the model's output (64 for the manifest's reader)
   classes: number; // Classes in setCodeReading.classNames order: the CTC blank, then one character each
   classNames: string[]; // What each class reads as: the CTC blank first, then one character each
 }

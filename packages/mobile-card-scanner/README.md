@@ -6,6 +6,52 @@ This README provides detailed information about the `@cardnexus/card-scanner` pa
 
 `@cardnexus/card-scanner` is a React Native module designed to provide card scanning capabilities. At its heart, it utilizes a C++ module for model execution and relies on the ObjectBox database for embeddings.
 
+`apps/mobile-example` only shows how to call this SDK's API. It isn't product
+code: its screens, asset copying and manifest tooling are the example's own
+choices, not steps your app has to repeat. The minimum your app needs is
+below.
+
+## Integrate the SDK into your app
+
+1. **Add the dependency.** The package isn't published to npm; take it as a
+   workspace of this monorepo (`"@cardnexus/card-scanner": "workspace:*"`) or
+   vendor the package directory. Your app also needs its peer dependencies:
+   `react-native` (New Architecture), `react-native-nitro-modules`,
+   `react-native-vision-camera` v5 (with `react-native-worklets`) and `expo`.
+   The example runs React Native 0.83, Vision Camera 5.2, Nitro Modules 0.36
+   and Expo 55.
+2. **Build natively.** The package autolinks. Run `pod install` for iOS and
+   rebuild the app; Expo Go can't load it. iOS 17 or later (the CoreML
+   models need it) and Android 10 (API 29) or later; with Expo, set the
+   Android `minSdkVersion` to 29 through `expo-build-properties`. Add a
+   camera permission (`NSCameraUsageDescription`, Android `CAMERA`).
+3. **Ship the models and the databases.** The scanner takes local file
+   paths: the ExecuTorch models (`.pte`: segmentation, recognition, and the
+   optional per-game models) and one ObjectBox database (`data.mdb`) per game,
+   built with the same recognition model. Copy each model to a file path
+   your app can read, and install each database once with
+   [`swapDatabase(gameName, path)`](../../docs/API.md#swapdatabase), which
+   moves the file into the SDK's database directory (the MTG set-symbol
+   database installs as `"set-symbols"`). The CDN manifest serves both;
+   `tools/manifest.mjs` at the repository root shows how to download them and
+   how the manifest's class names map onto the config.
+4. **Initialize the scanner** with
+   [`initializeScanner(config)`](../../docs/API.md#initializescanner). The
+   config names the model paths, the thresholds, and `gameClassMapping`,
+   which must match the segmentation model's classes (see
+   [ScannerConfig](../../docs/API.md#scannerconfig)).
+5. **Scan.** For a live camera, register a detection listener and call
+   `cardScannerPlugin.scanFrame` from a Vision Camera frame output
+   ([Frame Scanning](../../docs/API.md#frame-scanning-scanframe)); for a still
+   image, call [`scanImage(path)`](../../docs/API.md#scanimage). Call
+   [`releaseScanner()`](../../docs/API.md#releasescanner) when you're done.
+6. **Optional: pick the printing.** For Yu-Gi-Oh!, pass a card's
+   `printedSetCode` and its printings' print numbers to
+   [`pickPrinting`](../../docs/API.md#pickprinting).
+
+The sections below are for maintainers of this package: how it links
+ObjectBox, ExecuTorch and OpenCV.
+
 ## ObjectBox Integration: The Challenge
 
 ObjectBox, presents a unique integration challenge for cross-platform React Native development. While ObjectBox provides C++ APIs, its official binary distributions are primarily for desktop operating systems (Linux, macOS, Windows). For mobile platforms like Android and iOS, ObjectBox offers language-specific SDKs (e.g., `objectbox-android` for Java/Kotlin and `objectbox-swift` for Swift).
@@ -26,7 +72,7 @@ This project overcomes these challenges by:
 
 ### Common CMake Configuration
 
-The `CMakeLists.txt` located in `packages/@cardnexus/card-scanner/` is central to the ObjectBox integration:
+The `CMakeLists.txt` located in `packages/mobile-card-scanner/` is central to the ObjectBox integration:
 
 - **`FetchContent` Directive:** It uses `FetchContent` to download `objectbox-c`. This approach is derived from the [ObjectBox C++ documentation](https://cpp.objectbox.io/installation). This provides:
   - ObjectBox headers (`.h` and `.hpp`).
@@ -48,7 +94,7 @@ Android integration involves extracting native binaries and integrating with the
 
 iOS integration leverages CocoaPods and the interoperability of Swift with C/C++:
 
-- **`objectbox-swift` Pod:** The `@cardnexus/card-scanner.podspec` fetches the `objectbox-swift` CocoaPods pod.
+- **`objectbox-swift` Pod:** The `card-scanner.podspec` fetches the `objectbox-swift` CocoaPods pod.
 - **`xcframework` Inclusion:** Fortunately, Swift (part of the LLVM language family) is designed for interoperability with C/C++. The build system can directly locate and include the `.xcframework` found within the downloaded pod.
 - **Podspec Run Script:** The common CMake configuration is executed for iOS via a run script defined within the `.podspec` file.
 

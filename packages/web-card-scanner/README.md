@@ -7,6 +7,51 @@ runs in f16 with HWC4 conv storage. Your page downloads only the model weights
 card databases. The cache is keyed by URL, so publish a new model set under a
 new `modelsBaseUrl`: files replaced in place never reach returning users.
 
+`apps/web-example` (the React client and its Node backend) only shows how to
+call this package. It is not product code and not a reusable backend: build
+your own UI and search service against the API below.
+
+## Integrate the package into your app
+
+1. **Depend on the package.** It isn't published to npm. It ships TypeScript
+   sources (`exports` points at `src/index.ts`), so add it as a workspace of
+   this monorepo (`"@cardnexus/web-card-scanner": "workspace:*"`), or vendor
+   the package directory together with the `vendor/runntime` submodule.
+2. **Configure your bundler.** Your bundler compiles the package's sources,
+   and ruNNtime kernels need the TypeGPU plugin at build time. With Vite:
+
+   ```ts
+   import typegpuPlugin from 'unplugin-typegpu/vite';
+
+   export default defineConfig({ plugins: [typegpuPlugin()] });
+   ```
+
+   Serve the page from a secure context (HTTPS, or `localhost`): WebGPU and
+   the camera require one.
+3. **Host the model weights.** Under `modelsBaseUrl`, serve one directory per
+   model, each with a `model.safetensors`: `CardSegmentationModel/` (plus its
+   `gameClassMapping.json`), `CardRecognitionModel/`,
+   `SetSymbolDetectionModel/`, `SetSymbolRecognitionModel/`, `ColorBarModel/`,
+   `CardLanguageModel/` and `SetCodeReader/`. The `fixture/` directories are
+   for `/parity.html` only. Copy them from `apps/web-example/public/models/`,
+   or regenerate them with `apps/web-example/tools/export-web-models.py` and
+   `export-set-code-reader.py`. A model you turn off (see [Models](#models))
+   doesn't need its directory.
+4. **Run a search backend.** The package computes embeddings only; your
+   backend owns the card databases and the accept gate. Implement
+   `SearchClient` yourself, or serve the HTTP contract `httpSearchClient`
+   expects, relative to the base URL you pass it:
+
+   | Route | Request | Response |
+   |---|---|---|
+   | `POST /search-cards` | `{ embedding: number[256], games: string[] }` | `{ matches: CardMatch[] }`, accepted matches of the winning game only |
+   | `POST /search-set-symbol` | `{ embedding: number[128] }` | `{ match: SetSymbolMatch \| null }` |
+
+   `apps/web-example/server` implements this contract as a reference: brute
+   force over flat embedding files, with the gate described in
+   [Search backend](#search-backend).
+5. **Create the scanner and scan frames**, as the quick start below shows.
+
 ## Quick start
 
 ```ts
@@ -170,7 +215,8 @@ The layout mirrors the native card-scanner-core:
   per-frame loop: segmentation, decode, selection), `cardProcessor.ts` (per
   card: dewarp, embed, search, flip retry, stages), `cardSelection.ts`,
   `searchStrategy.ts` (candidate-game routing), `setSymbolProcessor.ts`,
-  `fabColorProcessor.ts`, `languageProcessor.ts`, `httpSearchClient.ts`,
+  `fabColorProcessor.ts`, `setCodeProcessor.ts` (the Yu-Gi-Oh! set-code
+  crops, retry and decode), `languageProcessor.ts`, `httpSearchClient.ts`,
   `cachedSearchClient.ts`, `profile.ts`.
 - `models/`: the ruNNtime nn ports plus their shared layers and helpers.
 - `inference/`: `runner.ts` (captured-frame model runner),

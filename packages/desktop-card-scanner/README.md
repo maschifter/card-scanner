@@ -7,7 +7,73 @@ protocol between them.
 
 For running the OBS plugin, see the
 [desktop example README](../../apps/desktop-example/README.md). This document
-covers the package itself.
+covers the package itself. The OBS plugin in `apps/desktop-example` only shows
+how to call this package; it isn't product code, and your app doesn't need its
+OBS module, sockets, or web UI.
+
+## Integrate the package into your app
+
+1. **Add it to your CMake project.** The package fetches every dependency at
+   configure time, so this is all the wiring there is:
+
+   ```cmake
+   add_subdirectory(path/to/packages/desktop-card-scanner cardscanner_desktop)
+   target_link_libraries(your_app PRIVATE cardscanner_desktop)
+   cardscanner_copy_runtime_dlls(your_app) # ONNX Runtime and ObjectBox beside the executable
+   ```
+
+   `cardscanner_desktop` links `card-scanner-core` and the ONNX backend, and
+   puts this package's `src/` and core's `src/` on your include path.
+2. **Get the models and the databases.** You need the ONNX exports of the
+   models and one `<game>/data.mdb` per game, built with the same embedder
+   (see [Comparing two card databases](#comparing-two-card-databases)).
+   `apps/desktop-example/assets/` holds a working set through Git LFS, and
+   `tools/manifest.mjs` at the repository root downloads the CDN manifest's.
+3. **Write a config file.** `loadConfigFile` reads the JSON format the OBS
+   plugin uses; start from `apps/desktop-example/config.json` and its
+   [Configuration](../../apps/desktop-example/README.md#configuration)
+   section. Keys map onto `ScannerConfig` (`types/ScannerConfig.h` in core),
+   and omitted keys keep its defaults.
+4. **Start the scanner and scan.** The order matters: point the data paths
+   before anything touches `DatabaseManager`, and set the config before you
+   load the models.
+
+   ```cpp
+   #include <ScannerRegistry.h>
+   #include <config/ScannerConfigLoader.h>
+   #include <util/OpenCvThreads.h>
+
+   auto loaded = cardscanner::desktop::loadConfigFile("config.json");
+   cardscanner::desktop::applyDataPaths(loaded.paths);
+   cardscanner::util::configureOpenCvThreads();
+   cardscanner::ScannerRegistry::setConfig(loaded.scanner); // throws on an invalid config
+   cardscanner::ScannerRegistry::initializeModels();
+
+   // A still image from disk...
+   cardscanner::ScanResult result =
+       cardscanner::ScannerRegistry::scanImageFile("card.jpg");
+   // ...or an RGB cv::Mat; nullopt while a reload or a benchmark owns the scanner.
+   auto frameResult = cardscanner::ScannerRegistry::scan(rgbFrame, {});
+
+   for (const auto &card : result.cards) {
+     if (card.hasMatches()) {
+       // card.matches[0].cardId, .gameName, .score; card.setSymbol,
+       // card.fabColor, card.language, card.printedSetCode
+     }
+   }
+   cardscanner::ScannerRegistry::releaseModels();
+   ```
+
+   For a live feed, `service/ScannerService` wraps this: construct it with the
+   config, a `core::SessionConfig` and a listener, call `start()`, and push
+   frames with `submitFrame()`; it keeps only the newest frame and runs the
+   accept state machine (`core::ScanSession`) for you.
+   `service/ScannerServer` adds the frame socket, the WebSocket control
+   endpoint and the product lookups on top, which you need only for an
+   out-of-process client like the OBS module.
+
+`apps/desktop-example/src/main.cpp` runs exactly this flow as a command-line
+scanner.
 
 ## What is in here
 
