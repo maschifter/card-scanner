@@ -32,7 +32,7 @@ export interface Found {
 
 export type StageAcc = Record<'embed' | 'search' | 'stages', number>;
 
-export type CardProcessorSettings = Required<
+type CardProcessorSettings = Required<
   Pick<
     ScannerOptions,
     | 'minGameConfidence'
@@ -110,25 +110,28 @@ export class CardProcessor {
 
     const { dewarp, embedding, matches } = result;
     const stageGame = this.disambiguationGame(matches);
+    const {
+      setSymbolDetection,
+      setSymbolRecognition,
+      colorBar,
+      language: classifier,
+    } = this.runners;
     const setSymbol =
-      stageGame === 'mtg'
+      stageGame === 'mtg' && setSymbolDetection && setSymbolRecognition
         ? await timed('stages', () =>
             matchSetSymbol(
               dewarp,
-              this.runners.setSymbolDetection,
-              this.runners.setSymbolRecognition,
+              setSymbolDetection,
+              setSymbolRecognition,
               client,
               opts.setSymbolDetectionThreshold,
             ),
           )
         : null;
     const fabColor =
-      stageGame === 'fab'
-        ? await timed('stages', () =>
-            classifyFabColor(dewarp, this.runners.colorBar),
-          )
+      stageGame === 'fab' && colorBar
+        ? await timed('stages', () => classifyFabColor(dewarp, colorBar))
         : null;
-    const classifier = this.runners.language;
     const language =
       classifier && matches.length
         ? await timed('stages', () => classifyLanguage(dewarp, classifier))

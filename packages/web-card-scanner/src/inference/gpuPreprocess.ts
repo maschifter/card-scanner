@@ -1,4 +1,4 @@
-/** Pixels → normalized CHW f32 in a TIE input buffer, sampled in one compute
+/** Pixels → normalized CHW f32 in a ruNNtime input buffer, sampled in one compute
  *  dispatch through a placement (crop, squash, or letterbox). The sampling
  *  matches cv::resize INTER_LINEAR more closely than canvas drawImage does.
  *

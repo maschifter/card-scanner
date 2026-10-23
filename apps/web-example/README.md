@@ -32,7 +32,7 @@ yarn workspace web-example dev      # vite client on :5173 (proxies /api)
 Open the app, then start the webcam or pick an image. Add `?img=<url>` to
 scan a fixed image on load.
 
-Open `/parity.html` (no backend needed) to check the TIE model ports against
+Open `/parity.html` (no backend needed) to check the ruNNtime model ports against
 the ONNX fixtures captured by the export script. Click Profile GPU in the
 stats panel to list per-kernel GPU time for the segmentation model on devices
 with `timestamp-query`.

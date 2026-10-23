@@ -8,6 +8,7 @@ import { errorMessage, fetchBackendHealth, loadScanner } from '../scanner.ts';
 export function useScanner() {
   const [scanner, setScanner] = useState<WebCardScanner | null>(null);
   const [status, setStatus] = useState('starting…');
+  const [progress, setProgress] = useState<{ label: string; value: number }>();
 
   useEffect(() => {
     let cancelled = false;
@@ -33,13 +34,18 @@ export function useScanner() {
       }
       const games = Object.keys(health.games).length;
       const cards = Object.values(health.games).reduce((a, b) => a + b, 0);
-      report(`backend: ${games} games, ${cards} cards\nloading models…`);
-      const s = await loadScanner((message) =>
-        setStatus(`WebGPU error: ${message}`),
+      report('loading models…');
+      const s = await loadScanner(
+        (stage, done, total) =>
+          setProgress({
+            label: `${stage === 'models' ? 'Loading' : 'Compiling'} models ${done}/${total}`,
+            value: (stage === 'models' ? 0 : 0.5) + done / total / 2,
+          }),
+        (message) => setStatus(`WebGPU error: ${message}`),
       );
       if (cancelled) return;
       setScanner(s);
-      report('ready — start the webcam or pick an image');
+      report(`ready · ${games} games · ${cards.toLocaleString('en-US')} cards`);
     })().catch((e) => report(`error: ${errorMessage(e)}`));
 
     return () => {
@@ -48,5 +54,5 @@ export function useScanner() {
     };
   }, []);
 
-  return { scanner, status, setStatus };
+  return { scanner, status, setStatus, progress };
 }

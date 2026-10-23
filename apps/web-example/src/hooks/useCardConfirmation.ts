@@ -27,7 +27,12 @@ export interface ConfirmProgress {
   required: number;
 }
 
-const HISTORY_LIMIT = 10;
+interface Pending {
+  count: number;
+  setSymbol: CardView['setSymbol'];
+}
+
+const HISTORY_LIMIT = 20;
 const CLOSE_MATCH_MARGIN = 0.01;
 
 function snapshot(thumb: ImageBitmap): HTMLCanvasElement {
@@ -40,70 +45,56 @@ function snapshot(thumb: ImageBitmap): HTMLCanvasElement {
 
 export function useCardConfirmation() {
   const [history, setHistory] = useState<ConfirmedCard[]>([]);
-  const [progress, setProgress] = useState<ConfirmProgress | null>(null);
-  const lastIdRef = useRef<string | null>(null);
-  const countRef = useRef(0);
-  const symbolsRef = useRef<NonNullable<CardView['setSymbol']>[]>([]);
+  const [progress, setProgress] = useState<ConfirmProgress[]>([]);
+  const pendingRef = useRef(new Map<string, Pending>());
   const confirmedRef = useRef(new Set<string>());
 
   const confirm = useCallback((cards: readonly CardView[]) => {
-    const card = cards.find((c) => c.matches.length > 0);
-    if (!card) return;
-    const [top, runnerUp] = card.matches;
-    if (confirmedRef.current.has(top.cardId)) {
-      setProgress(null);
-      return;
+    const pending = new Map<string, Pending>();
+    const counting: ConfirmProgress[] = [];
+    const entries: ConfirmedCard[] = [];
+    for (const card of cards) {
+      const [top, runnerUp] = card.matches;
+      if (!top || confirmedRef.current.has(top.cardId)) continue;
+      const previous = pendingRef.current.get(top.cardId);
+      const count = (previous?.count ?? 0) + 1;
+      const best = previous?.setSymbol;
+      const setSymbol =
+        best && (!card.setSymbol || best.score >= card.setSymbol.score)
+          ? best
+          : card.setSymbol;
+      const closeMatches =
+        runnerUp !== undefined &&
+        top.score - runnerUp.score <= CLOSE_MATCH_MARGIN;
+      const required =
+        (top.gameName === 'mtg' && !setSymbol) || closeMatches ? 4 : 2;
+      const name = top.name ?? top.cardId;
+      if (count < required) {
+        pending.set(top.cardId, { count, setSymbol });
+        counting.push({ cardId: top.cardId, name, count, required });
+        continue;
+      }
+      confirmedRef.current.add(top.cardId);
+      entries.push({
+        cardId: top.cardId,
+        name,
+        gameName: top.gameName,
+        score: top.score,
+        setSymbol,
+        fabColor: card.fabColor,
+        language: card.language,
+        thumb: snapshot(card.thumb),
+      });
     }
-    const name = top.name ?? top.cardId;
-    const isMtg = top.gameName === 'mtg';
-    const closeMatches =
-      runnerUp !== undefined &&
-      top.score - runnerUp.score <= CLOSE_MATCH_MARGIN;
-
-    if (top.cardId !== lastIdRef.current) {
-      lastIdRef.current = top.cardId;
-      countRef.current = 1;
-      symbolsRef.current = card.setSymbol ? [card.setSymbol] : [];
-      const required = (isMtg && !card.setSymbol) || closeMatches ? 4 : 2;
-      setProgress({ cardId: top.cardId, name, count: 1, required });
-      return;
-    }
-
-    countRef.current += 1;
-    if (card.setSymbol) symbolsRef.current.push(card.setSymbol);
-    const setSymbol =
-      symbolsRef.current.reduce<CardView['setSymbol']>(
-        (best, s) => (best && best.score >= s.score ? best : s),
-        null,
-      ) ?? null;
-    const required = (isMtg && !setSymbol) || closeMatches ? 4 : 2;
-    const count = countRef.current;
-    if (count < required) {
-      setProgress({ cardId: top.cardId, name, count, required });
-      return;
-    }
-
-    const entry: ConfirmedCard = {
-      cardId: top.cardId,
-      name,
-      gameName: top.gameName,
-      score: top.score,
-      setSymbol,
-      fabColor: card.fabColor,
-      language: card.language,
-      thumb: snapshot(card.thumb),
-    };
-    confirmedRef.current.add(entry.cardId);
+    if (counting.length === 0 && entries.length === 0) return;
+    pendingRef.current = pending;
+    setProgress(counting);
+    if (entries.length === 0) return;
     setHistory((prev) => {
-      const next = [entry, ...prev.filter((c) => c.cardId !== entry.cardId)];
-      const kept = next.slice(0, HISTORY_LIMIT);
+      const kept = [...entries, ...prev].slice(0, HISTORY_LIMIT);
       confirmedRef.current = new Set(kept.map((c) => c.cardId));
       return kept;
     });
-    setProgress(null);
-    lastIdRef.current = null;
-    countRef.current = 0;
-    symbolsRef.current = [];
   }, []);
 
   const remove = useCallback((cardId: string) => {

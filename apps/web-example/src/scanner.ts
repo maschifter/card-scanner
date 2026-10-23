@@ -2,18 +2,29 @@
  *  ~20 MB of weights, and React StrictMode runs effects twice in
  *  development, so creation is memoized here rather than in a hook. */
 
-import { httpSearchClient, WebCardScanner } from '@cardnexus/web-card-scanner';
+import {
+  httpSearchClient,
+  WebCardScanner,
+  type ScannerOptions,
+} from '@cardnexus/web-card-scanner';
 
+type Progress = NonNullable<ScannerOptions['onProgress']>;
 export type Report = (message: string) => void;
 
 let pending: Promise<WebCardScanner> | undefined;
+const progressListeners = new Set<Progress>();
 const errorListeners = new Set<Report>();
 
-export function loadScanner(onGpuError?: Report): Promise<WebCardScanner> {
+export function loadScanner(
+  onProgress?: Progress,
+  onGpuError?: Report,
+): Promise<WebCardScanner> {
+  if (onProgress) progressListeners.add(onProgress);
   if (onGpuError) errorListeners.add(onGpuError);
   pending ??= WebCardScanner.create({
     modelsBaseUrl: '/models',
     search: httpSearchClient('/api'),
+    onProgress: (...args) => progressListeners.forEach((l) => l(...args)),
     onGpuError: (message) => errorListeners.forEach((l) => l(message)),
   });
   return pending;

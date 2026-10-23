@@ -14,7 +14,7 @@ import { argMin } from '../utils/array.ts';
 import { type Box, iou } from '../utils/box.ts';
 import type { Pt, Quad } from '../utils/geometry.ts';
 
-export interface Trackable {
+interface Trackable {
   box: Box;
   /** Frame-space card quad when the mask produced one. Its centroid tracks
    *  the card itself, so tilted and sideways cards stay stable. */

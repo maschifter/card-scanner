@@ -14,9 +14,10 @@ function toneOf(status: string, ready: boolean): 'ok' | 'busy' | 'error' {
 }
 
 export function App() {
-  const { scanner, status, setStatus } = useScanner();
+  const { scanner, status, setStatus, progress } = useScanner();
   const loop = useScanLoop(scanner, setStatus);
   const ready = scanner !== null;
+  const tone = toneOf(status, ready);
   const confirmation = useCardConfirmation();
   const [mode, setMode] = useState<ScanMode>('single');
 
@@ -43,10 +44,10 @@ export function App() {
           <span className="brand-mark" aria-hidden="true" />
           <div>
             <h1>Card Scanner</h1>
-            <p>TIE (WebGPU) · React example</p>
+            <p>ruNNtime (WebGPU) · React example</p>
           </div>
         </div>
-        <div className={`status status-${toneOf(status, ready)}`}>
+        <div className={`status status-${tone}`}>
           <span className="status-dot" aria-hidden="true" />
           <span className="status-text">{status}</span>
         </div>
@@ -115,8 +116,18 @@ export function App() {
                 <span>
                   {ready
                     ? 'Start the webcam or open an image.'
-                    : 'Models are loading…'}
+                    : tone === 'error'
+                      ? status
+                      : (progress?.label ?? 'Models are loading…')}
                 </span>
+                {tone === 'busy' && progress && (
+                  <span className="score">
+                    <span
+                      className="score-bar"
+                      style={{ width: `${100 * progress.value}%` }}
+                    />
+                  </span>
+                )}
               </div>
             )}
           </div>

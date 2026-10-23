@@ -76,6 +76,7 @@ export function useScanLoop(
       const result = await scanner.scan(src);
       if (!result) return;
       const views = await toViews(result.cards);
+      if (sourceRef.current !== src) return void releaseThumbs(views);
       setCards((prev) => (releaseThumbs(prev), views));
       setTimings(result.timings);
       setStall(stallRef.current);

@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-// TIE kernels are tgpu.fn functions whose bodies compile at build time — the
+// ruNNtime kernels are tgpu.fn functions whose bodies compile at build time — the
 // typegpu unplugin is required or every kernel fails with "Missing metadata".
 import typegpuPlugin from 'unplugin-typegpu/vite';
 // WebGPU and getUserMedia require a secure context, and http://<lan-ip> is

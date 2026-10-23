@@ -291,6 +291,11 @@ p {
   font-weight: 600;
 }
 
+.stage-empty .score {
+  flex: none;
+  width: 200px;
+}
+
 /* ------------------------------------------------------------------ stats */
 
 .chips {

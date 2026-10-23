@@ -16,7 +16,7 @@ export type Pt = { x: number; y: number };
 export type Quad = [Pt, Pt, Pt, Pt];
 
 /** Row-major 3×3 matrix. */
-export type Homography = [
+type Homography = [
   number,
   number,
   number,
@@ -224,7 +224,7 @@ export function orderQuad(q: Quad): Quad {
   return [argMin(q, sum), argMin(q, diff), argMax(q, sum), argMax(q, diff)];
 }
 
-export interface OrientedQuad {
+interface OrientedQuad {
   /** TL, TR, BR, BL with the shorter edge on top (portrait card). */
   quad: Quad;
   /** True when the topmost edge was the long edge — the card lies sideways

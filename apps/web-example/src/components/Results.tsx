@@ -60,11 +60,11 @@ function LiveRow({
 }: {
   card: CardView;
   index: number;
-  progress: ConfirmProgress | null;
+  progress: ConfirmProgress[];
 }) {
   const [top, ...rest] = card.matches;
   const hue = cardHue(index);
-  const confirming = progress && top && progress.cardId === top.cardId;
+  const confirming = top && progress.find((p) => p.cardId === top.cardId);
   return (
     <article className="result" style={{ '--hue': hue } as React.CSSProperties}>
       <Thumb image={card.thumb} />
@@ -114,7 +114,7 @@ function LiveRow({
           <Tags card={card} />
           {confirming && (
             <span className="tag tag-progress">
-              confirming {progress.count}/{progress.required}
+              confirming {confirming.count}/{confirming.required}
             </span>
           )}
         </div>
@@ -163,7 +163,7 @@ export function Results({
   onClear,
 }: {
   live: CardView[];
-  progress: ConfirmProgress | null;
+  progress: ConfirmProgress[];
   history: ConfirmedCard[];
   onRemove: (cardId: string) => void;
   onClear: () => void;

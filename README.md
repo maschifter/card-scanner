@@ -29,6 +29,8 @@ runtimes without either one leaking into the other.
 - [Desktop package](packages/desktop-card-scanner/README.md) — the ONNX
   backend, the OBS bindings, and the process split
 - [OBS plugin](apps/desktop-example/README.md) — install it and use it
+- [Web package](packages/web-card-scanner/README.md) — the browser library on
+  WebGPU
 
 ## Mobile
 

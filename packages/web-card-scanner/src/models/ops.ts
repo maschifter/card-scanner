@@ -1,6 +1,6 @@
-/** Activations and shape helpers composed from TIE's own ops.
+/** Activations and shape helpers composed from ruNNtime's own ops.
  *
- *  TIE refuses ops that fill HWC4 padding lanes, so each step maps 0 to 0. */
+ *  ruNNtime refuses ops that fill HWC4 padding lanes, so each step maps 0 to 0. */
 
 import {
   add,
@@ -44,7 +44,7 @@ export function globalAvgPool(x: Value): Value {
 }
 
 /** Broadcast an HWC4 [C,1,1] gate up to [C,size,size] so it can multiply a
- *  feature map elementwise. TIE refuses row/column broadcasting against HWC4
+ *  feature map elementwise. ruNNtime refuses row/column broadcasting against HWC4
  *  (the storage interleaves channels, so a row-major broadcast would mix
  *  pixels), but a nearest-neighbour upsample of a one-pixel map copies that
  *  pixel to every position, which is the same thing. Square maps only, which

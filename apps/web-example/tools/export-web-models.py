@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export the deployed model bundle into web-ready safetensors for TIE.
+"""Export the deployed model bundle into web-ready safetensors for ruNNtime.
 
 Takes the deployed-models bundle (see the bundle README) and writes one
 directory per model under --out:
@@ -7,7 +7,7 @@ directory per model under --out:
 - CardSegmentationModel, SetSymbolDetectionModel: the ultralytics state dict
   with training-only tensors stripped (one2many towers, semseg aux head,
   num_batches_tracked) and 4D conv weights cast to f16. Loads into
-  TIE's zoo/yolo26, which folds BN at load time.
+  ruNNtime's zoo/yolo26, which folds BN at load time.
 - CardRecognitionModel, SetSymbolRecognitionModel, ColorBarModel,
   CardLanguageModel: weights lifted from the ONNX graph, where BatchNorm is
   already folded into conv weights. ColorBarModel's 1D BatchNorms are folded

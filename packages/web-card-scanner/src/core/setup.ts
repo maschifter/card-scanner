@@ -31,9 +31,9 @@ import { Runner } from '../inference/runner.ts';
 export interface Runners {
   segmentation: Runner;
   cardRecognition: Runner;
-  setSymbolDetection: Runner;
-  setSymbolRecognition: Runner;
-  colorBar: Runner;
+  setSymbolDetection?: Runner;
+  setSymbolRecognition?: Runner;
+  colorBar?: Runner;
   language?: Runner;
 }
 
@@ -75,26 +75,23 @@ export async function createDevice(
 }
 
 /** Weights are OPFS-cached when available (Safari's support is patchy —
- *  plain fetches otherwise). Progress reports each model dir, then
- *  'shaders' for the warm-up. */
+ *  plain fetches otherwise). */
 export async function createRunners(
   root: TgpuRoot,
   base: string,
   onProgress: Progress,
   segmentationInputSize: number,
   slowGpuInputSize: number | null,
+  matchSetSymbol: boolean,
+  classifyFabColor: boolean,
   classifyLanguage: boolean,
 ): Promise<{ runners: Runners; loadTestMs: number | null }> {
   const cache = await createOpfsCache('web-card-scanner').catch(
     () => undefined,
   );
-  const progress =
-    (stage: string) => (_name: string, done: number, total: number) =>
-      onProgress?.(stage, done, total);
-
   // One model set stays cached: a miss on the first file is a new set.
   let first = true;
-  const load = async <M extends nn.AnyModule>(model: M, dir: string) => {
+  const load = async (model: nn.AnyModule, dir: string) => {
     const url = `${base}/${dir}/model.safetensors`;
 
     // Only a whole model may be cached: not an HTML fallback, not an LFS
@@ -125,29 +122,31 @@ export async function createRunners(
       : await download();
     first = false;
     const sd = await fromSafetensors(bufferSource(bytes));
-    await model.loadStateDict(sd, { root, onProgress: progress(dir) });
-    return model;
+    await model.loadStateDict(sd, { root });
   };
-  const seg = await load(
-    new Yolo26Model('n', { numClasses: NUM_GAME_CLASSES, task: 'segment' }),
-    'CardSegmentationModel',
-  );
-  const symbolDet = await load(
-    new Yolo26Model('n', { numClasses: 1, task: 'detect' }),
-    'SetSymbolDetectionModel',
-  );
-  const cardRec = await load(
-    new CardRecognitionModel(),
-    'CardRecognitionModel',
-  );
-  const symbolRec = await load(
-    new SetSymbolRecognitionModel(),
-    'SetSymbolRecognitionModel',
-  );
-  const colorBar = await load(new ColorBarModel(), 'ColorBarModel');
-  const language =
-    classifyLanguage &&
-    (await load(new CardLanguageModel(), 'CardLanguageModel'));
+  const seg = new Yolo26Model('n', {
+    numClasses: NUM_GAME_CLASSES,
+    task: 'segment',
+  });
+  const symbolDet =
+    matchSetSymbol && new Yolo26Model('n', { numClasses: 1, task: 'detect' });
+  const cardRec = new CardRecognitionModel();
+  const symbolRec = matchSetSymbol && new SetSymbolRecognitionModel();
+  const colorBar = classifyFabColor && new ColorBarModel();
+  const language = classifyLanguage && new CardLanguageModel();
+  const models = Object.entries({
+    CardSegmentationModel: seg,
+    SetSymbolDetectionModel: symbolDet,
+    CardRecognitionModel: cardRec,
+    SetSymbolRecognitionModel: symbolRec,
+    ColorBarModel: colorBar,
+    CardLanguageModel: language,
+  }).flatMap(([dir, model]) => (model ? [{ dir, model }] : []));
+  for (const [i, { dir, model }] of models.entries()) {
+    onProgress?.('models', i, models.length);
+    await load(model, dir);
+  }
+  onProgress?.('models', models.length, models.length);
 
   const segmentationAt = (size: number) =>
     new Runner(root, [3, size, size], 'scale255', (input: Value) => {
@@ -161,14 +160,18 @@ export async function createRunners(
   const runners: Runners = {
     segmentation: segmentationAt(segmentationInputSize),
     cardRecognition: imagenetAt(CARD_EMBED_SIZE, cardRec),
-    setSymbolDetection: new Runner(
-      root,
-      [3, YOLO_INPUT_SIZE, YOLO_INPUT_SIZE],
-      'scale255',
-      (input) => [...symbolDet.forward(input)],
-    ),
-    setSymbolRecognition: imagenetAt(SYMBOL_EMBED_SIZE, symbolRec),
-    colorBar: imagenetAt(COLOR_BAR_SIZE, colorBar),
+    ...(symbolDet && {
+      setSymbolDetection: new Runner(
+        root,
+        [3, YOLO_INPUT_SIZE, YOLO_INPUT_SIZE],
+        'scale255',
+        (input) => [...symbolDet.forward(input)],
+      ),
+    }),
+    ...(symbolRec && {
+      setSymbolRecognition: imagenetAt(SYMBOL_EMBED_SIZE, symbolRec),
+    }),
+    ...(colorBar && { colorBar: imagenetAt(COLOR_BAR_SIZE, colorBar) }),
     ...(language && {
       language: new Runner(
         root,
@@ -184,7 +187,6 @@ export async function createRunners(
     onProgress?.('shaders', i, all.length);
     await runner.warmUp();
   }
-  onProgress?.('shaders', all.length, all.length);
 
   let loadTestMs: number | null = null;
   if (slowGpuInputSize !== null) {
@@ -206,5 +208,6 @@ export async function createRunners(
       await runners.segmentation.warmUp();
     }
   }
+  onProgress?.('shaders', all.length, all.length);
   return { runners, loadTestMs };
 }

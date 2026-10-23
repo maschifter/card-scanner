@@ -33,13 +33,25 @@ export function useCamera(onError: Dispatch<SetStateAction<string>>) {
       onError(`webcam error: ${errorMessage(e)}`);
       return false;
     }
+    if (streamRef.current) {
+      stream.getTracks().forEach((t) => t.stop());
+      return false;
+    }
+    streamRef.current = stream;
     onError((s) => (s.startsWith('webcam error') ? 'webcam on' : s));
     const video = document.createElement('video');
     video.srcObject = stream;
     video.muted = true;
     video.playsInline = true;
-    await video.play();
-    streamRef.current = stream;
+    try {
+      await video.play();
+    } catch (e) {
+      stream.getTracks().forEach((t) => t.stop());
+      if (streamRef.current === stream) streamRef.current = null;
+      onError(`webcam error: ${errorMessage(e)}`);
+      return false;
+    }
+    if (streamRef.current !== stream) return false;
     sourceRef.current = video;
     setSource(video);
     return true;

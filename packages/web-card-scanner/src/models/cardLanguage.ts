@@ -62,7 +62,7 @@ const kernelOf = ({ k, stride = [1, 1], dilation = [1, 1] }: PerAxisSpec) =>
       (stride[a] === 2 && k[a] % 2 === 1 ? 1 : 0),
   );
 
-/** torch Conv2d with stride, padding and dilation per axis. TIE's conv2d
+/** torch Conv2d with stride, padding and dilation per axis. ruNNtime's conv2d
  *  takes one stride and padding and no dilation, so pad2d, zero taps and the
  *  default alignCorners resize give the same sums. */
 class PerAxisConv extends Conv2d {
@@ -154,7 +154,7 @@ class Downsample extends Module {
 }
 
 /** Per row (Σ x·a + mean x) / (Σ a + 1), a = σ(attention): mean(x·b) / mean(b)
- *  with b = a + 1/W. TIE has no divide, so 1/m is rsqrt(m)². */
+ *  with b = a + 1/W. ruNNtime has no divide, so 1/m is rsqrt(m)². */
 function poolRows(x: Value, attention: Value): Value {
   const [c, h, w] = dims3(x);
   const b = add(sigmoid(reshape(toChw(attention, 'f32'), [h, w])), 1 / w);

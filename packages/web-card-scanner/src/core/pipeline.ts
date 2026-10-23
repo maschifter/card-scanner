@@ -81,6 +81,8 @@ export class WebCardScanner {
       maxFrameRate: DEFAULT_MAX_FRAME_RATE,
       useSidewaysFlipCache: true,
       reuseSearchResults: true,
+      matchSetSymbol: true,
+      classifyFabColor: true,
       classifyLanguage: true,
       segmentationInputSize: YOLO_INPUT_SIZE,
       slowGpuInputSize: SLOW_GPU_INPUT_SIZE,
@@ -103,6 +105,8 @@ export class WebCardScanner {
       opts.onProgress,
       opts.segmentationInputSize,
       opts.slowGpuInputSize,
+      opts.matchSetSymbol,
+      opts.classifyFabColor,
       opts.classifyLanguage,
     );
 
@@ -176,6 +180,8 @@ export class WebCardScanner {
 
     return {
       cards,
+      frameWidth: frame.width,
+      frameHeight: frame.height,
       timings: {
         captureMs: tCapture - t0,
         segMs: tSeg - tCapture,
@@ -188,7 +194,7 @@ export class WebCardScanner {
     };
   }
 
-  /** Null without 'timestamp-query' or before the model has run. */
+  /** Null without 'timestamp-query' or if the model is off or never ran. */
   async profile(model: ProfiledModel = 'segmentation') {
     const runner = this.runners[model];
     return runner ? profileRunner(this.root, runner) : null;

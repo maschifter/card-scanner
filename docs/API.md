@@ -1,6 +1,6 @@
 # API Documentation
 
-Complete API reference for `@cardnexus/card-scanner`.
+Complete API reference for `@cardnexus/card-scanner`. For Web, see [`@cardnexus/web-card-scanner`](../packages/web-card-scanner/README.md).
 
 ---
 

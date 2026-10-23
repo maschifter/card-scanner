@@ -1,8 +1,8 @@
-/** Runs each TIE port on the fixture input apps/web-example/tools/export-web-models.py
+/** Runs each ruNNtime port on the fixture input apps/web-example/tools/export-web-models.py
  *  captured and compares against the ONNX output.
  *
  *  The YOLO fixtures cover the prototype-mask head only: the deployed ONNX
- *  exports the one2many training towers (app-side NMS), while TIE runs the
+ *  exports the one2many training towers (app-side NMS), while ruNNtime runs the
  *  end-to-end one2one towers, so the concatenated box output has no
  *  tensor-level counterpart. The proto head shares the whole backbone+neck,
  *  which is the risky part. SetSymbolDetectionModel has no proto, so it is
@@ -21,14 +21,12 @@ import {
   type Value,
   Yolo26Model,
 } from '../../../../packages/web-card-scanner/src/runntime.ts';
-import {
-  CardLanguageModel,
-  CardRecognitionModel,
-  ColorBarModel,
-  l2Normalize,
-  languageProbs,
-  SetSymbolRecognitionModel,
-} from '@cardnexus/web-card-scanner';
+import { languageProbs } from '../../../../packages/web-card-scanner/src/core/languageProcessor.ts';
+import { CardLanguageModel } from '../../../../packages/web-card-scanner/src/models/cardLanguage.ts';
+import { CardRecognitionModel } from '../../../../packages/web-card-scanner/src/models/cardRecognition.ts';
+import { ColorBarModel } from '../../../../packages/web-card-scanner/src/models/colorBar.ts';
+import { SetSymbolRecognitionModel } from '../../../../packages/web-card-scanner/src/models/setSymbolRecognition.ts';
+import { l2Normalize } from '../../../../packages/web-card-scanner/src/utils/vector.ts';
 import { reportPageErrors } from '../lib/pageErrors.ts';
 
 const logEl = document.getElementById('log')!;

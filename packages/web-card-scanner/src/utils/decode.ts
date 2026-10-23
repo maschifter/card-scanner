@@ -1,4 +1,4 @@
-/** Seg decode adapted from TIE's zoo/yolo26 pipeline.ts, extended with the
+/** Seg decode adapted from ruNNtime's zoo/yolo26 pipeline.ts, extended with the
  *  full per-cell class-score vector — the native SearchStrategy walks the
  *  sorted class confidences (not just the argmax) to pick candidate games,
  *  so the zoo's Detection (top class only) is not enough here. YOLO26 is

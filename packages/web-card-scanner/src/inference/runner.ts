@@ -1,5 +1,5 @@
 /** The InferenceSession of the web pipeline: one persistent input buffer,
- *  the forward captured once and replayed per call. A TIE executor becomes
+ *  the forward captured once and replayed per call. A ruNNtime executor becomes
  *  replay-only after captureFrame, so every runner owns a private one. */
 
 import {

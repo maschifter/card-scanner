@@ -1,7 +1,7 @@
 # @cardnexus/web-card-scanner
 
 Run the native card scanner pipeline in the browser on WebGPU. The package
-builds on TIE (`runntime`, the git submodule `vendor/runntime`). Every model
+builds on ruNNtime (the git submodule `vendor/runntime`). Every model
 runs in f16 with HWC4 conv storage. Your page downloads only the model weights
 (about 20 MB, cached in OPFS) and sends embeddings to a backend that owns the
 card databases. The cache is keyed by URL, so publish a new model set under a
@@ -19,26 +19,27 @@ const scanner = await WebCardScanner.create({
 });
 
 // A <video>, <img> (downscaled to 1280 px) or ImageData; needs pixels.
-// Null when the throttle dropped the frame, else { cards, timings }.
+// Null when the throttle dropped the frame, else
+// { cards, frameWidth, frameHeight, timings }.
 const result = await scanner.scan(videoElement);
 ```
 
-Each `ScannedCard` gives you the detection box and quad in frame pixels (of
-the downscaled frame for a video or image, see `captureSize`), the dewarped
+Each `ScannedCard` gives you the detection box and quad in frame pixels
+(`frameWidth` × `frameHeight`), the dewarped
 card image, the L2-normalized embedding, the candidate games, the backend
 matches, the set-symbol or pitch-colour result when the disambiguation
 stage ran, and the print language of a matched card. Use `ScanTimings` to
 see where the frame's time went. For a complete client, see
-`apps/web-example`: `hooks/useScanner.ts` boots the scanner and
+`apps/web-example`: `scanner.ts` creates the scanner and
 `hooks/useScanLoop.ts` drives the scan loop.
 
 You need:
 
 - A WebGPU device with `shader-f16`. Every current desktop and mobile browser
   that ships WebGPU has it, and `WebCardScanner.create` requests it.
-- The `unplugin-typegpu` Vite plugin, because TIE kernel bodies compile at
+- The `unplugin-typegpu` Vite plugin, because ruNNtime kernel bodies compile at
   build time.
-- The `tsover` TypeScript fork to type-check TIE sources (see this package's
+- The `tsover` TypeScript fork to type-check ruNNtime sources (see this package's
   `devDependencies`). Keep it scoped to web workspaces.
 - The `vendor/runntime` submodule checked out (`git submodule update --init`).
 
@@ -50,7 +51,7 @@ speaks the reference HTTP API in `apps/web-example/server`, which also owns
 the accept gate (top-1 at or above 0.60, or 0.45 with a 0.05 margin over the
 runner-up) and keeps only the winning game's matches.
 
-The scanner wraps your client in `cachedSearchClient` by default
+The scanner wraps your client in a search cache by default
 (`reuseSearchResults`). A card that stays in view is searched once, and the
 answer is reused while its embedding stays within cosine 0.97 of the searched
 one (different printings sit near 0.7), for up to 2 s after it was last seen.
@@ -59,21 +60,24 @@ Concurrent frames on a new card share one in-flight request.
 ## Models
 
 - CardSegmentationModel and SetSymbolDetectionModel: the deployed yolo26n
-  checkpoints through TIE's `zoo/yolo26` (end-to-end one2one head, no NMS).
+  checkpoints through ruNNtime's `zoo/yolo26` (end-to-end one2one head, no NMS).
 - CardRecognitionModel (timm `mobilenetv4_conv_small`),
   SetSymbolRecognitionModel (timm `mobilenetv3_small_075`), and
-  ColorBarModel: TIE nn ports of the training repo's PyTorch definitions
+  ColorBarModel: ruNNtime nn ports of the training repo's PyTorch definitions
   (`~/SWM_AI/card-scanner-models`, package `card_nexus`). Export BN-folded
   weights with `apps/web-example/tools/export-web-models.py`, and check parity against the
   deployed ONNX with the web example's `/parity.html`.
-- CardLanguageModel: a TIE nn port of the deployed ONNX graph, exported and
+- CardLanguageModel: a ruNNtime nn port of the deployed ONNX graph, exported and
   checked the same way. Its tail, a vote of the rows most on text, runs on
-  the CPU. `classifyLanguage: false` leaves the model out.
+  the CPU.
+
+Set `matchSetSymbol`, `classifyFabColor` or `classifyLanguage` to `false` to
+leave out the two set-symbol models, ColorBarModel or CardLanguageModel.
 
 Conv stacks run HWC4 f16 end to end. A model enters the layout with `toHwc4`
 at the stem, and only the Linear heads see an f32 row. A ReLU right after a
 conv is fused into the conv kernel. `models/ops.ts` composes the other ReLUs
-and HardSwish from `clamp` and ops that map 0 to 0, which TIE requires on HWC4
+and HardSwish from `clamp` and ops that map 0 to 0, which ruNNtime requires on HWC4
 storage: the zero-padded channel lanes must stay zero. CardLanguageModel's row
 pooling goes row-major for the mean and returns to the layout. A squeeze-excite
 gate broadcasts back over the map with a nearest-neighbour `upsample2d`, which
@@ -83,7 +87,7 @@ The submodule is pinned to a commit of upstream `main` and stays unmodified.
 To move it, check out the new commit in `vendor/runntime`, check
 `/parity.html` and `/bench.html`, then `git add vendor/runntime` and commit.
 After pulling such a commit, run `git submodule update`. Keep `typegpu` on
-`^0.12`: TIE depends on `^0.12.5`.
+`^0.12`: ruNNtime depends on `^0.12.5`.
 
 ## Pipeline
 
@@ -138,14 +142,14 @@ The layout mirrors the native card-scanner-core:
 
 - `constants.ts` and `types.ts`: every tuned number, and the public result
   and config types.
-- `runntime.ts`: TIE, re-exported from the `vendor/runntime` sources.
+- `runntime.ts`: ruNNtime, re-exported from the `vendor/runntime` sources.
 - `core/`: `setup.ts` (device, weights, runners), `pipeline.ts` (the
   per-frame loop: segmentation, decode, selection), `cardProcessor.ts` (per
   card: dewarp, embed, search, flip retry, stages), `cardSelection.ts`,
   `searchStrategy.ts` (candidate-game routing), `setSymbolProcessor.ts`,
   `fabColorProcessor.ts`, `languageProcessor.ts`, `httpSearchClient.ts`,
   `cachedSearchClient.ts`, `profile.ts`.
-- `models/`: the TIE nn ports plus their shared layers and helpers.
+- `models/`: the ruNNtime nn ports plus their shared layers and helpers.
 - `inference/`: `runner.ts` (captured-frame model runner),
   `gpuPreprocess.ts` (pixels-to-normalized-CHW compute kernel) and
   `gpuFrame.ts` (frame texture, GPU dewarp).

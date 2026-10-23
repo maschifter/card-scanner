@@ -72,6 +72,9 @@ export interface ScanTimings {
 
 export interface ScanResult {
   cards: ScannedCard[];
+  /** Size of the frame the boxes and quads are in (see FrameSource). */
+  frameWidth: number;
+  frameHeight: number;
   timings: ScanTimings;
 }
 
@@ -92,15 +95,24 @@ export interface ScannerOptions {
   /** Default true. */
   useSidewaysFlipCache?: boolean;
   /** Reuse a backend answer while the same card stays in view instead of
-   *  searching every frame (default true; see cachedSearchClient). */
+   *  searching every frame. Default true. */
   reuseSearchResults?: boolean;
+  /** Read the set symbol when an MTG top match nearly ties. Default true. */
+  matchSetSymbol?: boolean;
+  /** Read the pitch colour when a FaB top match nearly ties. Default true. */
+  classifyFabColor?: boolean;
   /** Read the print language of matched cards. Default true. */
   classifyLanguage?: boolean;
   segmentationThreshold?: number;
   minGameConfidence?: number;
   disambiguationThreshold?: number;
   setSymbolDetectionThreshold?: number;
-  onProgress?: (stage: string, doneBytes: number, totalBytes: number) => void;
+  /** Counts of models loaded ('models'), then compiled ('shaders'). */
+  onProgress?: (
+    stage: 'models' | 'shaders',
+    done: number,
+    total: number,
+  ) => void;
   /** Uncaptured WebGPU errors (shader compile / validation failures) are
    *  asynchronous and never reject a scan; they surface here instead. */
   onGpuError?: (message: string) => void;
